@@ -1,0 +1,48 @@
+{
+  "name": "backend-template",
+  "version": "1.0.0",
+  "displayName": "Backend Template",
+  "description": "A Go HTTP service template for Moses platform with OpenAPI discovery, Moses header middleware, and automatic MCP tool registration",
+  "appType": "api",
+  "entrypoint": "main.go",
+  "apiEndpoints": {
+    "basePath": "/api/v1",
+    "healthPath": "/health",
+    "specPath": "/api/openapi.json"
+  },
+  "autoRegisterTool": true,
+  "displayLocations": ["apps"],
+  "permissions": [],
+  "docker": {
+    "files": [
+      {
+        "name": "app",
+        "dockerfile": "Dockerfile",
+        "context": "."
+      }
+    ]
+  },
+  "service": {
+    "port": 8080,
+    "healthCheck": {
+      "enabled": true,
+      "path": "/health"
+    },
+    "ingress": {
+      "enabled": true
+    }
+  },
+  "resources": {
+    "cpu": { "request": "100m", "limit": "500m" },
+    "memory": { "request": "128Mi", "limit": "512Mi" }
+  },
+  "integrations": {
+    "required": [
+      {
+        "type": "moses-platform",
+        "key": "tenant-info",
+        "scopes": ["tenant:read"]
+      }
+    ]
+  }
+}

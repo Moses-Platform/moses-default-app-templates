@@ -1,0 +1,94 @@
+{
+  "name": "fullstack-showcase",
+  "version": "1.0.0",
+  "displayName": "Moses Platform Showcase",
+  "description": "Interactive showcase of Moses platform capabilities including MCP tools, deployment pipelines, authentication, and multi-tenancy",
+  "appType": "hybrid",
+  "entrypoint": "index.html",
+  "skills": [
+    "skills/showcase-overview.md",
+    "skills/api-integration.md"
+  ],
+  "quickActions": [
+    {
+      "id": "overview",
+      "label": "Platform Overview",
+      "icon": "layout-dashboard",
+      "url": "/",
+      "description": "Explore Moses capabilities"
+    },
+    {
+      "id": "mcp-tools",
+      "label": "MCP Tools",
+      "icon": "wrench",
+      "url": "/mcp-tools",
+      "description": "MCP tool system explained"
+    },
+    {
+      "id": "api-examples",
+      "label": "Live API",
+      "icon": "code",
+      "url": "/api-examples",
+      "description": "Interactive API playground"
+    }
+  ],
+  "displayLocations": [
+    "dashboard",
+    "apps"
+  ],
+  "permissions": [],
+  "apiEndpoints": {
+    "basePath": "/api/v1",
+    "healthPath": "/health",
+    "specPath": "/api/openapi.json"
+  },
+  "autoRegisterTool": true,
+  "helm": {
+    "chartPath": "helm"
+  },
+  "docker": {
+    "files": [
+      {
+        "name": "frontend",
+        "dockerfile": "frontend/Dockerfile",
+        "context": "frontend"
+      },
+      {
+        "name": "backend",
+        "dockerfile": "backend/Dockerfile",
+        "context": "backend"
+      }
+    ]
+  },
+  "services": {
+    "frontend": {
+      "port": 8080,
+      "healthCheck": { "enabled": true, "path": "/health" },
+      "ingress": { "enabled": true },
+      "resources": {
+        "cpu": { "request": "100m", "limit": "200m" },
+        "memory": { "request": "128Mi", "limit": "256Mi" }
+      }
+    },
+    "backend": {
+      "port": 8080,
+      "healthCheck": { "enabled": true, "path": "/health" },
+      "resources": {
+        "cpu": { "request": "100m", "limit": "500m" },
+        "memory": { "request": "128Mi", "limit": "512Mi" }
+      }
+    }
+  },
+  "dependencies": {
+    "services": ["postgresql"]
+  },
+  "integrations": {
+    "required": [
+      {
+        "type": "moses-platform",
+        "key": "tenant-users",
+        "scopes": ["users:list", "tenant:read"]
+      }
+    ]
+  }
+}

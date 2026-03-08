@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent-deployed-app.fullname" . }}
+  labels:
+    {{- include "agent-deployed-app.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "agent-deployed-app.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "agent-deployed-app.selectorLabels" . | nindent 8 }}
+        moses.ai/tenant-id: {{ .Values.moses.tenantId | quote }}
+        moses.ai/execution-id: {{ .Values.moses.executionId | quote }}
+        {{- if .Values.moses.chartId }}
+        moses.ai/chart-id: {{ .Values.moses.chartId | quote }}
+        {{- end }}
+        {{- if .Values.moses.appSlug }}
+        moses.ai/app-slug: {{ .Values.moses.appSlug | quote }}
+        {{- end }}
+        moses.ai/managed-by: moses
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          {{- if .Values.secrets }}
+          envFrom:
+            {{- if .Values.secrets.secretName }}
+            - secretRef:
+                name: {{ .Values.secrets.secretName }}
+            {{- end }}
+            {{- if .Values.secrets.configMapName }}
+            - configMapRef:
+                name: {{ .Values.secrets.configMapName }}
+            {{- end }}
+          {{- end }}
+          env:
+            - name: PORT
+              value: {{ .Values.env.PORT | default "8080" | quote }}
+            - name: NODE_ENV
+              value: {{ .Values.env.NODE_ENV | default "production" | quote }}
+            - name: BASE_URL
+              value: {{ .Values.env.BASE_URL | default "" | quote }}
+          {{- if .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

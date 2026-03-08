@@ -1,0 +1,42 @@
+{
+  "name": "fullstack-unified",
+  "version": "1.0.0",
+  "displayName": "Fullstack Unified",
+  "description": "A single Go binary serving both static frontend files and API endpoints. One container, one Dockerfile, no nginx — the simplest fullstack pattern for Moses.",
+  "appType": "hybrid",
+  "entrypoint": "index.html",
+  "skills": [
+    "skills/usage.md"
+  ],
+  "displayLocations": ["apps"],
+  "permissions": [],
+  "apiEndpoints": {
+    "basePath": "/api/v1",
+    "healthPath": "/health",
+    "specPath": "/api/openapi.json"
+  },
+  "autoRegisterTool": true,
+  "helm": {
+    "chartPath": "helm"
+  },
+  "docker": {
+    "files": [
+      {
+        "name": "app",
+        "dockerfile": "Dockerfile",
+        "context": "."
+      }
+    ]
+  },
+  "services": {
+    "app": {
+      "port": 8080,
+      "healthCheck": { "enabled": true, "path": "/health" },
+      "ingress": { "enabled": true },
+      "resources": {
+        "cpu": { "request": "100m", "limit": "200m" },
+        "memory": { "request": "128Mi", "limit": "256Mi" }
+      }
+    }
+  }
+}

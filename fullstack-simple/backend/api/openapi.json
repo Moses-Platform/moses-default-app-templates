@@ -1,0 +1,64 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Fullstack Simple API",
+    "version": "1.0.0",
+    "description": "Minimal fullstack template API for Moses platform"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "healthCheck",
+        "summary": "Service health check",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "service": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "operationId": "getStatus",
+        "summary": "Get app status and Moses context",
+        "responses": {
+          "200": {
+            "description": "App status with Moses headers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "app": { "type": "string" },
+                    "version": { "type": "string" },
+                    "uptime": { "type": "string" },
+                    "moses": {
+                      "type": "object",
+                      "properties": {
+                        "tenant_id": { "type": "string" },
+                        "user_id": { "type": "string" },
+                        "chart_id": { "type": "string" },
+                        "request_id": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

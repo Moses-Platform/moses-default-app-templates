@@ -1,0 +1,124 @@
+.overview-page {
+  max-width: 1200px;
+}
+
+.hero-section {
+  text-align: center;
+  padding: var(--spacing-8) 0 var(--spacing-12) 0;
+}
+
+.hero-section h2 {
+  font-size: var(--font-size-4xl);
+  margin-bottom: var(--spacing-4);
+  background: linear-gradient(135deg, var(--color-primary) 0%, #7C3AED 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero-subtitle {
+  font-size: var(--font-size-lg);
+  color: var(--color-text-secondary);
+  max-width: 700px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+.moses-context-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-6);
+  margin-bottom: var(--spacing-8);
+}
+
+.moses-context-section h3 {
+  font-size: var(--font-size-xl);
+  margin: 0 0 var(--spacing-6) 0;
+}
+
+.context-info {
+  display: grid;
+  gap: var(--spacing-4);
+}
+
+.context-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-4);
+  padding: var(--spacing-3);
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+}
+
+.context-label {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  min-width: 120px;
+}
+
+.context-value {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+
+.context-value.mode-mcp-proxy {
+  color: var(--color-success);
+  font-weight: var(--font-weight-semibold);
+}
+
+.context-value.mode-standalone {
+  color: var(--color-warning);
+  font-weight: var(--font-weight-semibold);
+}
+
+.context-standalone {
+  padding: var(--spacing-4);
+  background: var(--color-primary-light);
+  border-radius: var(--radius-md);
+  border-left: 4px solid var(--color-primary);
+}
+
+.context-standalone p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
+
+.context-loading,
+.context-error {
+  padding: var(--spacing-4);
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.context-error {
+  color: var(--color-error);
+}
+
+.features-section {
+  margin-top: var(--spacing-8);
+}
+
+.features-section h3 {
+  font-size: var(--font-size-2xl);
+  margin-bottom: var(--spacing-6);
+  text-align: center;
+}
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--spacing-6);
+}
+
+@media (max-width: 768px) {
+  .hero-section h2 {
+    font-size: var(--font-size-3xl);
+  }
+
+  .features-grid {
+    grid-template-columns: 1fr;
+  }
+}

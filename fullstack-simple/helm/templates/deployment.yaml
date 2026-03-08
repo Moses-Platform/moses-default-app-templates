@@ -1,0 +1,83 @@
+{{- range .Values.services }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent-deployed-app.fullname" $ }}-{{ .name }}
+  labels:
+    {{- include "agent-deployed-app.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ .name }}
+spec:
+  replicas: {{ .replicas | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "agent-deployed-app.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ .name }}
+  template:
+    metadata:
+      labels:
+        {{- include "agent-deployed-app.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ .name }}
+        moses.ai/tenant-id: {{ $.Values.moses.tenantId | quote }}
+        moses.ai/execution-id: {{ $.Values.moses.executionId | quote }}
+        {{- if $.Values.moses.chartId }}
+        moses.ai/chart-id: {{ $.Values.moses.chartId | quote }}
+        {{- end }}
+        {{- if $.Values.moses.appSlug }}
+        moses.ai/app-slug: {{ $.Values.moses.appSlug | quote }}
+        {{- end }}
+        moses.ai/managed-by: moses
+    spec:
+      containers:
+        - name: {{ .name }}
+          image: "{{ .image.repository }}:{{ .image.tag }}"
+          imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: http
+              containerPort: {{ .port }}
+              protocol: TCP
+          {{- if $.Values.secrets }}
+          envFrom:
+            {{- if $.Values.secrets.secretName }}
+            - secretRef:
+                name: {{ $.Values.secrets.secretName }}
+            {{- end }}
+            {{- if $.Values.secrets.configMapName }}
+            - configMapRef:
+                name: {{ $.Values.secrets.configMapName }}
+            {{- end }}
+          {{- end }}
+          env:
+            {{- range $key, $value := $.Values.globalEnv }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- if eq .name "frontend" }}
+            - name: BACKEND_SERVICE_HOST
+              value: "{{ include "agent-deployed-app.fullname" $ }}-backend"
+            - name: BACKEND_SERVICE_PORT
+              value: "8080"
+            {{- end }}
+            {{- range $key, $value := .env }}
+            {{- if and (ne $key "BACKEND_SERVICE_HOST") (ne $key "BACKEND_SERVICE_PORT") }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
+          {{- if .healthCheck }}
+          livenessProbe:
+            httpGet:
+              path: {{ .healthCheck.path }}
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: {{ .healthCheck.path }}
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          {{- end }}
+          resources:
+            {{- toYaml .resources | nindent 12 }}
+{{- end }}

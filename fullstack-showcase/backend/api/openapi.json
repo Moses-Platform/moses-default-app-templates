@@ -1,0 +1,363 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Moses Platform Showcase API",
+    "description": "Interactive showcase of Moses platform capabilities",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "/api/v1",
+      "description": "API v1"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "healthCheck",
+        "summary": "Health check endpoint",
+        "tags": ["System"],
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "healthy"
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "fullstack-showcase"
+                    },
+                    "version": {
+                      "type": "string",
+                      "example": "1.0.0"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/moses-info": {
+      "get": {
+        "operationId": "getMosesInfo",
+        "summary": "Get current Moses context",
+        "description": "Returns Moses headers and deployment mode information",
+        "tags": ["Moses"],
+        "responses": {
+          "200": {
+            "description": "Moses context information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tenant_id": {
+                      "type": "string",
+                      "description": "Tenant UUID from X-Moses-Tenant-ID header"
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "User UUID from X-Moses-User-ID header"
+                    },
+                    "chart_id": {
+                      "type": "string",
+                      "description": "Chart UUID from X-Moses-Chart-ID header"
+                    },
+                    "tool_id": {
+                      "type": "string",
+                      "description": "Tool UUID from X-Moses-Tool-ID header"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "description": "Request UUID from X-Moses-Request-ID header"
+                    },
+                    "mcp_source": {
+                      "type": "string",
+                      "description": "MCP source from X-Moses-MCP-Source header"
+                    },
+                    "api_key_id": {
+                      "type": "string",
+                      "description": "API key UUID from X-Moses-API-Key-ID header"
+                    },
+                    "headers_present": {
+                      "type": "boolean",
+                      "description": "Whether Moses headers are present"
+                    },
+                    "deployment_mode": {
+                      "type": "string",
+                      "enum": ["standalone", "mcp-proxy"],
+                      "description": "Deployment mode based on header presence"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/capabilities": {
+      "get": {
+        "operationId": "listCapabilities",
+        "summary": "List all Moses capabilities",
+        "description": "Returns a curated list of Moses platform capabilities",
+        "tags": ["Capabilities"],
+        "responses": {
+          "200": {
+            "description": "List of capabilities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Capability"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/capabilities/{id}": {
+      "get": {
+        "operationId": "getCapability",
+        "summary": "Get capability by ID",
+        "description": "Returns detailed information about a specific capability",
+        "tags": ["Capabilities"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Capability ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Capability details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capability"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Capability not found"
+          }
+        }
+      }
+    },
+    "/api/v1/notes": {
+      "get": {
+        "operationId": "listNotes",
+        "summary": "List all notes",
+        "description": "Returns all notes for the current tenant (filtered by X-Moses-Tenant-ID)",
+        "tags": ["Notes"],
+        "responses": {
+          "200": {
+            "description": "List of notes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Note"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createNote",
+        "summary": "Create a note",
+        "description": "Creates a new note scoped to the current tenant",
+        "tags": ["Notes"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Note created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Note"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          }
+        }
+      }
+    },
+    "/api/v1/notes/{id}": {
+      "get": {
+        "operationId": "getNote",
+        "summary": "Get a note by ID",
+        "description": "Returns a specific note, scoped to the current tenant",
+        "tags": ["Notes"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Note UUID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Note details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Note"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Note not found"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteNote",
+        "summary": "Delete a note",
+        "description": "Deletes a note by ID, scoped to the current tenant",
+        "tags": ["Notes"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Note UUID"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Note deleted"
+          },
+          "404": {
+            "description": "Note not found"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Note": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Note UUID"
+          },
+          "tenant_id": {
+            "type": "string",
+            "description": "Tenant ID from Moses context"
+          },
+          "title": {
+            "type": "string",
+            "description": "Note title"
+          },
+          "content": {
+            "type": "string",
+            "description": "Note content"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["id", "tenant_id", "title", "content"]
+      },
+      "NoteInput": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Note title"
+          },
+          "content": {
+            "type": "string",
+            "description": "Note content"
+          }
+        },
+        "required": ["title"]
+      },
+      "Capability": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique capability identifier"
+          },
+          "title": {
+            "type": "string",
+            "description": "Capability title"
+          },
+          "description": {
+            "type": "string",
+            "description": "Short description"
+          },
+          "category": {
+            "type": "string",
+            "description": "Capability category",
+            "enum": ["core", "infrastructure", "agents", "security", "integration"]
+          },
+          "icon": {
+            "type": "string",
+            "description": "Icon identifier"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Detailed bullet points"
+          }
+        },
+        "required": ["id", "title", "description", "category", "details"]
+      }
+    }
+  }
+}

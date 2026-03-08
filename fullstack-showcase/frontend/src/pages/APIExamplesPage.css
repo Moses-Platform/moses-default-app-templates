@@ -1,0 +1,203 @@
+.api-examples-page {
+  max-width: 1000px;
+}
+
+.endpoints-list {
+  display: grid;
+  gap: var(--spacing-4);
+  margin: var(--spacing-6) 0;
+}
+
+.endpoint-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-5);
+  transition: all 0.2s;
+}
+
+.endpoint-card:hover {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-md);
+}
+
+.endpoint-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-3);
+}
+
+.method-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+}
+
+.method-get {
+  background: #10B981;
+  color: white;
+}
+
+.method-post {
+  background: #3B82F6;
+  color: white;
+}
+
+.endpoint-path {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+
+.endpoint-description {
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-4);
+  line-height: 1.6;
+}
+
+.try-button {
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  padding: var(--spacing-2) var(--spacing-4);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.try-button:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.try-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.response-success,
+.response-error {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.response-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-4) var(--spacing-6);
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.response-header h4 {
+  margin: 0;
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+}
+
+.status-badge {
+  background: var(--color-success);
+  color: white;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.response-error {
+  border-color: var(--color-error);
+}
+
+.response-error h4 {
+  padding: var(--spacing-4) var(--spacing-6);
+  background: #FEE2E2;
+  color: var(--color-error);
+  margin: 0;
+  border-bottom: 1px solid var(--color-error);
+}
+
+.response-success pre,
+.response-error pre {
+  margin: 0;
+  padding: var(--spacing-6);
+  background: #1e1e1e;
+  color: #d4d4d4;
+  overflow-x: auto;
+  max-height: 500px;
+}
+
+.process-steps {
+  display: grid;
+  gap: var(--spacing-4);
+  margin: var(--spacing-6) 0;
+}
+
+.process-step {
+  display: flex;
+  gap: var(--spacing-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-4);
+}
+
+.step-number {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  background: var(--color-primary);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--font-weight-bold);
+}
+
+.step-content h4 {
+  margin: 0 0 var(--spacing-1) 0;
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+}
+
+.step-content p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.tool-examples {
+  display: grid;
+  gap: var(--spacing-3);
+  margin: var(--spacing-6) 0;
+}
+
+.tool-example {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-4);
+}
+
+.tool-example code {
+  display: block;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-primary);
+  margin-bottom: var(--spacing-2);
+}
+
+.tool-example p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}

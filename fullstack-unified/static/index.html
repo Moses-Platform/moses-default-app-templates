@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fullstack Unified</title>
+  <base href="./">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="favicon.svg">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>Fullstack Unified</h1>
+      <p>Single Go binary &mdash; static files + API in one container</p>
+    </header>
+    <main class="main" id="main">
+      <section class="card">
+        <h2>Backend Status</h2>
+        <p class="loading" id="loading">Connecting to backend...</p>
+        <p class="error" id="error" hidden></p>
+        <div class="status" id="status" hidden></div>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

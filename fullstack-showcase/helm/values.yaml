@@ -1,0 +1,74 @@
+moses:
+  namespace: ""
+  tenantId: ""
+  executionId: ""
+  chartId: ""
+  appSlug: ""
+
+services:
+  - name: frontend
+    image:
+      repository: "fullstack-showcase-frontend"
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    port: 8080
+    replicas: 1
+    resources:
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+    healthCheck:
+      enabled: true
+      path: /health
+    ingress: true
+
+  - name: backend
+    image:
+      repository: "fullstack-showcase-backend"
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    port: 8080
+    replicas: 1
+    resources:
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+    healthCheck:
+      enabled: true
+      path: /health
+
+globalEnv:
+  BASE_URL: ""
+  NODE_ENV: "production"
+
+postgresql:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "15-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    username: showcase
+    password: showcase-secret  # WARNING: Override in production via --set postgresql.auth.password=<secret>
+    database: showcase
+  resources:
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+
+externalDatabase:
+  host: ""
+  port: "5432"
+  user: "showcase"
+  password: ""
+  database: "showcase"
+  sslmode: "disable"

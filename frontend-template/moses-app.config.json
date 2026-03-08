@@ -1,0 +1,49 @@
+{
+  "name": "frontend-template",
+  "version": "1.0.0",
+  "displayName": "Frontend Template",
+  "description": "A clean React+TypeScript+Vite frontend template for Moses platform apps with correct subpath deployment, SPA routing, and health checks",
+  "appType": "frontend",
+  "entrypoint": "index.html",
+  "quickActions": [
+    {
+      "id": "launch",
+      "label": "Launch App",
+      "icon": "rocket",
+      "url": "/",
+      "description": "Open the frontend template"
+    },
+    {
+      "id": "about",
+      "label": "About",
+      "icon": "info",
+      "url": "/about",
+      "description": "Learn about this template"
+    }
+  ],
+  "displayLocations": ["apps"],
+  "permissions": [],
+  "docker": {
+    "files": [
+      {
+        "name": "app",
+        "dockerfile": "Dockerfile",
+        "context": "."
+      }
+    ]
+  },
+  "service": {
+    "port": 8080,
+    "healthCheck": {
+      "enabled": true,
+      "path": "/health"
+    },
+    "ingress": {
+      "enabled": true
+    }
+  },
+  "resources": {
+    "cpu": { "request": "100m", "limit": "200m" },
+    "memory": { "request": "128Mi", "limit": "256Mi" }
+  }
+}

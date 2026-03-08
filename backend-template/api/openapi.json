@@ -1,0 +1,243 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Moses Backend Template",
+    "description": "A Go HTTP service template demonstrating Moses platform integration with OpenAPI discovery, Moses header middleware, and automatic MCP tool registration. Each operationId becomes an MCP tool callable by AI agents.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Moses Platform",
+      "url": "https://moses-manager.eu"
+    }
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Default server"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "healthCheck",
+        "summary": "Health check endpoint",
+        "description": "Returns the service health status. Used by Moses platform health probes.",
+        "tags": ["System"],
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "healthy"
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "backend-template"
+                    },
+                    "version": {
+                      "type": "string",
+                      "example": "1.0.0"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/items": {
+      "get": {
+        "operationId": "listItems",
+        "summary": "List all items",
+        "description": "Returns all items, automatically filtered by tenant when called via Moses WorkspaceToolProxy (X-Moses-Tenant-ID header). For local development without Moses headers, returns all items.",
+        "tags": ["Items"],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "description": "Optional tenant filter (informational - actual filtering uses X-Moses-Tenant-ID header)",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of items",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Item"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createItem",
+        "summary": "Create a new item",
+        "description": "Creates a new item. When called via Moses WorkspaceToolProxy, the item is automatically associated with the tenant from X-Moses-Tenant-ID header.",
+        "tags": ["Items"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Item name",
+                    "minLength": 1,
+                    "maxLength": 255,
+                    "example": "My New Item"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Item description",
+                    "maxLength": 1000,
+                    "example": "This is a detailed description"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Item created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body or missing required fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/items/{id}": {
+      "get": {
+        "operationId": "getItem",
+        "summary": "Get item by ID",
+        "description": "Returns a single item by ID. When called via Moses WorkspaceToolProxy, enforces tenant isolation using X-Moses-Tenant-ID header.",
+        "tags": ["Items"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Item ID (UUID format)",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Item found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Item not found or access denied (tenant mismatch)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Item": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique item identifier",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Tenant identifier (automatically set from X-Moses-Tenant-ID header)",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "name": {
+            "type": "string",
+            "description": "Item name",
+            "example": "Sample Item"
+          },
+          "description": {
+            "type": "string",
+            "description": "Item description",
+            "example": "This is a sample item"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the item was created",
+            "example": "2024-01-15T10:30:00Z"
+          }
+        },
+        "required": ["id", "name", "created_at"]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error message",
+            "example": "Item not found"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "System",
+      "description": "System health and status endpoints"
+    },
+    {
+      "name": "Items",
+      "description": "Item resource management operations"
+    }
+  ]
+}

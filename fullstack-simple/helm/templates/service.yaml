@@ -1,0 +1,20 @@
+{{- range .Values.services }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agent-deployed-app.fullname" $ }}-{{ .name }}
+  labels:
+    {{- include "agent-deployed-app.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ .name }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .port }}
+      targetPort: {{ .port }}
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "agent-deployed-app.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ .name }}
+{{- end }}

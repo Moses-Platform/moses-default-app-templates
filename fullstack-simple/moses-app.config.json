@@ -1,0 +1,55 @@
+{
+  "name": "fullstack-simple",
+  "version": "1.0.0",
+  "displayName": "Fullstack Simple",
+  "description": "A minimal Go + React fullstack template for Moses — one API endpoint, one page, no database. Designed as a clean starting point for agents to build upon.",
+  "appType": "hybrid",
+  "entrypoint": "index.html",
+  "skills": [
+    "skills/usage.md"
+  ],
+  "displayLocations": ["apps"],
+  "permissions": [],
+  "apiEndpoints": {
+    "basePath": "/api/v1",
+    "healthPath": "/health",
+    "specPath": "/api/openapi.json"
+  },
+  "autoRegisterTool": true,
+  "helm": {
+    "chartPath": "helm"
+  },
+  "docker": {
+    "files": [
+      {
+        "name": "frontend",
+        "dockerfile": "frontend/Dockerfile",
+        "context": "frontend"
+      },
+      {
+        "name": "backend",
+        "dockerfile": "backend/Dockerfile",
+        "context": "backend"
+      }
+    ]
+  },
+  "services": {
+    "frontend": {
+      "port": 8080,
+      "healthCheck": { "enabled": true, "path": "/health" },
+      "ingress": { "enabled": true },
+      "resources": {
+        "cpu": { "request": "100m", "limit": "200m" },
+        "memory": { "request": "128Mi", "limit": "256Mi" }
+      }
+    },
+    "backend": {
+      "port": 8080,
+      "healthCheck": { "enabled": true, "path": "/health" },
+      "resources": {
+        "cpu": { "request": "100m", "limit": "200m" },
+        "memory": { "request": "128Mi", "limit": "256Mi" }
+      }
+    }
+  }
+}

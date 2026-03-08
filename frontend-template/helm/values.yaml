@@ -1,0 +1,58 @@
+# Pre-configured by Moses - DO NOT REMOVE moses section
+# These values ensure proper deployment to your namespace
+
+moses:
+  namespace: ""
+  tenantId: ""
+  executionId: ""
+  chartId: ""
+  appSlug: ""
+
+# Image settings - Set automatically by deployment pipeline
+image:
+  repository: "frontend-template"
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Service settings
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+# Deployment settings
+replicaCount: 1
+
+# Resource limits
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Environment variables
+# BASE_URL is set automatically when deployed via Moses
+# Use it in your app for absolute paths: <link href="${BASE_URL}styles.css">
+env:
+  PORT: "8080"
+  NODE_ENV: "production"
+  # BASE_URL will be set by deployment process based on ingress path
+  # Example: /apps/workspace-slug/app-slug/
+  BASE_URL: ""
+
+# Health checks
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5

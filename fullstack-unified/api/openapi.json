@@ -1,0 +1,71 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Fullstack Unified API",
+    "version": "1.0.0",
+    "description": "A single Go binary serving both static frontend and API endpoints."
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "service": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "operationId": "getStatus",
+        "summary": "Application status",
+        "responses": {
+          "200": {
+            "description": "Status response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "app": { "type": "string" },
+                    "version": { "type": "string" },
+                    "uptime": { "type": "string" },
+                    "moses": {
+                      "type": "object",
+                      "properties": {
+                        "tenant_id": { "type": "string" },
+                        "user_id": { "type": "string" },
+                        "chart_id": { "type": "string" },
+                        "request_id": { "type": "string" }
+                      }
+                    },
+                    "env": {
+                      "type": "object",
+                      "properties": {
+                        "port": { "type": "string" },
+                        "base_url": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
