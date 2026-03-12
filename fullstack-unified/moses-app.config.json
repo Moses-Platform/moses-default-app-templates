@@ -38,5 +38,19 @@
         "memory": { "request": "128Mi", "limit": "256Mi" }
       }
     }
+  },
+  "maintenance": {
+    "renovate": {
+      "enabled": true,
+      "schedule": "0 4 * * 1",
+      "configPath": "renovate.json",
+      "context": "Unified Go binary serving static frontend + API. Frontend is embedded at build time. Update both Go modules and any frontend dependencies in the embedded assets."
+    },
+    "logMonitor": {
+      "enabled": true,
+      "lookbackMinutes": 15,
+      "minErrorCount": 5,
+      "context": "Single Go binary serving frontend files and API endpoints. Common errors: static file serving 404s, API handler panics, and port binding failures."
+    }
   }
 }

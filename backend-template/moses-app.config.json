@@ -44,5 +44,19 @@
         "scopes": ["tenant:read"]
       }
     ]
+  },
+  "maintenance": {
+    "renovate": {
+      "enabled": true,
+      "schedule": "0 4 * * 1",
+      "configPath": "renovate.json",
+      "context": "Go HTTP API service. Update Go modules and Docker base images. Check for breaking API changes in major dependency updates."
+    },
+    "logMonitor": {
+      "enabled": true,
+      "lookbackMinutes": 15,
+      "minErrorCount": 5,
+      "context": "Go API with Moses platform integration. Common errors: database connection pool exhaustion, panic recovery middleware catches, HTTP client timeouts to external services, and OpenAPI spec generation failures."
+    }
   }
 }

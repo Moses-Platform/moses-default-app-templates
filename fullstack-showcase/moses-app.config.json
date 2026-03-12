@@ -90,5 +90,19 @@
         "scopes": ["users:list", "tenant:read"]
       }
     ]
+  },
+  "maintenance": {
+    "renovate": {
+      "enabled": true,
+      "schedule": "0 4 * * 1",
+      "configPath": "renovate.json",
+      "context": "Showcase app with React frontend, Go backend, and PostgreSQL dependency. Update npm packages, Go modules, Docker images, and Helm chart dependencies."
+    },
+    "logMonitor": {
+      "enabled": true,
+      "lookbackMinutes": 15,
+      "minErrorCount": 5,
+      "context": "Full-stack showcase with PostgreSQL. Common errors: database connection failures, migration errors on startup, frontend API integration issues, and authentication/authorization failures with Moses platform."
+    }
   }
 }
