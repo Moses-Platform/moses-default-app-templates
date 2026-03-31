@@ -56,6 +56,11 @@ func main() {
 	log.Println("Server stopped")
 }
 
+// SECURITY WARNING: This template uses permissive CORS (Allow-Origin: "*") for
+// development convenience. For production deployments, restrict this to your actual
+// domain(s). Example:
+//   w.Header().Set("Access-Control-Allow-Origin", "https://yourdomain.com")
+// See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")

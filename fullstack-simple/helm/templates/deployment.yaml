@@ -30,8 +30,14 @@ spec:
     spec:
       containers:
         - name: {{ .name }}
-          image: "{{ .image.repository }}:{{ .image.tag }}"
-          imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
+          {{- $imgSpec := dict "repository" "placeholder" "tag" "latest" "pullPolicy" "IfNotPresent" }}
+          {{- if and $.Values.images (hasKey $.Values.images .name) }}
+          {{- $imgSpec = index $.Values.images .name }}
+          {{- else if .image }}
+          {{- $imgSpec = .image }}
+          {{- end }}
+          image: "{{ $imgSpec.repository }}:{{ $imgSpec.tag }}"
+          imagePullPolicy: {{ $imgSpec.pullPolicy | default "IfNotPresent" }}
           ports:
             - name: http
               containerPort: {{ .port }}
@@ -58,26 +64,60 @@ spec:
             - name: BACKEND_SERVICE_PORT
               value: "8080"
             {{- end }}
+            {{- if $.Values.redis.enabled }}
+            - name: REDIS_ADDR
+              value: "{{ include "agent-deployed-app.fullname" $ }}-redis:{{ $.Values.redis.port }}"
+            {{- end }}
             {{- range $key, $value := .env }}
-            {{- if and (ne $key "BACKEND_SERVICE_HOST") (ne $key "BACKEND_SERVICE_PORT") }}
+            {{- if and (ne $key "BACKEND_SERVICE_HOST") (ne $key "BACKEND_SERVICE_PORT") (ne $key "REDIS_ADDR") }}
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
             {{- end }}
           {{- if .healthCheck }}
+          startupProbe:
+            httpGet:
+              path: {{ .healthCheck.path }}
+              port: http
+            failureThreshold: 30
+            periodSeconds: 10
           livenessProbe:
             httpGet:
               path: {{ .healthCheck.path }}
               port: http
-            initialDelaySeconds: 15
+            initialDelaySeconds: 5
             periodSeconds: 10
           readinessProbe:
             httpGet:
               path: {{ .healthCheck.path }}
               port: http
-            initialDelaySeconds: 5
+            initialDelaySeconds: 2
             periodSeconds: 5
           {{- end }}
           resources:
             {{- toYaml .resources | nindent 12 }}
+        {{- if .sidecars }}
+        {{- range .sidecars }}
+        - name: {{ .name }}
+          image: "{{ .image }}"
+          {{- if .ports }}
+          ports:
+            {{- range .ports }}
+            - containerPort: {{ .containerPort }}
+              protocol: {{ .protocol | default "TCP" }}
+            {{- end }}
+          {{- end }}
+          {{- if .env }}
+          env:
+            {{- range $key, $value := .env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if .resources }}
+          resources:
+            {{- toYaml .resources | nindent 12 }}
+          {{- end }}
+        {{- end }}
+        {{- end }}
 {{- end }}

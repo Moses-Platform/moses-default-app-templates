@@ -5,6 +5,18 @@ moses:
   chartId: ""
   appSlug: ""
 
+# Image references (v2 format — used by deployment template)
+# These are overridden by Moses during deployment via --set images.{name}.repository=...
+images:
+  frontend:
+    repository: "fullstack-showcase-frontend"
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  backend:
+    repository: "fullstack-showcase-backend"
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
 services:
   - name: frontend
     image:

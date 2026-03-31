@@ -49,6 +49,10 @@ spec:
               value: {{ .Values.env.NODE_ENV | default "production" | quote }}
             - name: BASE_URL
               value: {{ .Values.env.BASE_URL | default "" | quote }}
+          {{- if .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml .Values.startupProbe | nindent 12 }}
+          {{- end }}
           {{- if .Values.livenessProbe }}
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
@@ -59,3 +63,19 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+        {{- if .Values.sidecars }}
+        {{- range .Values.sidecars }}
+        - name: {{ .name }}
+          image: "{{ .image }}"
+          {{- if .ports }}
+          ports:
+            {{- range .ports }}
+            - containerPort: {{ .containerPort }}
+            {{- end }}
+          {{- end }}
+          {{- if .resources }}
+          resources:
+            {{- toYaml .resources | nindent 12 }}
+          {{- end }}
+        {{- end }}
+        {{- end }}

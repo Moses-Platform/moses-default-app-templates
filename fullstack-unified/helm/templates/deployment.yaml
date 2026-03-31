@@ -30,8 +30,14 @@ spec:
     spec:
       containers:
         - name: {{ .name }}
-          image: "{{ .image.repository }}:{{ .image.tag }}"
-          imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
+          {{- $imgSpec := dict "repository" "placeholder" "tag" "latest" "pullPolicy" "IfNotPresent" }}
+          {{- if and $.Values.images (hasKey $.Values.images .name) }}
+          {{- $imgSpec = index $.Values.images .name }}
+          {{- else if .image }}
+          {{- $imgSpec = .image }}
+          {{- end }}
+          image: "{{ $imgSpec.repository }}:{{ $imgSpec.tag }}"
+          imagePullPolicy: {{ $imgSpec.pullPolicy | default "IfNotPresent" }}
           ports:
             - name: http
               containerPort: {{ .port }}
@@ -57,17 +63,23 @@ spec:
               value: {{ $value | quote }}
             {{- end }}
           {{- if .healthCheck }}
+          startupProbe:
+            httpGet:
+              path: {{ .healthCheck.path }}
+              port: http
+            failureThreshold: 30
+            periodSeconds: 10
           livenessProbe:
             httpGet:
               path: {{ .healthCheck.path }}
               port: http
-            initialDelaySeconds: 15
+            initialDelaySeconds: 5
             periodSeconds: 10
           readinessProbe:
             httpGet:
               path: {{ .healthCheck.path }}
               port: http
-            initialDelaySeconds: 5
+            initialDelaySeconds: 2
             periodSeconds: 5
           {{- end }}
           resources:

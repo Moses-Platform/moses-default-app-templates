@@ -1,0 +1,62 @@
+{{- if .Values.redis.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent-deployed-app.fullname" . }}-redis
+  labels:
+    {{- include "agent-deployed-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "agent-deployed-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: redis
+  template:
+    metadata:
+      labels:
+        {{- include "agent-deployed-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: redis
+        moses.ai/tenant-id: {{ .Values.moses.tenantId | quote }}
+        moses.ai/execution-id: {{ .Values.moses.executionId | quote }}
+        moses.ai/managed-by: moses
+    spec:
+      containers:
+        - name: redis
+          image: {{ .Values.redis.image | quote }}
+          ports:
+            - name: redis
+              containerPort: {{ .Values.redis.port }}
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agent-deployed-app.fullname" . }}-redis
+  labels:
+    {{- include "agent-deployed-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.redis.port }}
+      targetPort: redis
+      protocol: TCP
+      name: redis
+  selector:
+    {{- include "agent-deployed-app.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+{{- end }}

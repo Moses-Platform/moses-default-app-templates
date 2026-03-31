@@ -5,7 +5,15 @@ import (
 	"os"
 )
 
-// CORS middleware handles Cross-Origin Resource Sharing
+// CORS middleware handles Cross-Origin Resource Sharing.
+//
+// SECURITY WARNING: In non-production mode, this middleware uses permissive CORS
+// (Allow-Origin: "*") for development convenience. The production branch reflects
+// the Origin header, which is also overly permissive. For production deployments,
+// validate origins against an explicit allowlist of your domain(s). Example:
+//   allowedOrigins := map[string]bool{"https://yourdomain.com": true}
+//   if allowedOrigins[origin] { w.Header().Set("Access-Control-Allow-Origin", origin) }
+// See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 func CORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Allow frontend origin (in K8s: service DNS, in dev: localhost)
