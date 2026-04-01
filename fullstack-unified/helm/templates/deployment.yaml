@@ -19,7 +19,6 @@ spec:
         {{- include "agent-deployed-app.selectorLabels" $ | nindent 8 }}
         app.kubernetes.io/component: {{ .name }}
         moses.ai/tenant-id: {{ $.Values.moses.tenantId | quote }}
-        moses.ai/execution-id: {{ $.Values.moses.executionId | quote }}
         {{- if $.Values.moses.chartId }}
         moses.ai/chart-id: {{ $.Values.moses.chartId | quote }}
         {{- end }}
