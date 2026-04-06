@@ -1,3 +1,32 @@
+# Go build artifacts
 server
 fullstack-unified
 *.exe
+*.test
+*.out
+
+# Go module checksums — generated at build time by `go mod tidy` in Dockerfile.
+# Agents cannot generate valid checksums, so never commit this file.
+go.sum
+
+# Dependencies
+vendor/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

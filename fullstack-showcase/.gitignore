@@ -1,3 +1,14 @@
+# Go build artifacts
+server
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go module checksums — generated at build time by `go mod tidy` in Dockerfile.
+# Agents cannot generate valid checksums, so never commit this file.
+go.sum
+
 # Dependencies
 node_modules/
 vendor/
@@ -5,10 +16,6 @@ vendor/
 # Build outputs
 dist/
 build/
-*.exe
-*.dll
-*.so
-*.dylib
 
 # Environment
 .env
