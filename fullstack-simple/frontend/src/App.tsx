@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 
 interface StatusResponse {
   app: string
@@ -16,13 +16,25 @@ interface StatusResponse {
   }
 }
 
+interface Item {
+  id: string
+  title: string
+  created_at: string
+}
+
 function App() {
   const [status, setStatus] = useState<StatusResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const [items, setItems] = useState<Item[]>([])
+  const [itemsLoading, setItemsLoading] = useState(true)
+  const [itemsError, setItemsError] = useState<string | null>(null)
+  const [newTitle, setNewTitle] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
   useEffect(() => {
-    fetch('/api/v1/status')
+    fetch('api/v1/status')
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json()
@@ -36,6 +48,64 @@ function App() {
         setLoading(false)
       })
   }, [])
+
+  const loadItems = useCallback(() => {
+    setItemsLoading(true)
+    fetch('api/v1/items')
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
+      .then(data => {
+        setItems(data)
+        setItemsError(null)
+        setItemsLoading(false)
+      })
+      .catch(err => {
+        setItemsError(err.message)
+        setItemsLoading(false)
+      })
+  }, [])
+
+  useEffect(() => {
+    loadItems()
+  }, [loadItems])
+
+  const addItem = () => {
+    const title = newTitle.trim()
+    if (!title || submitting) return
+
+    setSubmitting(true)
+    fetch('api/v1/items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
+      .then((item: Item) => {
+        setItems(prev => [...prev, item])
+        setNewTitle('')
+        setSubmitting(false)
+      })
+      .catch(err => {
+        setItemsError(err.message)
+        setSubmitting(false)
+      })
+  }
+
+  const deleteItem = (id: string) => {
+    fetch(`api/v1/items/${id}`, { method: 'DELETE' })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        setItems(prev => prev.filter(item => item.id !== id))
+      })
+      .catch(err => {
+        setItemsError(err.message)
+      })
+  }
 
   return (
     <div className="app">
@@ -80,6 +150,44 @@ function App() {
             </div>
           </section>
         )}
+
+        <section className="card">
+          <h2>Items</h2>
+          <div className="items-input">
+            <input
+              type="text"
+              className="input"
+              placeholder="New item title..."
+              value={newTitle}
+              onChange={e => setNewTitle(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addItem()}
+              disabled={submitting}
+            />
+            <button className="btn" onClick={addItem} disabled={submitting || !newTitle.trim()}>
+              Add
+            </button>
+          </div>
+          {itemsLoading && <p className="loading">Loading items...</p>}
+          {itemsError && <p className="error">Error: {itemsError}</p>}
+          {!itemsLoading && items.length === 0 && (
+            <p className="empty">No items yet. Add one above.</p>
+          )}
+          {items.length > 0 && (
+            <ul className="items-list">
+              {items.map(item => (
+                <li className="items-row" key={item.id}>
+                  <div className="items-info">
+                    <span className="value">{item.title}</span>
+                    <span className="label">{new Date(item.created_at).toLocaleString()}</span>
+                  </div>
+                  <button className="btn-delete" onClick={() => deleteItem(item.id)} title="Delete">
+                    &times;
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </main>
     </div>
   )

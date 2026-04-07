@@ -59,12 +59,12 @@ globalEnv:
   BASE_URL: ""
   NODE_ENV: "production"
 
-# Optional Redis sidecar — set enabled: true to include a Redis instance.
+# Optional Valkey (Redis-compatible) sidecar — set enabled: true to include an instance.
 # REDIS_ADDR is auto-injected into all service containers using the fullname helper.
-# Agents should NEVER hardcode Redis service names — they are dynamic.
+# Agents should NEVER hardcode service names — they are dynamic.
 redis:
   enabled: false
-  image: "redis:7-alpine"
+  image: "valkey/valkey:8-alpine"
   port: 6379
   resources:
     limits:

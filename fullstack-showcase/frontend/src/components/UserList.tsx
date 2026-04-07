@@ -14,7 +14,7 @@ export default function UserList() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/v1/users')
+    fetch('api/v1/users')
       .then(res => res.json())
       .then(data => {
         setUsers(data.users || []);

@@ -23,6 +23,12 @@ func main() {
 	mux.HandleFunc("/api/openapi.json", handler.OpenAPI)
 	mux.HandleFunc("/api/v1/status", handler.Status)
 
+	// CRUD example — in-memory items scoped by tenant
+	// For database-backed CRUD patterns, see the fullstack-showcase template
+	items := handler.NewItemsHandler()
+	mux.HandleFunc("/api/v1/items", items.Handle)
+	mux.HandleFunc("/api/v1/items/", items.HandleWithID)
+
 	// CORS middleware
 	var h http.Handler = mux
 	h = corsMiddleware(h)

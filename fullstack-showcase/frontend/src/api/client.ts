@@ -34,17 +34,17 @@ async function fetchAPI<T>(path: string): Promise<T> {
 }
 
 export async function getMosesInfo(): Promise<MosesInfo> {
-  return fetchAPI<MosesInfo>('/api/v1/moses-info');
+  return fetchAPI<MosesInfo>('api/v1/moses-info');
 }
 
 export async function getCapabilities(): Promise<Capability[]> {
-  return fetchAPI<Capability[]>('/api/v1/capabilities');
+  return fetchAPI<Capability[]>('api/v1/capabilities');
 }
 
 export async function getCapability(id: string): Promise<Capability> {
-  return fetchAPI<Capability>(`/api/v1/capabilities/${id}`);
+  return fetchAPI<Capability>(`api/v1/capabilities/${id}`);
 }
 
 export async function getHealth(): Promise<{ status: string; service: string; version: string }> {
-  return fetchAPI('/health');
+  return fetchAPI('health');
 }

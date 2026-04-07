@@ -59,6 +59,150 @@
           }
         }
       }
+    },
+    "/api/v1/items": {
+      "get": {
+        "operationId": "listItems",
+        "summary": "List all items for the current tenant",
+        "description": "Returns all items scoped to the tenant identified by the X-Moses-Tenant-ID header.",
+        "parameters": [
+          {
+            "name": "X-Moses-Tenant-ID",
+            "in": "header",
+            "description": "Tenant ID for item scoping (injected by Moses platform)",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of items",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Item" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createItem",
+        "summary": "Create a new item",
+        "description": "Creates an item with a generated UUID, scoped to the current tenant.",
+        "parameters": [
+          {
+            "name": "X-Moses-Tenant-ID",
+            "in": "header",
+            "description": "Tenant ID for item scoping (injected by Moses platform)",
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["title"],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "The item title"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Item created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Item" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request (missing or empty title)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/items/{id}": {
+      "delete": {
+        "operationId": "deleteItem",
+        "summary": "Delete an item by ID",
+        "description": "Deletes the item with the given ID, scoped to the current tenant.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "UUID of the item to delete",
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "X-Moses-Tenant-ID",
+            "in": "header",
+            "description": "Tenant ID for item scoping (injected by Moses platform)",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Item deleted"
+          },
+          "404": {
+            "description": "Item not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Item": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Auto-generated UUID"
+          },
+          "title": {
+            "type": "string",
+            "description": "The item title"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC3339 creation timestamp"
+          }
+        },
+        "required": ["id", "title", "created_at"]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error message"
+          }
+        }
+      }
     }
   }
 }
