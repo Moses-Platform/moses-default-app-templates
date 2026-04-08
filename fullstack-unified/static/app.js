@@ -1,4 +1,19 @@
 (function () {
+  // ── MOSES ROUTING ──────────────────────────────────────────────────────
+  // This file uses the pattern:  fetch(base + '/api/v1/...')
+  //
+  // `base` is resolved from the <base href="..."> tag injected by the
+  // Moses static-serve layer. It already contains the full origin AND the
+  // tenant/chart subpath, e.g. "https://host/apps/tenant/chart".
+  //
+  // The leading '/' that follows `base` is safe ONLY because `base`
+  // includes the full origin+subpath — the browser treats the result as
+  // an absolute URL, NOT a root-relative path.
+  //
+  // If you add new fetch calls you MUST use the same pattern:
+  //   CORRECT:  fetch(base + '/my/endpoint')
+  //   WRONG:    fetch('/api/v1/something')   ← bypasses subpath, will 404
+  // ────────────────────────────────────────────────────────────────────────
   var base = document.querySelector('base').href.replace(/\/$/, '');
 
   function render(data) {
@@ -38,6 +53,8 @@
     document.getElementById('loading').hidden = true;
   }
 
+  // base already contains origin+subpath from <base href>, so this
+  // resolves to e.g. "https://host/apps/tenant/chart/api/v1/status"
   fetch(base + '/api/v1/status')
     .then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);

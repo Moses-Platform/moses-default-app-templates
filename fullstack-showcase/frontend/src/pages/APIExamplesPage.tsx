@@ -179,7 +179,7 @@ export default function APIExamplesPage() {
             <li><strong>Tenant Scoping:</strong> Use X-Moses-Tenant-ID to filter data</li>
             <li><strong>Health Checks:</strong> Implement /health for deployment verification</li>
             <li><strong>CORS:</strong> Allow Moses backend origin for frontend→backend calls</li>
-            <li><strong>Relative URLs:</strong> Use /api/* paths for nginx proxy compatibility</li>
+            <li><strong>Relative URLs:</strong> Use relative api/* paths (no leading /) for nginx proxy compatibility</li>
           </ul>
         </div>
       </section>

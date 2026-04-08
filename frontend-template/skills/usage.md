@@ -223,7 +223,9 @@ Add API calls in services:
 
 ```typescript
 // src/services/api.ts
-const API_BASE = import.meta.env.VITE_API_URL || '/api'
+// MOSES ROUTING: Default MUST be relative (no leading '/') for subpath deployment.
+// Your app is deployed at a subpath; absolute paths bypass the app's ingress (404).
+const API_BASE = import.meta.env.VITE_API_URL || 'api'
 
 export async function fetchData() {
   const response = await fetch(`${API_BASE}/data`)
