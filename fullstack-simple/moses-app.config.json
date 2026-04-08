@@ -52,6 +52,15 @@
       }
     }
   },
+  "validation": {
+    "enabled": true,
+    "commands": [
+      { "name": "frontend-lint", "run": "cd frontend && npm install --ignore-scripts && npm run lint", "required": true },
+      { "name": "frontend-test", "run": "cd frontend && npm test", "required": true },
+      { "name": "backend-vet", "run": "cd backend && go vet ./...", "required": true },
+      { "name": "backend-test", "run": "cd backend && go test ./...", "required": true }
+    ]
+  },
   "maintenance": {
     "renovate": {
       "enabled": true,

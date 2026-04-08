@@ -46,6 +46,13 @@
     "cpu": { "request": "100m", "limit": "200m" },
     "memory": { "request": "128Mi", "limit": "256Mi" }
   },
+  "validation": {
+    "enabled": true,
+    "commands": [
+      { "name": "lint", "run": "npm install --ignore-scripts && npm run lint", "required": true },
+      { "name": "test", "run": "npm test", "required": true }
+    ]
+  },
   "maintenance": {
     "renovate": {
       "enabled": true,

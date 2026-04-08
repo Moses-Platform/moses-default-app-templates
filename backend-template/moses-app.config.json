@@ -45,6 +45,13 @@
       }
     ]
   },
+  "validation": {
+    "enabled": true,
+    "commands": [
+      { "name": "vet", "run": "go vet ./...", "required": true },
+      { "name": "test", "run": "go test ./...", "required": true }
+    ]
+  },
   "maintenance": {
     "renovate": {
       "enabled": true,
