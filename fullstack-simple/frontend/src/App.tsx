@@ -1,3 +1,12 @@
+/**
+ * MOSES ROUTING: All fetch() calls MUST use relative paths (no leading '/').
+ * Your app is served at a subpath (/apps/workspace/app-slug/).
+ * Relative paths route through the app's nginx proxy to the backend.
+ * Absolute paths (fetch('/api/...')) bypass the app and hit the Moses platform (404).
+ *
+ * CORRECT: fetch('api/v1/status')
+ * WRONG:   fetch('/api/v1/status')
+ */
 import { useEffect, useState, useCallback } from 'react'
 
 interface StatusResponse {
@@ -34,6 +43,7 @@ function App() {
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
+    // Relative path — routed through nginx proxy to backend (NEVER use '/api/...')
     fetch('api/v1/status')
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
