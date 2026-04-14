@@ -1,37 +1,20 @@
+{{- if .Values.postgresql }}
 {{- if .Values.postgresql.enabled }}
----
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ .Release.Name }}-postgresql
-  labels:
-    {{- include "agent-deployed-app.labels" . | nindent 4 }}
-type: Opaque
-data:
-  password: {{ .Values.postgresql.auth.password | b64enc | quote }}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ .Release.Name }}-postgresql
+  name: {{ include "agent-deployed-app.fullname" . }}-postgresql
   labels:
     {{- include "agent-deployed-app.labels" . | nindent 4 }}
     app.kubernetes.io/component: postgresql
-spec:
-  type: ClusterIP
-  ports:
-    - port: 5432
-      targetPort: 5432
-      protocol: TCP
-      name: postgresql
-  selector:
-    app.kubernetes.io/name: {{ include "agent-deployed-app.name" . }}-postgresql
-    app.kubernetes.io/instance: {{ .Release.Name }}
+type: Opaque
+data:
+  postgresql-password: {{ .Values.postgresql.auth.password | b64enc | quote }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-postgresql
+  name: {{ include "agent-deployed-app.fullname" . }}-postgresql
   labels:
     {{- include "agent-deployed-app.labels" . | nindent 4 }}
     app.kubernetes.io/component: postgresql
@@ -39,31 +22,29 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ include "agent-deployed-app.name" . }}-postgresql
-      app.kubernetes.io/instance: {{ .Release.Name }}
+      {{- include "agent-deployed-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgresql
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: {{ include "agent-deployed-app.name" . }}-postgresql
-        app.kubernetes.io/instance: {{ .Release.Name }}
+        {{- include "agent-deployed-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgresql
     spec:
       containers:
         - name: postgresql
-          image: {{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}
-          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy | default "IfNotPresent" }}
+          image: "{{ .Values.postgresql.image.repository | default "postgres" }}:{{ .Values.postgresql.image.tag | default "16-alpine" }}"
           ports:
             - containerPort: 5432
-              name: postgresql
           env:
             - name: POSTGRES_USER
-              value: {{ .Values.postgresql.auth.username | quote }}
+              value: {{ .Values.postgresql.auth.username | default "app" | quote }}
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-postgresql
-                  key: password
+                  name: {{ include "agent-deployed-app.fullname" . }}-postgresql
+                  key: postgresql-password
             - name: POSTGRES_DB
-              value: {{ .Values.postgresql.auth.database | quote }}
+              value: {{ .Values.postgresql.auth.database | default "appdb" | quote }}
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
           readinessProbe:
@@ -71,7 +52,7 @@ spec:
               command:
                 - pg_isready
                 - -U
-                - {{ .Values.postgresql.auth.username | quote }}
+                - {{ .Values.postgresql.auth.username | default "app" | quote }}
             initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 3
@@ -81,7 +62,7 @@ spec:
               command:
                 - pg_isready
                 - -U
-                - {{ .Values.postgresql.auth.username | quote }}
+                - {{ .Values.postgresql.auth.username | default "app" | quote }}
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
@@ -94,4 +75,20 @@ spec:
       volumes:
         - name: data
           emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agent-deployed-app.fullname" . }}-postgresql
+  labels:
+    {{- include "agent-deployed-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  selector:
+    {{- include "agent-deployed-app.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+  ports:
+    - port: 5432
+      targetPort: 5432
+{{- end }}
 {{- end }}

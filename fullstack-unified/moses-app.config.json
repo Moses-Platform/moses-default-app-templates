@@ -1,8 +1,8 @@
 {
-  "name": "fullstack-unified",
+  "name": "my-app",
   "version": "1.0.0",
-  "displayName": "Fullstack Unified",
-  "description": "A single Go binary serving both static frontend files and API endpoints. One container, one Dockerfile, no nginx — the simplest fullstack pattern for Moses.",
+  "displayName": "My App",
+  "description": "UPDATE THIS — describe what your app does. This text appears in the Moses app registry.",
   "appType": "hybrid",
   "entrypoint": "index.html",
   "skills": [

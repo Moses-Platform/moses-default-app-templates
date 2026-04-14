@@ -1,8 +1,8 @@
 {
-  "name": "frontend-template",
+  "name": "my-app",
   "version": "1.0.0",
-  "displayName": "Frontend Template",
-  "description": "A clean React+TypeScript+Vite frontend template for Moses platform apps with correct subpath deployment, SPA routing, and health checks",
+  "displayName": "My App",
+  "description": "UPDATE THIS — describe what your app does. This text appears in the Moses app registry.",
   "appType": "frontend",
   "entrypoint": "index.html",
   "quickActions": [

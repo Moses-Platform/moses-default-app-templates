@@ -1,5 +1,19 @@
 # Fullstack Unified - Agent Skill
 
+## First Steps
+
+Update `moses-app.config.json` with your app's identity before committing:
+
+```json
+{
+  "name": "your-app-name",
+  "displayName": "Your App Name",
+  "description": "What your app actually does"
+}
+```
+
+The `name` field becomes the Helm release name and MCP tool prefix. The `docker`, `services`, and `validation` sections are pre-configured — only change them if you modify the project structure.
+
 ## Overview
 
 Single Go binary serving both static frontend files and API endpoints. One container, one Dockerfile — the simplest fullstack pattern for Moses.

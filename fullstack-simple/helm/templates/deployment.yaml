@@ -57,20 +57,30 @@ spec:
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
-            {{- if eq .name "frontend" }}
+            {{- /* Auto-inject backend service discovery for frontend containers */}}
+            {{- if has .name (list "frontend" "web" "ui") }}
+            {{- range $svc := $.Values.services }}
+            {{- if and (ne $svc.name "frontend") (ne $svc.name "web") (ne $svc.name "ui") }}
             - name: BACKEND_SERVICE_HOST
-              value: "{{ include "agent-deployed-app.fullname" $ }}-backend"
+              value: "{{ include "agent-deployed-app.fullname" $ }}-{{ $svc.name }}"
             - name: BACKEND_SERVICE_PORT
-              value: "8080"
+              value: {{ $svc.port | default 8080 | quote }}
+            {{- break }}
             {{- end }}
-            {{- if $.Values.redis.enabled }}
-            - name: REDIS_ADDR
-              value: "{{ include "agent-deployed-app.fullname" $ }}-redis:{{ $.Values.redis.port }}"
+            {{- end }}
             {{- end }}
             {{- range $key, $value := .env }}
-            {{- if and (ne $key "BACKEND_SERVICE_HOST") (ne $key "BACKEND_SERVICE_PORT") (ne $key "REDIS_ADDR") }}
             - name: {{ $key }}
               value: {{ $value | quote }}
+            {{- end }}
+            {{- if $.Values.redis }}
+            {{- if $.Values.redis.enabled }}
+            - name: REDIS_HOST
+              value: "{{ include "agent-deployed-app.fullname" $ }}-redis"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_ADDR
+              value: "{{ include "agent-deployed-app.fullname" $ }}-redis:6379"
             {{- end }}
             {{- end }}
           {{- if .healthCheck }}

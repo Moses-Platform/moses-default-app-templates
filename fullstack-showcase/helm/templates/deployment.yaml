@@ -57,39 +57,55 @@ spec:
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
-            {{- if eq .name "frontend" }}
+            {{- /* Auto-inject backend service discovery for frontend containers */}}
+            {{- if has .name (list "frontend" "web" "ui") }}
+            {{- range $svc := $.Values.services }}
+            {{- if and (ne $svc.name "frontend") (ne $svc.name "web") (ne $svc.name "ui") }}
             - name: BACKEND_SERVICE_HOST
-              value: "{{ include "agent-deployed-app.fullname" $ }}-backend"
+              value: "{{ include "agent-deployed-app.fullname" $ }}-{{ $svc.name }}"
             - name: BACKEND_SERVICE_PORT
-              value: "8080"
+              value: {{ $svc.port | default 8080 | quote }}
+            {{- break }}
+            {{- end }}
+            {{- end }}
             {{- end }}
             {{- range $key, $value := .env }}
-            {{- if and (ne $key "BACKEND_SERVICE_HOST") (ne $key "BACKEND_SERVICE_PORT") }}
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
-            {{- end }}
-            {{- if eq .name "backend" }}
+            {{- if $.Values.postgresql }}
+            {{- if $.Values.postgresql.enabled }}
+            - name: DATABASE_HOST
+              value: "{{ include "agent-deployed-app.fullname" $ }}-postgresql"
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_USER
+              value: {{ $.Values.postgresql.auth.username | default "app" | quote }}
+            - name: DATABASE_NAME
+              value: {{ $.Values.postgresql.auth.database | default "appdb" | quote }}
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agent-deployed-app.fullname" $ }}-postgresql
+                  key: postgresql-password
+            - name: DATABASE_URL
+              value: "postgresql://{{ $.Values.postgresql.auth.username | default "app" }}:$(DATABASE_PASSWORD)@{{ include "agent-deployed-app.fullname" $ }}-postgresql:5432/{{ $.Values.postgresql.auth.database | default "appdb" }}"
             - name: DB_HOST
-              value: {{ include "showcase.databaseHost" $ | quote }}
+              value: "{{ include "agent-deployed-app.fullname" $ }}-postgresql"
             - name: DB_PORT
-              value: {{ include "showcase.databasePort" $ | quote }}
+              value: "5432"
             - name: DB_USER
-              value: {{ include "showcase.databaseUser" $ | quote }}
+              value: {{ $.Values.postgresql.auth.username | default "app" | quote }}
             - name: DB_NAME
-              value: {{ include "showcase.databaseName" $ | quote }}
+              value: {{ $.Values.postgresql.auth.database | default "appdb" | quote }}
             - name: DB_SSLMODE
-              value: {{ include "showcase.databaseSSLMode" $ | quote }}
+              value: "disable"
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  {{- if $.Values.postgresql.enabled }}
-                  name: {{ $.Release.Name }}-postgresql
-                  key: password
-                  {{- else }}
-                  name: {{ include "agent-deployed-app.fullname" $ }}-db-secret
-                  key: db-password
-                  {{- end }}
+                  name: {{ include "agent-deployed-app.fullname" $ }}-postgresql
+                  key: postgresql-password
+            {{- end }}
             {{- end }}
           {{- if .healthCheck }}
           startupProbe:

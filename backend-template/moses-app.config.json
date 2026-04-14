@@ -1,8 +1,8 @@
 {
-  "name": "backend-template",
+  "name": "my-app",
   "version": "1.0.0",
-  "displayName": "Backend Template",
-  "description": "A Go HTTP service template for Moses platform with OpenAPI discovery, Moses header middleware, and automatic MCP tool registration",
+  "displayName": "My App",
+  "description": "UPDATE THIS — describe what your app does. This text appears in the Moses app registry.",
   "appType": "api",
   "entrypoint": "main.go",
   "apiEndpoints": {

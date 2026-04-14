@@ -63,7 +63,7 @@ postgresql:
   enabled: true
   image:
     repository: postgres
-    tag: "15-alpine"
+    tag: "16-alpine"
     pullPolicy: IfNotPresent
   auth:
     username: showcase
@@ -76,11 +76,3 @@ postgresql:
     requests:
       cpu: "100m"
       memory: "128Mi"
-
-externalDatabase:
-  host: ""
-  port: "5432"
-  user: "showcase"
-  password: ""
-  database: "showcase"
-  sslmode: "disable"

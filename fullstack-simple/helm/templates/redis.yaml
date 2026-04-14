@@ -24,10 +24,10 @@ spec:
     spec:
       containers:
         - name: redis
-          image: {{ .Values.redis.image | quote }}
+          image: "{{ .Values.redis.image.repository | default "valkey/valkey" }}:{{ .Values.redis.image.tag | default "8-alpine" }}"
           ports:
             - name: redis
-              containerPort: {{ .Values.redis.port }}
+              containerPort: 6379
               protocol: TCP
           readinessProbe:
             tcpSocket:
@@ -52,7 +52,7 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-    - port: {{ .Values.redis.port }}
+    - port: 6379
       targetPort: redis
       protocol: TCP
       name: redis

@@ -64,8 +64,10 @@ globalEnv:
 # Agents should NEVER hardcode service names — they are dynamic.
 redis:
   enabled: false
-  image: "valkey/valkey:8-alpine"
-  port: 6379
+  image:
+    repository: "valkey/valkey"
+    tag: "8-alpine"
+    pullPolicy: IfNotPresent
   resources:
     limits:
       cpu: "100m"
