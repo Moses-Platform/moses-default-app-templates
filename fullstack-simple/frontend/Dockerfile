@@ -11,7 +11,7 @@ RUN npm install
 COPY . .
 
 # Build the application
-RUN npm run build
+RUN npx tsc -p tsconfig.build.json && npx vite build
 
 # Runtime stage
 FROM nginx:alpine
