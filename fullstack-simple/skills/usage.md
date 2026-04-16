@@ -66,3 +66,26 @@ The Vite config uses `base: './'` which makes relative URLs resolve against the 
 ## Moses Integration
 
 The backend extracts Moses headers (X-Moses-Tenant-ID, X-Moses-User-ID, etc.) and returns them in the `/api/v1/status` response. The items CRUD endpoints use X-Moses-Tenant-ID to scope data per tenant, demonstrating Moses multi-tenancy.
+
+## Build System Requirements
+
+### Frontend (React + Vite + TypeScript)
+- **TypeScript strict mode** is enabled in `tsconfig.json`
+- **ESLint 9** uses flat config format (`eslint.config.js`, NOT `.eslintrc`)
+- **Do NOT include test files** (`*.test.tsx`, `*.spec.ts`) unless `@types/jest` or `@types/mocha` is in `devDependencies`
+- **Lock file**: `package-lock.json` MUST exist for reproducible builds. Run `npm install` to generate it if missing
+- **Build command**: `npm run build` (runs `tsc && vite build`)
+- **Common pitfall**: Adding test files without test runner types causes `Cannot find name 'describe'` TS errors
+
+### Backend (Go)
+- Run `go vet ./...` before committing
+- Run `go test ./...` to verify
+- `go.sum` must be committed (run `go mod tidy` to generate)
+- Redis addresses use environment variables, never hardcode
+
+### Pre-Commit Checklist
+Before calling `moses_agent_submit_completed`:
+1. `cd frontend && npm run build` — must succeed
+2. `cd backend && go vet ./...` — must pass
+3. `cd backend && go test ./...` — must pass
+4. All lock files committed (`package-lock.json`, `go.sum`)
