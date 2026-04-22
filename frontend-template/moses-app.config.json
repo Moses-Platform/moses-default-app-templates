@@ -23,6 +23,21 @@
   ],
   "displayLocations": ["apps"],
   "permissions": [],
+  "platformActions": [
+    {
+      "id": "explain-app",
+      "label": "Explain this app",
+      "icon": "lucide:message-square",
+      "description": "Opens Moses Manager with a seeded prompt that summarizes this app.",
+      "type": "chat_prompt",
+      "chatPrompt": {
+        "conversationTitle": "About this app",
+        "messageTemplate": "Please give me a one-paragraph summary of this app from its README."
+      },
+      "placement": ["app-header-menu"],
+      "availableIn": ["app-standalone"]
+    }
+  ],
   "docker": {
     "files": [
       {

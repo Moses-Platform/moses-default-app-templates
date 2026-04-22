@@ -37,6 +37,119 @@
     "apps"
   ],
   "permissions": [],
+  "platformActions": [
+    {
+      "id": "open-overview-chat",
+      "label": "Chat with Moses about the showcase",
+      "icon": "lucide:sparkles",
+      "description": "Opens a fresh Moses Manager conversation seeded with the showcase overview.",
+      "type": "chat_prompt",
+      "chatPrompt": {
+        "conversationTitle": "Moses Platform Showcase",
+        "messageTemplate": "Walk me through the Moses capabilities highlighted in the showcase app.",
+        "openChatSidebar": true
+      },
+      "placement": ["app-header-menu", "dashboard-shortcut"],
+      "availableIn": ["app-standalone", "user-dashboard"]
+    },
+    {
+      "id": "create-task-ticket",
+      "label": "Create task ticket",
+      "icon": "lucide:clipboard-list",
+      "description": "Creates a planning ticket without launching an agent.",
+      "type": "create_ticket",
+      "createTicket": {
+        "ticketTitle": "{{title}}",
+        "ticketDescription": "{{description}}",
+        "priority": "normal",
+        "tags": ["showcase"]
+      },
+      "variables": [
+        { "name": "title",       "type": "string", "required": true },
+        { "name": "description", "type": "string", "required": false, "maxLength": 4000 }
+      ],
+      "placement": ["app-header-menu"],
+      "availableIn": ["app-standalone"]
+    },
+    {
+      "id": "launch-demo-agent",
+      "label": "Launch demo agent",
+      "icon": "lucide:bot",
+      "description": "Creates a ticket AND starts a Claude Code agent immediately.",
+      "type": "launch_agent",
+      "launchAgent": {
+        "ticketTitle": "[Demo] {{task}}",
+        "ticketDescription": "Kicked off from the showcase: {{task}}",
+        "preferredAgentType": "claude-code",
+        "priority": "normal",
+        "autoStart": true
+      },
+      "variables": [
+        { "name": "task", "type": "string", "required": true }
+      ],
+      "placement": ["app-header-menu"],
+      "availableIn": ["app-standalone"],
+      "requiredUserPermission": "tickets:create",
+      "rateLimit": { "perMinute": 5, "perHour": 60 }
+    },
+    {
+      "id": "emit-showcase-event",
+      "label": "Emit showcase event",
+      "icon": "lucide:radio",
+      "description": "Publishes an event to the showcase-events channel. Default trigger rule below fans out an in-app notification.",
+      "type": "fire_trigger_event",
+      "fireTriggerEvent": {
+        "channelId": "showcase-events",
+        "payloadTemplate": {
+          "kind": "{{kind}}",
+          "note": "{{note}}"
+        }
+      },
+      "variables": [
+        { "name": "kind", "type": "string", "required": true, "description": "Event kind tag" },
+        { "name": "note", "type": "string", "required": false }
+      ],
+      "placement": ["chat-quick-action"],
+      "availableIn": ["app-standalone"]
+    }
+  ],
+  "platformEvents": [
+    {
+      "id": "showcase-events",
+      "name": "Showcase events",
+      "description": "Events published by the showcase actions. Consumed by default trigger rules.",
+      "eventSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string" },
+          "note": { "type": "string" }
+        },
+        "required": ["kind"]
+      },
+      "retentionDays": 7,
+      "sensitivity": "normal"
+    }
+  ],
+  "defaultTriggerRules": [
+    {
+      "id": "showcase-event-notify",
+      "name": "Notify on showcase event",
+      "description": "Fires an in-app notification to the grant approver for every showcase-events event.",
+      "source": {
+        "type": "app_event_channel",
+        "channelId": "showcase-events"
+      },
+      "action": {
+        "type": "notify",
+        "notify": {
+          "recipients": ["grant-approver"],
+          "template": "A showcase event was published on the showcase-events channel."
+        }
+      },
+      "cooldownSeconds": 30
+    }
+  ],
   "apiEndpoints": {
     "basePath": "/api/v1",
     "healthPath": "/health",

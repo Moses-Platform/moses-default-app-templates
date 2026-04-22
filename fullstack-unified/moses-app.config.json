@@ -10,6 +10,30 @@
   ],
   "displayLocations": ["apps"],
   "permissions": [],
+  "platformActions": [
+    {
+      "id": "ask-agent",
+      "label": "Start agent on a task",
+      "icon": "lucide:workflow",
+      "description": "Creates a ticket and launches an execution agent to work on it.",
+      "type": "launch_agent",
+      "launchAgent": {
+        "ticketTitle": "{{title}}",
+        "ticketDescription": "{{description}}",
+        "preferredAgentType": "claude-code",
+        "priority": "normal",
+        "autoStart": true
+      },
+      "variables": [
+        { "name": "title",       "type": "string", "required": true },
+        { "name": "description", "type": "string", "required": true, "maxLength": 8000 }
+      ],
+      "placement": ["app-header-menu", "chat-quick-action"],
+      "availableIn": ["app-standalone"],
+      "requiredUserPermission": "tickets:create",
+      "rateLimit": { "perMinute": 5, "perHour": 60 }
+    }
+  ],
   "apiEndpoints": {
     "basePath": "/api/v1",
     "healthPath": "/health",

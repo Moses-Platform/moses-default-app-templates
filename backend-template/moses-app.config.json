@@ -13,6 +13,65 @@
   "autoRegisterTool": true,
   "displayLocations": ["apps"],
   "permissions": [],
+  "platformActions": [
+    {
+      "id": "emit-ping",
+      "label": "Emit ping event",
+      "icon": "lucide:radio",
+      "description": "Publishes a test event to the app-pings channel so trigger rules can react.",
+      "type": "fire_trigger_event",
+      "fireTriggerEvent": {
+        "channelId": "app-pings",
+        "payloadTemplate": {
+          "source": "manual",
+          "note": "{{note}}"
+        }
+      },
+      "variables": [
+        { "name": "note", "type": "string", "required": false, "description": "Free-form note attached to the ping" }
+      ],
+      "placement": ["chat-quick-action"],
+      "availableIn": ["app-standalone", "user-dashboard"],
+      "rateLimit": { "perMinute": 10, "perHour": 100 }
+    }
+  ],
+  "platformEvents": [
+    {
+      "id": "app-pings",
+      "name": "Ping events",
+      "description": "Sample event channel emitted by the emit-ping action and consumed by the default trigger rule below.",
+      "eventSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "source": { "type": "string" },
+          "note":   { "type": "string" }
+        },
+        "required": ["source"]
+      },
+      "retentionDays": 7,
+      "sensitivity": "normal"
+    }
+  ],
+  "defaultTriggerRules": [
+    {
+      "id": "notify-on-ping",
+      "name": "Notify on ping",
+      "description": "Sends an in-app notification to the grant approver whenever a ping is published.",
+      "source": {
+        "type": "app_event_channel",
+        "channelId": "app-pings"
+      },
+      "action": {
+        "type": "notify",
+        "notify": {
+          "recipients": ["grant-approver"],
+          "template": "Ping event received on the app-pings channel."
+        }
+      },
+      "cooldownSeconds": 60
+    }
+  ],
   "docker": {
     "files": [
       {

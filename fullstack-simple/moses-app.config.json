@@ -10,6 +10,44 @@
   ],
   "displayLocations": ["apps"],
   "permissions": [],
+  "platformActions": [
+    {
+      "id": "ask-moses",
+      "label": "Ask Moses about this app",
+      "icon": "lucide:message-circle",
+      "description": "Opens a fresh Moses Manager conversation seeded with context about this app.",
+      "type": "chat_prompt",
+      "chatPrompt": {
+        "conversationTitle": "Help with this app",
+        "messageTemplate": "I need help using this app. Here's what I'm trying to do: {{goal}}"
+      },
+      "variables": [
+        { "name": "goal", "type": "string", "required": true, "description": "What the user is trying to achieve" }
+      ],
+      "placement": ["app-header-menu", "chat-quick-action"],
+      "availableIn": ["app-standalone"]
+    },
+    {
+      "id": "file-bug",
+      "label": "File bug report",
+      "icon": "lucide:bug",
+      "description": "Creates a ticket for a bug the user encountered.",
+      "type": "create_ticket",
+      "createTicket": {
+        "ticketTitle": "Bug: {{summary}}",
+        "ticketDescription": "Reported from the in-app quick action.\n\nSteps:\n{{steps}}",
+        "priority": "normal",
+        "tags": ["bug", "user-reported"]
+      },
+      "variables": [
+        { "name": "summary", "type": "string", "required": true },
+        { "name": "steps",   "type": "string", "required": false, "maxLength": 4000 }
+      ],
+      "placement": ["app-header-menu"],
+      "availableIn": ["app-standalone"],
+      "requiredUserPermission": "tickets:create"
+    }
+  ],
   "apiEndpoints": {
     "basePath": "/api/v1",
     "healthPath": "/health",
