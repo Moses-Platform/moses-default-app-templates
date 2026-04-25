@@ -1,0 +1,6 @@
+# Machine-managed configuration files — moses-agents is authoritative.
+# When two feature branches both modify this file AND both the structural JSON
+# merge (json_merge.go) and the text content merge fail to resolve, the
+# moses-agents version wins as a last-resort fallback. Agents pick up the new
+# baseline on their next CommitHelmScaffold cycle.
+moses-app.config.json merge=ours
