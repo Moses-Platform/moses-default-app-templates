@@ -100,3 +100,15 @@ Workspace admins control browser logging via chart settings:
 
 Bootstrap (`/api/v1/browser-logs/bootstrap`) reads the toggles on every
 page load, so flipping the switch takes effect on the next visit.
+
+## Vanilla-JS port (BLF-J)
+
+The `fullstack-unified` template is plain Go + ES5+ JavaScript with no
+bundler, so it cannot consume this TypeScript module. It ships an inline
+port at
+[`fullstack-unified/static/moses-browser-logger.js`](../../fullstack-unified/static/moses-browser-logger.js)
+that mirrors this snippet's behaviour and config surface 1:1, but reads
+its config from a server-rendered `<meta name="moses-config">` tag
+populated by `main.go` from the `MOSES_CHART_ID` / `MOSES_DEPLOYMENT_ID`
+/ `MOSES_API_BASE` env vars. The two snippets stay in sync — change one,
+review the other.

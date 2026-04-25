@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fullstack Unified</title>
   <base href="./">
+  <!--
+    BLF-J: Moses browser-logger config. main.go renders these data-* values
+    from the MOSES_CHART_ID / MOSES_DEPLOYMENT_ID / MOSES_API_BASE env vars.
+    When empty the snippet's readConfig() short-circuits to a no-op.
+  -->
+  <meta name="moses-config"
+        data-chart-id="{{.ChartID}}"
+        data-deployment-id="{{.DeploymentID}}"
+        data-api-base="{{.APIBase}}">
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="favicon.svg">
 </head>
@@ -23,6 +32,8 @@
       </section>
     </main>
   </div>
+  <!-- BLF-J: install error/console capture early so it catches app.js errors too. -->
+  <script src="moses-browser-logger.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
