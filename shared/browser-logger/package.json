@@ -1,0 +1,17 @@
+{
+  "name": "@moses/browser-logger",
+  "version": "0.1.0",
+  "description": "Moses browser-side error reporter. Posts unhandled errors and console output to the Moses platform's BLF-A ingest endpoint.",
+  "license": "BSL-1.1",
+  "private": true,
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "files": [
+    "index.ts",
+    "README.md"
+  ]
+}

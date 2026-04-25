@@ -1,21 +1,37 @@
-# Build stage
-FROM node:20-alpine AS build
+# Multi-stage build with Moses BLF-B late-stage ARG pattern (CHAT-kdep).
+#
+# The `deps` stage installs npm packages — it must be insensitive to
+# per-build values like chart_id / deployment_id, otherwise every Moses
+# deploy would re-download the entire dependency graph. Moving the ARG
+# declarations into the `build` stage scopes their cache-busting effect to
+# the final Vite invocation only.
 
+# --- Dependencies (cacheable across builds) -----------------------------
+FROM node:20-alpine AS deps
 WORKDIR /app
 
-# Copy package files (glob makes package-lock.json optional for self-contained builds)
 COPY package.json package-lock.json* ./
-
-# Install dependencies (npm install works with or without lock file)
 RUN npm install
 
-# Copy source files
+# --- Build (re-runs per build, but `deps` layer stays cached) ------------
+FROM deps AS build
+WORKDIR /app
+
 COPY . .
 
-# Build application
-RUN npx tsc -p tsconfig.build.json && npx vite build
+# Moses BLF-B build args. Declare ONLY in this stage to preserve the
+# `deps` layer cache (Kaniko cache TTL is 72h; busting it on every build
+# would saturate the registry under concurrent tenant load).
+ARG VITE_MOSES_CHART_ID=""
+ARG VITE_MOSES_DEPLOYMENT_ID=""
+ARG VITE_MOSES_API_BASE=""
 
-# Runtime stage
+RUN VITE_MOSES_CHART_ID="$VITE_MOSES_CHART_ID" \
+    VITE_MOSES_DEPLOYMENT_ID="$VITE_MOSES_DEPLOYMENT_ID" \
+    VITE_MOSES_API_BASE="$VITE_MOSES_API_BASE" \
+    npx tsc -p tsconfig.build.json && npx vite build
+
+# --- Runtime ------------------------------------------------------------
 FROM nginx:alpine
 
 # Copy built assets
