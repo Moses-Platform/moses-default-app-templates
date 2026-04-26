@@ -46,8 +46,22 @@ spec:
               value: {{ .Values.env.PORT | default "8080" | quote }}
             - name: NODE_ENV
               value: {{ .Values.env.NODE_ENV | default "production" | quote }}
+            # BASE_URL is the legacy alias; MOSES_BASE_PATH is the canonical
+            # name (CHAT-pbup). Both are emitted simultaneously during the
+            # N-2 deprecation window. See ../../README.md.
             - name: BASE_URL
-              value: {{ .Values.env.BASE_URL | default "" | quote }}
+              value: {{ .Values.env.BASE_URL | default .Values.moses.basePath | default "" | quote }}
+            - name: MOSES_BASE_PATH
+              value: {{ .Values.env.MOSES_BASE_PATH | default .Values.moses.basePath | default "/" | quote }}
+            # CHAT-pbup: framing values consumed by nginx envsubst at startup
+            # to render Content-Security-Policy: frame-ancestors. Empty values
+            # resolve to the template's appType default at the entrypoint.
+            - name: MOSES_EMBEDDING_FRAMING
+              value: {{ .Values.env.MOSES_EMBEDDING_FRAMING | default .Values.moses.embedding.framing | default "" | quote }}
+            - name: MOSES_EMBEDDING_ALLOWED_ANCESTORS
+              value: {{ .Values.env.MOSES_EMBEDDING_ALLOWED_ANCESTORS | default (join " " .Values.moses.embedding.allowedAncestors) | default "" | quote }}
+            - name: MOSES_EMBEDDING_REPORT_URI
+              value: {{ .Values.env.MOSES_EMBEDDING_REPORT_URI | default .Values.moses.embedding.reportUri | default "" | quote }}
           {{- if .Values.startupProbe }}
           startupProbe:
             {{- toYaml .Values.startupProbe | nindent 12 }}

@@ -7,6 +7,12 @@ moses:
   executionId: ""
   chartId: ""
   appSlug: ""
+  # CHAT-pbup: Moses-aware template values. See ../README.md / DEPRECATIONS.md.
+  basePath: "/"
+  embedding:
+    framing: ""           # empty -> appType default ("denied" for api)
+    allowedAncestors: []
+    reportUri: ""
 
 replicaCount: 1
 
@@ -22,7 +28,13 @@ service:
 
 env:
   PORT: "8080"
+  # BASE_URL is the legacy alias; MOSES_BASE_PATH is canonical (CHAT-pbup).
   BASE_URL: ""
+  MOSES_BASE_PATH: ""
+  # Embedding policy: an api defaults to denied (no iframe).
+  MOSES_EMBEDDING_FRAMING: ""
+  MOSES_EMBEDDING_ALLOWED_ANCESTORS: ""
+  MOSES_EMBEDDING_REPORT_URI: ""
 
 secrets:
   secretName: ""

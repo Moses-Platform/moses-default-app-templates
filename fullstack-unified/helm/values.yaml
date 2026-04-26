@@ -4,6 +4,12 @@ moses:
   executionId: ""
   chartId: ""
   appSlug: ""
+  # CHAT-pbup: Moses-aware template values. See ../README.md / DEPRECATIONS.md.
+  basePath: "/"
+  embedding:
+    framing: ""           # empty -> appType default (hybrid: moses-only)
+    allowedAncestors: []
+    reportUri: ""
 
 # Image references (v2 format — used by deployment template)
 # These are overridden by Moses during deployment via --set images.{name}.repository=...
@@ -34,4 +40,10 @@ services:
     ingress: true
 
 globalEnv:
+  # CHAT-pbup: BASE_URL deprecated alias, MOSES_BASE_PATH canonical.
   BASE_URL: ""
+  MOSES_BASE_PATH: ""
+  # Embedding policy envs read by the Go runtime to render CSP frame-ancestors.
+  MOSES_EMBEDDING_FRAMING: ""
+  MOSES_EMBEDDING_ALLOWED_ANCESTORS: ""
+  MOSES_EMBEDDING_REPORT_URI: ""

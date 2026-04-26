@@ -20,9 +20,12 @@ func Status(w http.ResponseWriter, r *http.Request) {
 			"chart_id":   r.Header.Get("X-Moses-Chart-ID"),
 			"request_id": r.Header.Get("X-Moses-Request-ID"),
 		},
+		// CHAT-pbup: expose BOTH BASE_URL (deprecated alias) and
+		// MOSES_BASE_PATH (canonical) so the frontend can verify either.
 		"env": map[string]string{
-			"port":     os.Getenv("PORT"),
-			"base_url": os.Getenv("BASE_URL"),
+			"port":            os.Getenv("PORT"),
+			"base_url":        os.Getenv("BASE_URL"),
+			"moses_base_path": os.Getenv("MOSES_BASE_PATH"),
 		},
 	}
 

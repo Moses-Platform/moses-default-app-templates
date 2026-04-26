@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -74,5 +75,71 @@ func TestRenderIndex_EmptyContextStillRendersTag(t *testing.T) {
 	}
 	if !strings.Contains(body, `data-chart-id=""`) {
 		t.Errorf("expected empty data-chart-id when env var missing\n--- body ---\n%s", body)
+	}
+}
+
+// CHAT-pbup: TestEmbeddingHeadersMiddleware verifies that withEmbeddingHeaders
+// emits Content-Security-Policy: frame-ancestors per the resolved policy
+// AND that X-Frame-Options is only emitted for "denied". The package-level
+// resolvedEmbeddingPolicy is set once at init from env vars; we override it
+// for each subtest so the assertions are deterministic.
+func TestEmbeddingHeadersMiddleware(t *testing.T) {
+	saved := resolvedEmbeddingPolicy
+	t.Cleanup(func() { resolvedEmbeddingPolicy = saved })
+
+	cases := []struct {
+		name           string
+		policy         embeddingPolicy
+		wantCSP        string
+		wantXFOpresent bool
+	}{
+		{
+			name:           "public",
+			policy:         embeddingPolicy{cspFrameAncestors: "*"},
+			wantCSP:        "frame-ancestors *",
+			wantXFOpresent: false,
+		},
+		{
+			name:           "moses-only with multi-origin",
+			policy:         embeddingPolicy{cspFrameAncestors: "https://moses.example.com tauri://localhost"},
+			wantCSP:        "frame-ancestors https://moses.example.com tauri://localhost",
+			wantXFOpresent: false,
+		},
+		{
+			name:           "denied",
+			policy:         embeddingPolicy{cspFrameAncestors: "'none'", xFrameOptions: "DENY"},
+			wantCSP:        "frame-ancestors 'none'",
+			wantXFOpresent: true,
+		},
+		{
+			name:           "with reportUri appended",
+			policy:         embeddingPolicy{cspFrameAncestors: "*", reportURI: "/csp-report"},
+			wantCSP:        "frame-ancestors *; report-uri /csp-report",
+			wantXFOpresent: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resolvedEmbeddingPolicy = tc.policy
+			h := withEmbeddingHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/html")
+				_, _ = io.WriteString(w, "<html></html>")
+			}))
+			r := httptest.NewRequest("GET", "/", nil)
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			gotCSP := w.Header().Get("Content-Security-Policy")
+			if gotCSP != tc.wantCSP {
+				t.Errorf("CSP got=%q want=%q", gotCSP, tc.wantCSP)
+			}
+			gotXFO := w.Header().Get("X-Frame-Options")
+			if tc.wantXFOpresent && gotXFO == "" {
+				t.Errorf("X-Frame-Options expected non-empty for %s", tc.name)
+			}
+			if !tc.wantXFOpresent && gotXFO != "" {
+				t.Errorf("X-Frame-Options expected empty for %s, got %q", tc.name, gotXFO)
+			}
+		})
 	}
 }

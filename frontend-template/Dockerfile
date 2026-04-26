@@ -34,11 +34,21 @@ RUN VITE_MOSES_CHART_ID="$VITE_MOSES_CHART_ID" \
 # --- Runtime ------------------------------------------------------------
 FROM nginx:alpine
 
+# CHAT-pbup: nginx config is rendered at container start by entrypoint.sh
+# from MOSES_EMBEDDING_FRAMING + MOSES_EMBEDDING_ALLOWED_ANCESTORS so a
+# single image works at multiple BASE_PATHs without rebuild. envsubst
+# ships in nginx:alpine via gettext.
+RUN apk add --no-cache gettext
+
 # Copy built assets
 COPY --from=build /app/dist /usr/share/nginx/html/
 
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/nginx.conf
+# Copy nginx config TEMPLATE — entrypoint.sh runs envsubst over it.
+COPY nginx.conf /etc/nginx/nginx.conf.template
+
+# Copy entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 # Expose port
 EXPOSE 8080
@@ -47,5 +57,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget --quiet --tries=1 --spider http://localhost:8080/health || exit 1
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Start nginx via entrypoint (renders nginx.conf + index.html, then exec nginx)
+ENTRYPOINT ["/entrypoint.sh"]

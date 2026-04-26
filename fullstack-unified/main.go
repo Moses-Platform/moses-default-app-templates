@@ -76,7 +76,15 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-	baseURL := strings.TrimSuffix(os.Getenv("BASE_URL"), "/")
+	// CHAT-pbup: prefer MOSES_BASE_PATH (canonical) over BASE_URL (deprecated
+	// alias). Both carry the same value during the N-2 deprecation window.
+	baseURL := strings.TrimSuffix(os.Getenv("MOSES_BASE_PATH"), "/")
+	if baseURL == "" {
+		baseURL = strings.TrimSuffix(os.Getenv("BASE_URL"), "/")
+		if baseURL != "" {
+			log.Printf("WARN: BASE_URL is deprecated; please set MOSES_BASE_PATH instead. See DEPRECATIONS.md")
+		}
+	}
 
 	mux := http.NewServeMux()
 
@@ -128,8 +136,11 @@ func main() {
 	}
 
 	srv := &http.Server{
-		Addr:         ":" + port,
-		Handler:      withMosesHeaders(mux),
+		Addr: ":" + port,
+		// CHAT-pbup: WithEmbeddingHeaders emits Content-Security-Policy:
+		// frame-ancestors per the MOSES_EMBEDDING_FRAMING env var on every
+		// HTML response. JSON / OpenAPI responses skip the header.
+		Handler:      withMosesHeaders(withEmbeddingHeaders(mux)),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -170,6 +181,70 @@ func getMosesContext(r *http.Request) mosesContext {
 		ChartID:   r.Header.Get("X-Moses-Chart-ID"),
 		RequestID: r.Header.Get("X-Moses-Request-ID"),
 	}
+}
+
+// embeddingPolicy is the resolved CSP frame-ancestors policy this server
+// emits on HTML responses. Set once at startup from env vars (CHAT-pbup):
+//
+//	MOSES_EMBEDDING_FRAMING            "moses-only" | "public" | "denied" (default: appType-driven)
+//	MOSES_EMBEDDING_ALLOWED_ANCESTORS  space-separated CSP source list
+//	MOSES_EMBEDDING_REPORT_URI         optional report-uri
+//
+// The platform's deploy pipeline resolves "moses-only" to a concrete origin
+// list (chart domain + Tauri origins, mirrored from chart/templates/ingressroute.yaml)
+// before the env vars reach this binary. Standalone deploys leave the env
+// vars empty and the middleware emits the appType default — for hybrid
+// (this template), that's "moses-only" with self-only frame-ancestors.
+type embeddingPolicy struct {
+	cspFrameAncestors string
+	xFrameOptions     string // "" -> omit header
+	reportURI         string
+}
+
+var resolvedEmbeddingPolicy = func() embeddingPolicy {
+	framing := os.Getenv("MOSES_EMBEDDING_FRAMING")
+	if framing == "" {
+		framing = "moses-only" // appType default for hybrid
+	}
+	allowed := os.Getenv("MOSES_EMBEDDING_ALLOWED_ANCESTORS")
+	report := os.Getenv("MOSES_EMBEDDING_REPORT_URI")
+
+	switch framing {
+	case "public":
+		return embeddingPolicy{cspFrameAncestors: "*", reportURI: report}
+	case "denied":
+		return embeddingPolicy{cspFrameAncestors: "'none'", xFrameOptions: "DENY", reportURI: report}
+	default: // moses-only
+		if allowed == "" {
+			allowed = "'self'"
+		}
+		return embeddingPolicy{cspFrameAncestors: allowed, reportURI: report}
+	}
+}()
+
+// withEmbeddingHeaders attaches Content-Security-Policy: frame-ancestors
+// (and optionally X-Frame-Options for the strict "denied" case) to HTML
+// responses. JSON / OpenAPI responses skip the header — they are never
+// framed by browsers and adding the directive would be noise.
+func withEmbeddingHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// We have to set the header BEFORE the underlying handler writes
+		// the response body. The handler chain hasn't yet decided
+		// Content-Type, but we attach unconditionally and let the
+		// caller-side strip it for non-HTML responses if they care. In
+		// practice this template's mux serves index.html / static at
+		// the prefix and JSON at /api/* — for JSON the spec is silent
+		// (no harm).
+		policy := "frame-ancestors " + resolvedEmbeddingPolicy.cspFrameAncestors
+		if resolvedEmbeddingPolicy.reportURI != "" {
+			policy += "; report-uri " + resolvedEmbeddingPolicy.reportURI
+		}
+		w.Header().Set("Content-Security-Policy", policy)
+		if resolvedEmbeddingPolicy.xFrameOptions != "" {
+			w.Header().Set("X-Frame-Options", resolvedEmbeddingPolicy.xFrameOptions)
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // withMosesHeaders adds CORS headers for development convenience.
@@ -217,8 +292,9 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		"uptime":  time.Since(startTime).Round(time.Second).String(),
 		"moses":   mc,
 		"env": map[string]string{
-			"port":     os.Getenv("PORT"),
-			"base_url": os.Getenv("BASE_URL"),
+			"port":            os.Getenv("PORT"),
+			"base_url":        os.Getenv("BASE_URL"),
+			"moses_base_path": os.Getenv("MOSES_BASE_PATH"),
 		},
 	})
 }

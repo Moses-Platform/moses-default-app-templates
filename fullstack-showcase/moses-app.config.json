@@ -5,6 +5,10 @@
   "description": "Interactive showcase of Moses platform capabilities including MCP tools, deployment pipelines, authentication, and multi-tenancy",
   "appType": "hybrid",
   "entrypoint": "index.html",
+  "templateApiVersion": "moses.ai/v1",
+  "embedding": {
+    "framing": "moses-only"
+  },
   "skills": [
     "skills/showcase-overview.md",
     "skills/api-integration.md"

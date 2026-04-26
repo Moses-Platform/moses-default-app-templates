@@ -48,6 +48,48 @@ Required fields in `moses-app.config.json`:
 - `appType` — `frontend`, `api`, or `hybrid`
 - `entrypoint` — main file (e.g., "index.html" or "main.go")
 
+## Moses-aware vs legacy templates
+
+All 5 default templates ship as **Moses-aware** — they declare
+`templateApiVersion: "moses.ai/v1"` in `moses-app.config.json` and serve
+under the runtime `MOSES_BASE_PATH` natively, emitting
+`Content-Security-Policy: frame-ancestors` themselves per the `embedding`
+block. The platform deploys them WITHOUT the URL-rewrite + X-Frame-Options
+strip safety net.
+
+When authoring a custom template, you have two options:
+
+- **Easiest path (legacy)**: omit `templateApiVersion`. The Moses platform
+  URL-rewrites the `/apps/<tenant>/<slug>/` prefix to `/` before forwarding
+  and strips the upstream `X-Frame-Options` header so the iframe renders.
+  Your code can stay completely unaware of the public path.
+- **Moses-aware**: declare `templateApiVersion: "moses.ai/v1"` and the
+  `embedding` block (see schema in
+  `moses-platform-prep/backend/internal/types/app_config_types.go`). Your
+  runtime must (a) read `MOSES_BASE_PATH` and mount routes there, (b) emit
+  `Content-Security-Policy: frame-ancestors` based on
+  `MOSES_EMBEDDING_FRAMING` / `MOSES_EMBEDDING_ALLOWED_ANCESTORS`. See
+  `frontend-template/entrypoint.sh` and
+  `fullstack-unified/main.go` (`withEmbeddingHeaders`) for reference
+  implementations.
+
+Both modes work today and will continue to work for the standard N-2 minor
+deprecation window. See `moses-platform-prep/DEPRECATIONS.md` and
+`moses-platform-prep/arch.md` §App Templates for the full contract.
+
+## Test surface
+
+The repo ships a smoke test for the nginx entrypoint logic:
+
+```bash
+./tests/test_nginx_entrypoint.sh
+```
+
+It renders each Moses-aware template's `nginx.conf` template under several
+`MOSES_EMBEDDING_FRAMING` combinations and asserts the resulting CSP +
+`X-Frame-Options` headers match the framing matrix. Requires `envsubst`
+(part of `gettext` on most distros).
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE)

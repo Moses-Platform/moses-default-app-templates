@@ -5,6 +5,10 @@
   "description": "UPDATE THIS — describe what your app does. This text appears in the Moses app registry.",
   "appType": "api",
   "entrypoint": "main.go",
+  "templateApiVersion": "moses.ai/v1",
+  "embedding": {
+    "framing": "denied"
+  },
   "apiEndpoints": {
     "basePath": "/api/v1",
     "healthPath": "/health",

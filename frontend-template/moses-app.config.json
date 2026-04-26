@@ -5,6 +5,10 @@
   "description": "UPDATE THIS — describe what your app does. This text appears in the Moses app registry.",
   "appType": "frontend",
   "entrypoint": "index.html",
+  "templateApiVersion": "moses.ai/v1",
+  "embedding": {
+    "framing": "moses-only"
+  },
   "quickActions": [
     {
       "id": "launch",
