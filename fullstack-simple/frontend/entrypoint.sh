@@ -11,8 +11,10 @@ set -eu
 #   public      -> Content-Security-Policy: frame-ancestors *;
 #                  X-Frame-Options omitted (CSP is the source of truth).
 #   moses-only  -> Content-Security-Policy: frame-ancestors <ancestors>;
-#                  When ancestors is empty, fall back to 'self' so a deploy
-#                  that didn't get values still embeds inside Moses.
+#                  When ancestors is empty, fall back to the chart-parity
+#                  default ('self' + Tauri origins + wildcard subdomain when
+#                  MOSES_DOMAIN is set) — mirrors the platform resolver in
+#                  embedding_policy_resolver.go (CHAT-pbup.16). KEEP IN SYNC.
 #   denied      -> Content-Security-Policy: frame-ancestors 'none';
 #                  X-Frame-Options: DENY.
 #
@@ -23,6 +25,7 @@ set -eu
 : "${MOSES_EMBEDDING_FRAMING:=}"
 : "${MOSES_EMBEDDING_ALLOWED_ANCESTORS:=}"
 : "${MOSES_EMBEDDING_REPORT_URI:=}"
+: "${MOSES_DOMAIN:=}"
 
 # Default per appType (this is a frontend/hybrid template) when unset.
 if [ -z "$MOSES_EMBEDDING_FRAMING" ]; then
@@ -45,9 +48,20 @@ case "$MOSES_EMBEDDING_FRAMING" in
     ;;
   moses-only|*)
     if [ -n "$MOSES_EMBEDDING_ALLOWED_ANCESTORS" ]; then
+      # Explicit override wins: the platform (or operator) supplied a
+      # concrete ancestors list — use it verbatim, no auto-merge.
       MOSES_CSP_FRAME_ANCESTORS="$MOSES_EMBEDDING_ALLOWED_ANCESTORS"
     else
-      MOSES_CSP_FRAME_ANCESTORS="'self'"
+      # Standalone-or-no-platform-context default: mirror the platform
+      # resolver's chart-parity moses-only default. Tauri origins are
+      # unconditional (Moses Manager runs in a Tauri shell from the
+      # installer); the wildcard subdomain is only added when
+      # MOSES_DOMAIN is set so a bare standalone deploy doesn't emit a
+      # wildcard for an unknown apex.
+      MOSES_CSP_FRAME_ANCESTORS="'self' tauri://localhost http://tauri.localhost https://tauri.localhost"
+      if [ -n "$MOSES_DOMAIN" ]; then
+        MOSES_CSP_FRAME_ANCESTORS="${MOSES_CSP_FRAME_ANCESTORS} https://*.${MOSES_DOMAIN}"
+      fi
     fi
     # X-Frame-Options is only safe to emit alongside CSP frame-ancestors when
     # the policy resolves to a single same-origin source. Skipping it for

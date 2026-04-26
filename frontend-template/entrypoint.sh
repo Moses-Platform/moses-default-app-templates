@@ -4,11 +4,21 @@ set -eu
 # CHAT-pbup: render Moses-aware embedding policy at container start.
 # See ../fullstack-simple/frontend/entrypoint.sh for the matrix; the logic
 # here is intentionally identical.
+#
+# CHAT-pbup.16: when framing=moses-only with no explicit
+# MOSES_EMBEDDING_ALLOWED_ANCESTORS, default to the same parity origin set
+# the platform resolver emits (see
+# moses-platform-prep/backend/internal/services/embedding_policy_resolver.go).
+# Keeps standalone helm install (no platform-supplied ancestors) embeddable
+# from Moses Manager + the Tauri installer shell. KEEP IN SYNC with the
+# resolver — when the chart's frame-ancestors line at
+# chart/templates/ingressroute.yaml ~line 109 changes, this list must too.
 
 : "${MOSES_BASE_PATH:=/}"
 : "${MOSES_EMBEDDING_FRAMING:=}"
 : "${MOSES_EMBEDDING_ALLOWED_ANCESTORS:=}"
 : "${MOSES_EMBEDDING_REPORT_URI:=}"
+: "${MOSES_DOMAIN:=}"
 
 # Default per appType (this is a frontend template) when unset.
 if [ -z "$MOSES_EMBEDDING_FRAMING" ]; then
@@ -26,9 +36,18 @@ case "$MOSES_EMBEDDING_FRAMING" in
     ;;
   moses-only|*)
     if [ -n "$MOSES_EMBEDDING_ALLOWED_ANCESTORS" ]; then
+      # Explicit override wins: the platform (or operator) supplied a
+      # concrete ancestors list — use it verbatim, no auto-merge.
       MOSES_CSP_FRAME_ANCESTORS="$MOSES_EMBEDDING_ALLOWED_ANCESTORS"
     else
-      MOSES_CSP_FRAME_ANCESTORS="'self'"
+      # Standalone-or-no-platform-context default: mirror the platform
+      # resolver's chart-parity moses-only default. Always include the
+      # Tauri origins (Moses Manager runs in a Tauri shell in the
+      # installer); add the wildcard subdomain for MOSES_DOMAIN when set.
+      MOSES_CSP_FRAME_ANCESTORS="'self' tauri://localhost http://tauri.localhost https://tauri.localhost"
+      if [ -n "$MOSES_DOMAIN" ]; then
+        MOSES_CSP_FRAME_ANCESTORS="${MOSES_CSP_FRAME_ANCESTORS} https://*.${MOSES_DOMAIN}"
+      fi
     fi
     MOSES_X_FRAME_OPTIONS=""
     ;;

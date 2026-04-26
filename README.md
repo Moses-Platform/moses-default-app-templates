@@ -75,6 +75,21 @@ Both modes work today and will continue to work for the standard N-2 minor
 deprecation window. See `moses-platform-prep/DEPRECATIONS.md` and
 `moses-platform-prep/arch.md` §App Templates for the full contract.
 
+### Standalone vs Moses-managed embedding defaults
+
+When `MOSES_EMBEDDING_FRAMING=moses-only` and `MOSES_EMBEDDING_ALLOWED_ANCESTORS`
+is empty, each template's `entrypoint.sh` defaults to the same chart-parity
+origin list the platform's resolver emits
+(`moses-platform-prep/backend/internal/services/embedding_policy_resolver.go`):
+`'self' tauri://localhost http://tauri.localhost https://tauri.localhost`,
+plus `https://*.${MOSES_DOMAIN}` when `MOSES_DOMAIN` is set. This keeps
+`helm install` of a Moses-aware template **outside** the Moses platform
+embeddable from Moses Manager and from the Tauri installer shell — without
+the default a standalone deploy would only allow `'self'` and Manager would
+get blocked. When the platform deploys the template it supplies a concrete
+`MOSES_EMBEDDING_ALLOWED_ANCESTORS` (resolver output), and the explicit
+override wins verbatim — no auto-merge with the standalone default.
+
 ## Test surface
 
 The repo ships a smoke test for the nginx entrypoint logic:

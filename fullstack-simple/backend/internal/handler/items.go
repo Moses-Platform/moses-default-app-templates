@@ -114,8 +114,17 @@ func (h *ItemsHandler) delete(w http.ResponseWriter, r *http.Request) {
 		tenantID = "default"
 	}
 
-	// Extract ID from path: /api/v1/items/{id}
-	id := strings.TrimPrefix(r.URL.Path, "/api/v1/items/")
+	// Extract ID from path: /api/v1/items/{id}.
+	// CHAT-pbup.17: derive ID via the literal segment (not TrimPrefix
+	// against r.URL.Path) so both the root mount and the MOSES_BASE_PATH
+	// mount produce the same ID. TrimPrefix-against-literal silently
+	// returned the sub-path-prefixed string at the sub-path mount.
+	const segment = "/api/v1/items/"
+	idx := strings.Index(r.URL.Path, segment)
+	id := ""
+	if idx >= 0 {
+		id = strings.TrimSuffix(r.URL.Path[idx+len(segment):], "/")
+	}
 	if id == "" {
 		http.Error(w, `{"error":"item ID is required"}`, http.StatusBadRequest)
 		return

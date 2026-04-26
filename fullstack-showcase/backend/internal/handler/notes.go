@@ -108,14 +108,16 @@ func (h *NotesHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(note)
 }
 
-// GetNote returns a single note by ID, scoped to tenant
+// GetNote returns a single note by ID, scoped to tenant.
+// CHAT-pbup.17: derive ID via the literal segment (not TrimPrefix against
+// r.URL.Path) so both root and MOSES_BASE_PATH-prefixed mounts work.
 func (h *NotesHandler) GetNote(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	id := strings.TrimPrefix(r.URL.Path, "/api/v1/notes/")
+	id := extractNoteID(r.URL.Path)
 	if id == "" {
 		http.Error(w, "Note ID required", http.StatusBadRequest)
 		return
@@ -141,14 +143,16 @@ func (h *NotesHandler) GetNote(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(note)
 }
 
-// DeleteNote deletes a note by ID, scoped to tenant
+// DeleteNote deletes a note by ID, scoped to tenant.
+// CHAT-pbup.17: derive ID via the literal segment (not TrimPrefix against
+// r.URL.Path) so both root and MOSES_BASE_PATH-prefixed mounts work.
 func (h *NotesHandler) DeleteNote(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	id := strings.TrimPrefix(r.URL.Path, "/api/v1/notes/")
+	id := extractNoteID(r.URL.Path)
 	if id == "" {
 		http.Error(w, "Note ID required", http.StatusBadRequest)
 		return
@@ -172,12 +176,15 @@ func (h *NotesHandler) DeleteNote(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Notes dispatches to the correct handler based on method and path
+// Notes dispatches to the correct handler based on method and path.
+// CHAT-pbup.17: detect the trailing-ID case via the same literal-segment
+// helper used by GetNote/DeleteNote so the dispatcher works whether the
+// route was registered at "/api/v1/notes" or
+// "/apps/<tenant>/<slug>/api/v1/notes".
 func (h *NotesHandler) Notes(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/notes")
-	path = strings.TrimPrefix(path, "/")
+	id := extractNoteID(r.URL.Path)
 
-	if path == "" {
+	if id == "" {
 		switch r.Method {
 		case http.MethodGet:
 			h.ListNotes(w, r)
@@ -198,4 +205,20 @@ func (h *NotesHandler) Notes(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// extractNoteID returns the trailing ID after the "/api/v1/notes" segment,
+// or "" when the path ends at the collection (i.e. ListNotes / CreateNote
+// dispatch). It tolerates an arbitrary leading sub-path
+// (e.g. "/apps/<tenant>/<slug>") so the same handler logic works at both
+// the root mount and the MOSES_BASE_PATH mount.
+func extractNoteID(urlPath string) string {
+	const segment = "/api/v1/notes"
+	idx := strings.Index(urlPath, segment)
+	if idx < 0 {
+		return ""
+	}
+	rest := urlPath[idx+len(segment):]
+	rest = strings.TrimPrefix(rest, "/")
+	return strings.TrimSuffix(rest, "/")
 }

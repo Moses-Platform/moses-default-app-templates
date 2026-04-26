@@ -34,6 +34,7 @@ render_template() {
   report="$4"
   out_path="$5"
   base_path="${6:-/}"
+  moses_domain="${7:-}"
 
   if [ -z "$framing" ]; then
     framing="moses-only"
@@ -50,9 +51,17 @@ render_template() {
       ;;
     moses-only|*)
       if [ -n "$ancestors" ]; then
+        # Explicit override wins.
         csp_ancestors="$ancestors"
       else
-        csp_ancestors="'self'"
+        # CHAT-pbup.16: chart-parity default mirroring
+        # backend/internal/services/embedding_policy_resolver.go. Tauri
+        # origins are unconditional; the wildcard subdomain is only added
+        # when MOSES_DOMAIN is set.
+        csp_ancestors="'self' tauri://localhost http://tauri.localhost https://tauri.localhost"
+        if [ -n "$moses_domain" ]; then
+          csp_ancestors="${csp_ancestors} https://*.${moses_domain}"
+        fi
       fi
       x_frame=""
       ;;
@@ -110,11 +119,12 @@ assert() {
   expectation="$5"
   must_not="$6"
   base_path="${7:-/}"
+  moses_domain="${8:-}"
 
   out="$(mktemp)"
-  render_template "${REPO_ROOT}/${template_dir}/nginx.conf" "$framing" "$ancestors" "$report" "$out" "$base_path"
+  render_template "${REPO_ROOT}/${template_dir}/nginx.conf" "$framing" "$ancestors" "$report" "$out" "$base_path" "$moses_domain"
   if ! grep -qE "$expectation" "$out"; then
-    echo "FAIL: ${template_dir} framing=${framing} base=${base_path} expected: ${expectation}"
+    echo "FAIL: ${template_dir} framing=${framing} base=${base_path} domain=${moses_domain} expected: ${expectation}"
     echo "--- rendered ---"
     head -80 "$out"
     FAIL=$((FAIL + 1))
@@ -122,7 +132,7 @@ assert() {
     PASS=$((PASS + 1))
   fi
   if [ -n "$must_not" ] && grep -qE "$must_not" "$out"; then
-    echo "FAIL: ${template_dir} framing=${framing} base=${base_path} must-not matched: ${must_not}"
+    echo "FAIL: ${template_dir} framing=${framing} base=${base_path} domain=${moses_domain} must-not matched: ${must_not}"
     head -80 "$out"
     FAIL=$((FAIL + 1))
   fi
@@ -175,6 +185,39 @@ assert "fullstack-showcase/frontend" "moses-only" ""                            
 assert "frontend-template"           "moses-only" ""                                "" \
   "frame-ancestors 'self'"                           "location \\^~"                    "/"
 
+# CHAT-pbup.16: standalone-deploy parity with the platform resolver. When
+# framing=moses-only and ALLOWED_ANCESTORS is empty, the rendered CSP must
+# include 'self' + the three Tauri origins so Moses Manager (which can run
+# as a Tauri shell from the installer) can frame the deployed app even when
+# the chart is helm-installed outside the platform.
+#
+# Source of truth: backend/internal/services/embedding_policy_resolver.go
+# (defaultDesktopEmbedOrigins). KEEP IN SYNC.
+
+# Case 1: moses-only + no ancestors + no MOSES_DOMAIN → four-origin default.
+for tmpl in frontend-template fullstack-simple/frontend fullstack-showcase/frontend; do
+  assert "$tmpl" "moses-only" "" "" \
+    "frame-ancestors 'self' tauri://localhost http://tauri.localhost https://tauri.localhost" \
+    "https://\\*\\." "/" ""
+done
+
+# Case 2: moses-only + no ancestors + MOSES_DOMAIN=example.com → four-origin
+# default PLUS https://*.example.com wildcard subdomain (mirrors the
+# resolver's mosesDomain branch for non-localhost domains).
+for tmpl in frontend-template fullstack-simple/frontend fullstack-showcase/frontend; do
+  assert "$tmpl" "moses-only" "" "" \
+    "frame-ancestors 'self' tauri://localhost http://tauri.localhost https://tauri.localhost https://\\*\\.example\\.com" \
+    "" "/" "example.com"
+done
+
+# Case 3: moses-only + explicit ALLOWED_ANCESTORS → that exact list, NO
+# auto-merge with the chart-parity default. Explicit means explicit.
+for tmpl in frontend-template fullstack-simple/frontend fullstack-showcase/frontend; do
+  assert "$tmpl" "moses-only" "https://other.com" "" \
+    "frame-ancestors https://other\\.com;" \
+    "tauri://localhost" "/" ""
+done
+
 # CHAT-pbup Bug 1: the entrypoint must chmod 644 the rendered index.html.
 # We verify by running the entrypoint logic against a fixture and reading
 # the resulting file mode. nginx workers run as a non-root uid (101) and
@@ -219,6 +262,20 @@ for ep in frontend-template/entrypoint.sh fullstack-simple/frontend/entrypoint.s
     PASS=$((PASS + 1))
   else
     echo "FAIL: ${ep} missing chmod 644 line"
+    FAIL=$((FAIL + 1))
+  fi
+done
+
+# CHAT-pbup.16: each entrypoint must reference MOSES_DOMAIN in the
+# moses-only default branch. Guards against someone reverting the
+# chart-parity default without the rendered-template tests above also
+# tripping (e.g. by hardcoding the four-origin list back to 'self').
+for ep in frontend-template/entrypoint.sh fullstack-simple/frontend/entrypoint.sh fullstack-showcase/frontend/entrypoint.sh; do
+  if grep -q "MOSES_DOMAIN" "${REPO_ROOT}/${ep}" && \
+     grep -q "tauri://localhost" "${REPO_ROOT}/${ep}"; then
+    PASS=$((PASS + 1))
+  else
+    echo "FAIL: ${ep} missing CHAT-pbup.16 chart-parity default (MOSES_DOMAIN + tauri://localhost)"
     FAIL=$((FAIL + 1))
   fi
 done
