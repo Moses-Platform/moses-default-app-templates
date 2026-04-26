@@ -47,14 +47,48 @@ else
   MOSES_X_FRAME_OPTIONS_LINE=""
 fi
 
+# CHAT-pbup Bugs 2 + 4: render sub-path-aware location blocks at container
+# start so /apps/<tenant>/<slug>/api/... reaches the backend proxy and asset
+# requests at the same prefix resolve to the SPA's static files. The blocks
+# are empty when MOSES_BASE_PATH=/ (standalone deploys); the existing root
+# `location /` and `location /api/` already handle that case.
+MOSES_BASE_PATH_PREFIX="$(printf '%s' "$MOSES_BASE_PATH" | sed 's:/*$::')"
+if [ -n "$MOSES_BASE_PATH_PREFIX" ]; then
+  # `^~` priority needed so these prefix locations win over the regex
+  # asset-cache location below — without it the regex matches first and
+  # try_files 404s on /usr/share/nginx/html/apps/<tenant>/<slug>/assets/...
+  # The `last` rewrite re-enters location matching with the stripped URI.
+  MOSES_SUBPATH_LOCATION_BLOCK="location ^~ ${MOSES_BASE_PATH_PREFIX}/api/ {
+    proxy_pass http://${BACKEND_SERVICE_HOST}:${BACKEND_SERVICE_PORT}/api/;
+    proxy_http_version 1.1;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+
+    proxy_pass_header X-Moses-Tenant-ID;
+    proxy_pass_header X-Moses-User-ID;
+    proxy_pass_header X-Moses-Chart-ID;
+    proxy_pass_header X-Moses-Request-ID;
+  }
+  location ^~ ${MOSES_BASE_PATH_PREFIX}/ {
+    absolute_redirect off;
+    rewrite ^${MOSES_BASE_PATH_PREFIX}/(.*)\$ /\$1 last;
+  }"
+else
+  MOSES_SUBPATH_LOCATION_BLOCK=""
+fi
+
 export MOSES_BASE_PATH
+export MOSES_BASE_PATH_PREFIX
 export MOSES_CSP_FRAME_ANCESTORS
 export MOSES_CSP_REPORT_URI
 export MOSES_X_FRAME_OPTIONS_LINE
+export MOSES_SUBPATH_LOCATION_BLOCK
 export BACKEND_SERVICE_HOST
 export BACKEND_SERVICE_PORT
 
-envsubst '${BACKEND_SERVICE_HOST} ${BACKEND_SERVICE_PORT} ${MOSES_BASE_PATH} ${MOSES_CSP_FRAME_ANCESTORS} ${MOSES_CSP_REPORT_URI} ${MOSES_X_FRAME_OPTIONS_LINE}' \
+envsubst '${BACKEND_SERVICE_HOST} ${BACKEND_SERVICE_PORT} ${MOSES_BASE_PATH} ${MOSES_BASE_PATH_PREFIX} ${MOSES_CSP_FRAME_ANCESTORS} ${MOSES_CSP_REPORT_URI} ${MOSES_X_FRAME_OPTIONS_LINE} ${MOSES_SUBPATH_LOCATION_BLOCK}' \
   < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
 INDEX_HTML="/usr/share/nginx/html/index.html"
@@ -62,6 +96,9 @@ if [ -f "$INDEX_HTML" ]; then
   TMP="$(mktemp)"
   sed "s|__MOSES_BASE_PATH__|${MOSES_BASE_PATH}|g" "$INDEX_HTML" > "$TMP"
   mv "$TMP" "$INDEX_HTML"
+  # mktemp creates files mode 0600 owned by root; nginx workers run as a
+  # non-root uid (101) and would 403 on every fresh container without this.
+  chmod 644 "$INDEX_HTML"
 fi
 
 exec nginx -g 'daemon off;'

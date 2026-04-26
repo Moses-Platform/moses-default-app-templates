@@ -11,7 +11,6 @@ Self-contained, fully runnable application templates for the [Moses Platform](ht
 | **fullstack-simple** | hybrid | Separate React frontend (nginx) + Go backend containers. Nginx proxies API calls. |
 | **fullstack-unified** | hybrid | Single Go binary serving static frontend via `go:embed` + API endpoints. Simplest fullstack pattern. |
 | **fullstack-showcase** | hybrid | Feature-rich Go + React demo with PostgreSQL, multiple API endpoints, and 6 UI pages. |
-| **ideas-notepad** | frontend | Multi-tab note-taking app with AI refinement support. |
 
 ## How Templates Work
 
@@ -34,7 +33,6 @@ Templates are automatically cloned into each Moses tenant via the built-in Moses
 - **Full app, Go serves static files (1 container)**: `fullstack-unified`
 - **Full app, separate frontend + backend (2 containers)**: `fullstack-simple`
 - **Educational demo with database**: `fullstack-showcase`
-- **Quick notes app**: `ideas-notepad`
 
 ## Adding Custom Templates
 

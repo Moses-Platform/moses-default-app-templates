@@ -53,9 +53,25 @@ spec:
             {{- end }}
           {{- end }}
           env:
+            {{- /* CHAT-pbup Bug 6: derive MOSES_* env from moses.* values when
+                   globalEnv doesn't set them, so `helm install --set moses.basePath=...`
+                   produces a working container even without the platform's
+                   globalEnv overrides. globalEnv keys still win when set. */}}
+            - name: MOSES_BASE_PATH
+              value: {{ default $.Values.moses.basePath (index $.Values.globalEnv "MOSES_BASE_PATH") | quote }}
+            - name: BASE_URL
+              value: {{ default $.Values.moses.basePath (index $.Values.globalEnv "BASE_URL") | quote }}
+            - name: MOSES_EMBEDDING_FRAMING
+              value: {{ default $.Values.moses.embedding.framing (index $.Values.globalEnv "MOSES_EMBEDDING_FRAMING") | quote }}
+            - name: MOSES_EMBEDDING_ALLOWED_ANCESTORS
+              value: {{ default (join " " $.Values.moses.embedding.allowedAncestors) (index $.Values.globalEnv "MOSES_EMBEDDING_ALLOWED_ANCESTORS") | quote }}
+            - name: MOSES_EMBEDDING_REPORT_URI
+              value: {{ default $.Values.moses.embedding.reportUri (index $.Values.globalEnv "MOSES_EMBEDDING_REPORT_URI") | quote }}
             {{- range $key, $value := $.Values.globalEnv }}
+            {{- if not (has $key (list "MOSES_BASE_PATH" "BASE_URL" "MOSES_EMBEDDING_FRAMING" "MOSES_EMBEDDING_ALLOWED_ANCESTORS" "MOSES_EMBEDDING_REPORT_URI")) }}
             - name: {{ $key }}
               value: {{ $value | quote }}
+            {{- end }}
             {{- end }}
             {{- /* Auto-inject backend service discovery for frontend containers */}}
             {{- if has .name (list "frontend" "web" "ui") }}

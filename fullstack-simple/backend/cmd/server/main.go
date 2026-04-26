@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,16 +19,35 @@ func main() {
 		port = "8080"
 	}
 
+	// CHAT-pbup Bug 5: mount API routes under MOSES_BASE_PATH so
+	// /apps/<tenant>/<slug>/api/... reaches the backend even when the nginx
+	// frontend forwards the prefix unchanged. Health + openapi stay at
+	// root for K8s probes / WorkspaceToolProxy auto-discovery.
+	basePath := strings.TrimSuffix(os.Getenv("MOSES_BASE_PATH"), "/")
+	if basePath == "" {
+		alias := strings.TrimSuffix(os.Getenv("BASE_URL"), "/")
+		if alias != "" && strings.HasPrefix(alias, "/") {
+			basePath = alias
+			log.Printf("WARN: BASE_URL is deprecated; please set MOSES_BASE_PATH instead. See DEPRECATIONS.md")
+		}
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", handler.Health)
 	mux.HandleFunc("/api/openapi.json", handler.OpenAPI)
-	mux.HandleFunc("/api/v1/status", handler.Status)
 
-	// CRUD example — in-memory items scoped by tenant
-	// For database-backed CRUD patterns, see the fullstack-showcase template
 	items := handler.NewItemsHandler()
-	mux.HandleFunc("/api/v1/items", items.Handle)
-	mux.HandleFunc("/api/v1/items/", items.HandleWithID)
+	registerAPI := func(prefix string) {
+		mux.HandleFunc(prefix+"/api/v1/status", handler.Status)
+		// CRUD example — in-memory items scoped by tenant.
+		// For database-backed CRUD patterns, see the fullstack-showcase template.
+		mux.HandleFunc(prefix+"/api/v1/items", items.Handle)
+		mux.HandleFunc(prefix+"/api/v1/items/", items.HandleWithID)
+	}
+	registerAPI("")
+	if basePath != "" {
+		registerAPI(basePath)
+	}
 
 	// CORS middleware
 	var h http.Handler = mux

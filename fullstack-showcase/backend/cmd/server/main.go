@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -38,6 +39,18 @@ func main() {
 	notesHandler := handler.NewNotesHandler(db)
 	usersHandler := handler.NewUsersHandler()
 
+	// CHAT-pbup Bug 5: mount API routes under MOSES_BASE_PATH for sub-path
+	// deploys. /health + /api/openapi.json stay at root for K8s probes and
+	// WorkspaceToolProxy auto-discovery.
+	basePath := strings.TrimSuffix(os.Getenv("MOSES_BASE_PATH"), "/")
+	if basePath == "" {
+		alias := strings.TrimSuffix(os.Getenv("BASE_URL"), "/")
+		if alias != "" && strings.HasPrefix(alias, "/") {
+			basePath = alias
+			log.Printf("WARN: BASE_URL is deprecated; please set MOSES_BASE_PATH instead. See DEPRECATIONS.md")
+		}
+	}
+
 	// Create router
 	mux := http.NewServeMux()
 
@@ -51,12 +64,19 @@ func main() {
 	mux.HandleFunc("/health", handler.Health)
 	mux.HandleFunc("/api/openapi.json", handler.OpenAPI)
 	mux.HandleFunc("/api/spec", handler.OpenAPI)
-	mux.HandleFunc("/api/v1/moses-info", handler.MosesInfo)
-	mux.HandleFunc("/api/v1/capabilities", handler.ListCapabilities)
-	mux.HandleFunc("/api/v1/capabilities/", handler.GetCapability)
-	mux.HandleFunc("/api/v1/notes", notesHandler.Notes)
-	mux.HandleFunc("/api/v1/notes/", notesHandler.Notes)
-	mux.HandleFunc("/api/v1/users", usersHandler.Users)
+
+	registerAPI := func(prefix string) {
+		mux.HandleFunc(prefix+"/api/v1/moses-info", handler.MosesInfo)
+		mux.HandleFunc(prefix+"/api/v1/capabilities", handler.ListCapabilities)
+		mux.HandleFunc(prefix+"/api/v1/capabilities/", handler.GetCapability)
+		mux.HandleFunc(prefix+"/api/v1/notes", notesHandler.Notes)
+		mux.HandleFunc(prefix+"/api/v1/notes/", notesHandler.Notes)
+		mux.HandleFunc(prefix+"/api/v1/users", usersHandler.Users)
+	}
+	registerAPI("")
+	if basePath != "" {
+		registerAPI(basePath)
+	}
 
 	// Create server
 	port := os.Getenv("PORT")

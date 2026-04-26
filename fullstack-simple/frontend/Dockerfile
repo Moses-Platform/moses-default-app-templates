@@ -33,6 +33,13 @@ RUN VITE_MOSES_CHART_ID="$VITE_MOSES_CHART_ID" \
 # --- Runtime ------------------------------------------------------------
 FROM nginx:alpine
 
+# CHAT-pbup: nginx config is rendered at container start by entrypoint.sh
+# from MOSES_EMBEDDING_FRAMING + MOSES_EMBEDDING_ALLOWED_ANCESTORS so a
+# single image works at multiple BASE_PATHs without rebuild. envsubst
+# ships in nginx:alpine via gettext — pin the package explicitly so an
+# upstream image change cannot silently break entrypoint.sh.
+RUN apk add --no-cache gettext
+
 # Copy nginx config template
 COPY nginx.conf /etc/nginx/nginx.conf.template
 

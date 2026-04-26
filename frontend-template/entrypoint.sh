@@ -46,12 +46,40 @@ else
   MOSES_X_FRAME_OPTIONS_LINE=""
 fi
 
+# CHAT-pbup Bug 2: render a sub-path location block so /apps/<tenant>/<slug>/...
+# requests resolve to the same SPA + assets as a root deploy. Vite emits
+# relative paths in index.html so the browser fetches assets at
+# /apps/<tenant>/<slug>/assets/index-XXX.js — without an explicit location
+# match, those requests fall through to `try_files` which 404s before
+# reaching `location /`. We strip the prefix via rewrite + break and
+# delegate to the existing static / SPA handlers.
+#
+# When MOSES_BASE_PATH="/" the prefix is empty and the block is omitted —
+# the existing `location /` already handles the root case.
+MOSES_BASE_PATH_PREFIX="$(printf '%s' "$MOSES_BASE_PATH" | sed 's:/*$::')"
+if [ -n "$MOSES_BASE_PATH_PREFIX" ]; then
+  # `^~` makes this a non-regex prefix location with priority over the
+  # regex asset-cache `location ~* \.(js|css|...)$`. Without `^~` the
+  # regex location wins and try_files looks for /usr/share/nginx/html/
+  # apps/<tenant>/<slug>/assets/foo.js (the literal sub-path) and 404s.
+  # The `last` rewrite re-enters location matching with the stripped URI,
+  # so the regex location then serves the asset from the html root.
+  MOSES_SUBPATH_LOCATION_BLOCK="location ^~ ${MOSES_BASE_PATH_PREFIX}/ {
+    absolute_redirect off;
+    rewrite ^${MOSES_BASE_PATH_PREFIX}/(.*)\$ /\$1 last;
+  }"
+else
+  MOSES_SUBPATH_LOCATION_BLOCK=""
+fi
+
 export MOSES_BASE_PATH
+export MOSES_BASE_PATH_PREFIX
 export MOSES_CSP_FRAME_ANCESTORS
 export MOSES_CSP_REPORT_URI
 export MOSES_X_FRAME_OPTIONS_LINE
+export MOSES_SUBPATH_LOCATION_BLOCK
 
-envsubst '${MOSES_BASE_PATH} ${MOSES_CSP_FRAME_ANCESTORS} ${MOSES_CSP_REPORT_URI} ${MOSES_X_FRAME_OPTIONS_LINE}' \
+envsubst '${MOSES_BASE_PATH} ${MOSES_BASE_PATH_PREFIX} ${MOSES_CSP_FRAME_ANCESTORS} ${MOSES_CSP_REPORT_URI} ${MOSES_X_FRAME_OPTIONS_LINE} ${MOSES_SUBPATH_LOCATION_BLOCK}' \
   < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
 # Render the Moses-base-path meta tag into index.html so the SPA's
@@ -65,6 +93,9 @@ if [ -f "$INDEX_HTML" ]; then
   TMP="$(mktemp)"
   sed "s|__MOSES_BASE_PATH__|${MOSES_BASE_PATH}|g" "$INDEX_HTML" > "$TMP"
   mv "$TMP" "$INDEX_HTML"
+  # mktemp creates files mode 0600 owned by root; nginx workers run as a
+  # non-root uid (101) and would 403 on every fresh container without this.
+  chmod 644 "$INDEX_HTML"
 fi
 
 exec nginx -g 'daemon off;'
