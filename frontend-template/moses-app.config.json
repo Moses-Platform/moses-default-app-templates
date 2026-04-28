@@ -68,8 +68,8 @@
   "validation": {
     "enabled": true,
     "commands": [
-      { "name": "lint", "run": "npm install --ignore-scripts && npm run lint", "required": true },
-      { "name": "test", "run": "npm test", "required": true }
+      { "name": "lint", "run": "npm install --include=dev --ignore-scripts && npm run lint", "required": true },
+      { "name": "test", "run": "NODE_ENV=test npm test", "required": true }
     ]
   },
   "maintenance": {

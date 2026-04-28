@@ -57,25 +57,6 @@
       "availableIn": ["app-standalone", "user-dashboard"]
     },
     {
-      "id": "create-task-ticket",
-      "label": "Create task ticket",
-      "icon": "lucide:clipboard-list",
-      "description": "Creates a planning ticket without launching an agent.",
-      "type": "create_ticket",
-      "createTicket": {
-        "ticketTitle": "{{title}}",
-        "ticketDescription": "{{description}}",
-        "priority": "normal",
-        "tags": ["showcase"]
-      },
-      "variables": [
-        { "name": "title",       "type": "string", "required": true },
-        { "name": "description", "type": "string", "required": false, "maxLength": 4000 }
-      ],
-      "placement": ["app-header-menu"],
-      "availableIn": ["app-standalone"]
-    },
-    {
       "id": "launch-demo-agent",
       "label": "Launch demo agent",
       "icon": "lucide:bot",
@@ -211,8 +192,8 @@
   "validation": {
     "enabled": true,
     "commands": [
-      { "name": "frontend-lint", "run": "cd frontend && npm install --ignore-scripts && npm run lint", "required": true },
-      { "name": "frontend-test", "run": "cd frontend && npm test", "required": true },
+      { "name": "frontend-lint", "run": "cd frontend && npm install --include=dev --ignore-scripts && npm run lint", "required": true },
+      { "name": "frontend-test", "run": "cd frontend && NODE_ENV=test npm test", "required": true },
       { "name": "backend-vet", "run": "cd backend && go vet ./...", "required": true },
       { "name": "backend-test", "run": "cd backend && go test ./...", "required": true }
     ]

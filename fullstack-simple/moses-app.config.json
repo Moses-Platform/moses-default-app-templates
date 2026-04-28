@@ -30,26 +30,6 @@
       ],
       "placement": ["app-header-menu", "chat-quick-action"],
       "availableIn": ["app-standalone"]
-    },
-    {
-      "id": "file-bug",
-      "label": "File bug report",
-      "icon": "lucide:bug",
-      "description": "Creates a ticket for a bug the user encountered.",
-      "type": "create_ticket",
-      "createTicket": {
-        "ticketTitle": "Bug: {{summary}}",
-        "ticketDescription": "Reported from the in-app quick action.\n\nSteps:\n{{steps}}",
-        "priority": "normal",
-        "tags": ["bug", "user-reported"]
-      },
-      "variables": [
-        { "name": "summary", "type": "string", "required": true },
-        { "name": "steps",   "type": "string", "required": false, "maxLength": 4000 }
-      ],
-      "placement": ["app-header-menu"],
-      "availableIn": ["app-standalone"],
-      "requiredUserPermission": "tickets:create"
     }
   ],
   "apiEndpoints": {
@@ -97,8 +77,8 @@
   "validation": {
     "enabled": true,
     "commands": [
-      { "name": "frontend-lint", "run": "cd frontend && npm install --ignore-scripts && npm run lint", "required": true },
-      { "name": "frontend-test", "run": "cd frontend && npm test", "required": true },
+      { "name": "frontend-lint", "run": "cd frontend && npm install --include=dev --ignore-scripts && npm run lint", "required": true },
+      { "name": "frontend-test", "run": "cd frontend && NODE_ENV=test npm test", "required": true },
       { "name": "backend-vet", "run": "cd backend && go vet ./...", "required": true },
       { "name": "backend-test", "run": "cd backend && go test ./...", "required": true }
     ]
