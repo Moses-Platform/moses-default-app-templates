@@ -56,11 +56,20 @@ render_template() {
       else
         # CHAT-pbup.16: chart-parity default mirroring
         # backend/internal/services/embedding_policy_resolver.go. Tauri
-        # origins are unconditional; the wildcard subdomain is only added
-        # when MOSES_DOMAIN is set.
+        # origins are unconditional; per-domain entries depend on whether
+        # MOSES_DOMAIN is localhost-y (CSP3 port-wildcard required because
+        # standalone deploys are reached via kubectl port-forward on a
+        # dynamic non-default port) or production-style.
         csp_ancestors="'self' tauri://localhost http://tauri.localhost https://tauri.localhost"
         if [ -n "$moses_domain" ]; then
-          csp_ancestors="${csp_ancestors} https://*.${moses_domain}"
+          case "$moses_domain" in
+            localhost|localhost.|localhost:*|*.localhost|*.localhost.)
+              csp_ancestors="${csp_ancestors} http://${moses_domain}:* https://${moses_domain}:*"
+              ;;
+            *)
+              csp_ancestors="${csp_ancestors} https://*.${moses_domain}"
+              ;;
+          esac
         fi
       fi
       x_frame=""
@@ -216,6 +225,34 @@ for tmpl in frontend-template fullstack-simple/frontend fullstack-showcase/front
   assert "$tmpl" "moses-only" "https://other.com" "" \
     "frame-ancestors https://other\\.com;" \
     "tauri://localhost" "/" ""
+done
+
+# Case 4: moses-only + no ancestors + MOSES_DOMAIN=localhost → four-origin
+# default PLUS http://localhost:* https://localhost:* (CSP3 port-wildcard,
+# required because the desktop install reaches Moses through a kubectl
+# port-forward on a dynamic non-default port; bare-host CSP entries match
+# only the scheme's default port and would block the iframe under
+# strict engines: Chromium, WebView2, macOS-Chrome). KEEP IN SYNC with
+# backend/internal/services/embedding_policy_resolver.go isLocalhostDomain.
+for tmpl in frontend-template fullstack-simple/frontend fullstack-showcase/frontend; do
+  assert "$tmpl" "moses-only" "" "" \
+    "frame-ancestors 'self' tauri://localhost http://tauri.localhost https://tauri.localhost http://localhost:\\* https://localhost:\\*" \
+    " https://localhost[^:]" "/" "localhost"
+done
+
+# Case 5: localhost FQDN form (trailing dot). Same shape as Case 4.
+for tmpl in frontend-template fullstack-simple/frontend fullstack-showcase/frontend; do
+  assert "$tmpl" "moses-only" "" "" \
+    "http://localhost\\.:\\* https://localhost\\.:\\*" \
+    "" "/" "localhost."
+done
+
+# Case 6: *.localhost subdomain form (e.g. moses.localhost). Treated as
+# localhost-y per the resolver's isLocalhostDomain match-suffix rule.
+for tmpl in frontend-template fullstack-simple/frontend fullstack-showcase/frontend; do
+  assert "$tmpl" "moses-only" "" "" \
+    "http://moses\\.localhost:\\* https://moses\\.localhost:\\*" \
+    "" "/" "moses.localhost"
 done
 
 # CHAT-pbup Bug 1: the entrypoint must chmod 644 the rendered index.html.

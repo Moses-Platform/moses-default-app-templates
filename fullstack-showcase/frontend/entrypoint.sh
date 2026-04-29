@@ -36,11 +36,27 @@ case "$MOSES_EMBEDDING_FRAMING" in
       MOSES_CSP_FRAME_ANCESTORS="$MOSES_EMBEDDING_ALLOWED_ANCESTORS"
     else
       # Chart-parity default: 'self' + Tauri origins (always — Moses
-      # Manager runs in a Tauri shell from the installer) + wildcard
-      # subdomain only when MOSES_DOMAIN is set.
+      # Manager runs in a Tauri shell from the installer). Per-domain
+      # entries depend on whether MOSES_DOMAIN is localhost-y
+      # (port-wildcard required) or production-style.
       MOSES_CSP_FRAME_ANCESTORS="'self' tauri://localhost http://tauri.localhost https://tauri.localhost"
       if [ -n "$MOSES_DOMAIN" ]; then
-        MOSES_CSP_FRAME_ANCESTORS="${MOSES_CSP_FRAME_ANCESTORS} https://*.${MOSES_DOMAIN}"
+        case "$MOSES_DOMAIN" in
+          localhost|localhost.|localhost:*|*.localhost|*.localhost.)
+            # Standalone install reached via `kubectl port-forward` on a
+            # dynamic non-default port. CSP3: a bare host matches only the
+            # scheme's default port (80/443); the ':*' port-wildcard is
+            # required for the deployed-app iframe to render under strict
+            # engines (Chromium / WebView2 / macOS-Chrome). KEEP IN SYNC
+            # with the platform resolver's localhost branch in
+            # backend/internal/services/embedding_policy_resolver.go.
+            MOSES_CSP_FRAME_ANCESTORS="${MOSES_CSP_FRAME_ANCESTORS} http://${MOSES_DOMAIN}:* https://${MOSES_DOMAIN}:*"
+            ;;
+          *)
+            # Production-style domain: subdomain wildcard only.
+            MOSES_CSP_FRAME_ANCESTORS="${MOSES_CSP_FRAME_ANCESTORS} https://*.${MOSES_DOMAIN}"
+            ;;
+        esac
       fi
     fi
     MOSES_X_FRAME_OPTIONS=""
