@@ -50,9 +50,13 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Set default environment variables
-ENV BACKEND_SERVICE_HOST=agent-deployed-app-backend
-ENV BACKEND_SERVICE_PORT=8080
+# BACKEND_SERVICE_HOST / BACKEND_SERVICE_PORT are injected per-deploy by the
+# Helm chart (see helm/templates/deployment.yaml). entrypoint.sh has shell-default
+# fallbacks (`: "${BACKEND_SERVICE_HOST:=...}"`) so standalone `docker run` works.
+# We deliberately do NOT set ENV defaults here because they would pollute
+# non-K8s environments with Moses-specific DNS names that won't resolve outside
+# the cluster — better to fail loudly via the entrypoint default than to point
+# at a hostname the runner can't reach.
 
 EXPOSE 8080
 

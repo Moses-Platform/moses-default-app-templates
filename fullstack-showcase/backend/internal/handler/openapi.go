@@ -2,20 +2,13 @@ package handler
 
 import (
 	"net/http"
-	"os"
-	"path/filepath"
+
+	"github.com/moses-platform/fullstack-showcase/api"
 )
 
-// OpenAPI serves the OpenAPI specification
+// OpenAPI serves the OpenAPI specification embedded in the binary.
 func OpenAPI(w http.ResponseWriter, r *http.Request) {
-	// Read OpenAPI spec file
-	specPath := filepath.Join("api", "openapi.json")
-	content, err := os.ReadFile(specPath)
-	if err != nil {
-		http.Error(w, "OpenAPI spec not found", http.StatusNotFound)
-		return
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(content)
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	_, _ = w.Write(api.Spec)
 }

@@ -78,7 +78,15 @@ postgresql:
     pullPolicy: IfNotPresent
   auth:
     username: showcase
-    password: showcase-secret  # WARNING: Override in production via --set postgresql.auth.password=<secret>
+    # __MOSES_GENERATE_PASSWORD__ is a sentinel the Moses platform's
+    # SanitizeTemplateCredentials replaces with a per-tenant random 24-char
+    # password during template injection (see moses-platform-prep/backend/
+    # internal/services/agent_blueprint_provisioner.go).
+    #
+    # When deploying this chart standalone (without Moses), override via:
+    #   helm install <release> . --set postgresql.auth.password=$(openssl rand -hex 24)
+    # NEVER ship this literal value to production — it is a placeholder.
+    password: __MOSES_GENERATE_PASSWORD__
     database: showcase
   resources:
     limits:

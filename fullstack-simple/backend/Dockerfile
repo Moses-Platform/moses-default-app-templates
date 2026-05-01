@@ -1,28 +1,28 @@
 # Build stage
-FROM golang:1.22-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /build
 
-# Copy go mod files
+# go.sum* glob handles templates with no external deps (where go mod tidy
+# produces no go.sum).
 COPY go.mod go.sum* ./
 RUN go mod download
 
-# Copy source code
+# Source. OpenAPI spec is embedded via api/api.go (//go:embed openapi.json).
 COPY . .
 
-# Build the application
-RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server
+# Verify rather than tidy — keeps builds reproducible.
+RUN go mod verify
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server
 
 # Runtime stage
 FROM alpine:3.19
 
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates wget
 
 WORKDIR /app
 
-# Copy binary and OpenAPI spec
 COPY --from=builder /build/server .
-COPY --from=builder /build/api/openapi.json ./api/
 
 EXPOSE 8080
 

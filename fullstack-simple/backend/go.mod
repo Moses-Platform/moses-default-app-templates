@@ -1,3 +1,3 @@
 module github.com/moses-platform/fullstack-simple
 
-go 1.22
+go 1.24

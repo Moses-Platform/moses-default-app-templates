@@ -5,10 +5,6 @@ server
 *.so
 *.dylib
 
-# Go module checksums — generated at build time by `go mod tidy` in Dockerfile.
-# Agents cannot generate valid checksums, so never commit this file.
-go.sum
-
 # Dependencies
 node_modules/
 vendor/
