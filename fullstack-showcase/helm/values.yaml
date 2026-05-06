@@ -77,7 +77,15 @@ postgresql:
     tag: "16-alpine"
     pullPolicy: IfNotPresent
   auth:
-    username: showcase
+    # CHAT-59o2 (DEPS-B2): align with platform convention. Moses' provisioner
+    # (agent_helm_provisioner.go BuildDeployValuesWithEmbedding around line
+    # 443-444) injects postgresql.auth.username="app" / database="appdb" by
+    # default. Earlier values had username/database="showcase" which collided
+    # with the platform override and produced 14 retries with
+    # `password authentication failed for user "app"` before postgres
+    # finally created the role as a side effect. Aligning here makes the
+    # backend connect on attempt 1.
+    username: app
     # __MOSES_GENERATE_PASSWORD__ is a sentinel the Moses platform's
     # SanitizeTemplateCredentials replaces with a per-tenant random 24-char
     # password during template injection (see moses-platform-prep/backend/
@@ -87,7 +95,7 @@ postgresql:
     #   helm install <release> . --set postgresql.auth.password=$(openssl rand -hex 24)
     # NEVER ship this literal value to production — it is a placeholder.
     password: __MOSES_GENERATE_PASSWORD__
-    database: showcase
+    database: appdb
   resources:
     limits:
       cpu: "200m"

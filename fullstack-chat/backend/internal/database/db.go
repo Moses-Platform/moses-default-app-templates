@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 // Config holds database connection configuration.
@@ -24,11 +24,17 @@ type Config struct {
 // auto-injects when "postgresql" is declared in dependencies.services.
 func NewConfigFromEnv() Config {
 	return Config{
-		Host:     getEnv("DB_HOST", "localhost"),
-		Port:     getEnv("DB_PORT", "5432"),
-		User:     getEnv("DB_USER", "fullstack_chat"),
+		Host: getEnv("DB_HOST", "localhost"),
+		Port: getEnv("DB_PORT", "5432"),
+		// CHAT-59o2 (DEPS-B2): defaults aligned with the platform's
+		// agent_helm_provisioner.go convention (username="app",
+		// database="appdb"). Earlier "fullstack_chat" defaults collided
+		// with the platform-injected DB_USER and produced 14+ retries
+		// with `password authentication failed for user "app"` before
+		// postgres init created the role as a side effect.
+		User:     getEnv("DB_USER", "app"),
 		Password: getEnv("DB_PASSWORD", "fullstack_chat_dev"),
-		DBName:   getEnv("DB_NAME", "fullstack_chat"),
+		DBName:   getEnv("DB_NAME", "appdb"),
 		SSLMode:  getEnv("DB_SSLMODE", "disable"),
 	}
 }
@@ -59,6 +65,18 @@ func Connect(cfg Config) (*sql.DB, error) {
 			db.SetMaxIdleConns(5)
 			db.SetConnMaxLifetime(5 * time.Minute)
 			return db, nil
+		}
+
+		// CHAT-59o2 (DEPS-B2): fail fast on auth errors — they don't
+		// self-heal, so 30 retries are wasted time and noisy logs. Most
+		// commonly hit when the chart's postgresql.auth.username doesn't
+		// match the platform-injected DB_USER.
+		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "28P01" {
+			db.Close()
+			return nil, fmt.Errorf(
+				"DB password mismatch (pq 28P01 invalid_password) — verify chart's postgresql.auth.username matches DB_USER=%q. error: %w",
+				cfg.User, err,
+			)
 		}
 
 		log.Printf("Database ping attempt %d/%d failed: %v", i+1, maxRetries, err)

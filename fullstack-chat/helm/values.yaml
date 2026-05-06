@@ -77,7 +77,13 @@ postgresql:
     tag: "16-alpine"
     pullPolicy: IfNotPresent
   auth:
-    username: fullstack_chat
+    # CHAT-59o2 (DEPS-B2): align with platform convention. Moses' provisioner
+    # injects postgresql.auth.username="app" / database="appdb" by default.
+    # Earlier values used "fullstack_chat" / "fullstack_chat" which collided
+    # with the platform override → backend logged 14+ retries with
+    # `password authentication failed for user "app"`. Aligning here makes
+    # the backend connect on attempt 1.
+    username: app
     # __MOSES_GENERATE_PASSWORD__ is a sentinel the Moses platform's
     # SanitizeTemplateCredentials replaces with a per-tenant random 24-char
     # password during template injection (see moses-platform-prep/backend/
@@ -87,7 +93,7 @@ postgresql:
     #   helm install <release> . --set postgresql.auth.password=$(openssl rand -hex 24)
     # NEVER ship this literal value to production — it is a placeholder.
     password: __MOSES_GENERATE_PASSWORD__
-    database: fullstack_chat
+    database: appdb
   resources:
     limits:
       cpu: "200m"
