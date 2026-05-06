@@ -54,16 +54,43 @@ All four `validation.commands` in `moses-app.config.json` are required and run b
 | `appData.enabled` | When true, Moses provisions `{tenantID}/app-data/fullstack-chat/` git repo. MM reads via `moses_read_file`. |
 | `appData.manager.access` | `read` (default for this template) / `none`. Whether MM sees the repo in `moses_get_repositories`. |
 
-## Webhook secret rotation (read this before rotating)
+## Webhook secret rotation
 
 The platform supports a 24h overlap window for `app_webhook_secrets` rotation (schema migration `882_app_webhook_secret_rotation.sql`, `secret_previous` + `secret_previous_expires_at`). The platform-side _sender_ is single-slot — once you rotate, every outbound signature uses the new secret immediately. **No-cutover rotation is therefore a contract on the recipient**: during the overlap the recipient must accept signatures from EITHER the active or the previous secret.
 
 This template's `backend/internal/handler/webhook_chat.go` ships with dual-slot verification:
 
 - `MOSES_CHAT_WEBHOOK_SECRET` (required) — the currently active signing secret. Always tried first.
-- `MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS` (optional) — set to the previous secret during the rotation overlap; fallback only fires on primary HMAC mismatch. Unset (empty) outside an overlap window.
+- `MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS` (optional) — fallback that only fires on primary HMAC mismatch. Unset outside an overlap window.
 
-Rotation procedure: (1) rotate the platform-side secret via the admin endpoint, (2) within 24h redeploy the app with the new value as `MOSES_CHAT_WEBHOOK_SECRET` AND the old value as `MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS`, (3) once you're confident no in-flight retries still carry the old signature, redeploy without `_PREVIOUS`. See `moses-deployment-guide/SKILL.md` for the full recipient cookbook (Python / Go / Node variants).
+### Platform-deployed apps (CHAT-1j43 / DEPS-A2 — recommended)
+
+The platform's webhook-secret publisher creates a Kubernetes Secret named `moses-webhook-secret-{appSlug}` in the app's namespace at deploy time and mounts both keys (`MOSES_CHAT_WEBHOOK_SECRET` and, during a 24h rotation overlap, `MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS`) into the backend container via the chart's existing `.Values.secrets.secretName` envFrom slot.
+
+**No app redeploy or env-var change is needed during rotation.** The platform's `WebhookSecretRotationService.Rotate` (CHAT-v5al) patches the live K8s Secret with both new and previous values; the kubelet propagates the new env to the running pod within seconds. The recipient picks up the new value automatically.
+
+For the canonical platform-injected runtime env contract, see `moses-deployment-guide/SKILL.md` § *"Platform-injected runtime env contract"*.
+
+### Local development (no Moses)
+
+For local-dev / docker-run setups outside the platform, you set both env vars manually:
+
+```bash
+# Initial install
+MOSES_CHAT_WEBHOOK_SECRET=$(openssl rand -hex 32) go run ./cmd/server
+
+# Rotation: stage both old + new for 24h
+MOSES_CHAT_WEBHOOK_SECRET=$NEW_SECRET \
+  MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS=$OLD_SECRET \
+  go run ./cmd/server
+
+# After 24h, drop _PREVIOUS
+MOSES_CHAT_WEBHOOK_SECRET=$NEW_SECRET go run ./cmd/server
+```
+
+### Off-cluster recipients
+
+If your `completionWebhook.url` points at an HTTPS URL outside the cluster (rare), the K8s Secret bridge does NOT reach you. Operators recover the secret from the install-time audit log (see `moses-deployment-guide/SKILL.md` § *"Off-cluster webhook recipients"*).
 
 ## Relationship to platform-prep beads
 
