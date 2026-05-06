@@ -33,18 +33,29 @@ type ChatCompletionPayload struct {
 // ChatWebhookHandler receives the chat-completion callback Moses fires after
 // a chat_prompt action's AI turn finishes. Verifies the HMAC signature with
 // the per-app webhook secret and persists a row for inspection.
+//
+// Dual-slot rotation (CHAT-v5al): during the 24h overlap window after a
+// secret rotation the platform's sender flips immediately to the new active
+// secret, but the previous secret stays valid. Configure
+// MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS to accept signatures from both during
+// that window. Verification tries Active first (the steady-state hot path),
+// then falls back to Previous if set.
 type ChatWebhookHandler struct {
-	DB     *sql.DB
-	Secret []byte // shared signing secret (env: MOSES_CHAT_WEBHOOK_SECRET)
+	DB             *sql.DB
+	Secret         []byte // active signing secret (env: MOSES_CHAT_WEBHOOK_SECRET)
+	SecretPrevious []byte // optional, accepted during rotation overlap (env: MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS)
 }
 
-// NewChatWebhookHandler reads the shared secret from the environment. In a
-// production install Moses provisions this via the app's
-// app_integration_grant; for local dev set MOSES_CHAT_WEBHOOK_SECRET.
+// NewChatWebhookHandler reads the shared secret(s) from the environment. In
+// a production install Moses provisions Active via the app's
+// app_integration_grant; Previous is set by the operator at rotation time
+// and unset once the overlap window closes. For local dev set
+// MOSES_CHAT_WEBHOOK_SECRET (Previous is optional).
 func NewChatWebhookHandler(db *sql.DB) *ChatWebhookHandler {
 	return &ChatWebhookHandler{
-		DB:     db,
-		Secret: []byte(os.Getenv("MOSES_CHAT_WEBHOOK_SECRET")),
+		DB:             db,
+		Secret:         []byte(os.Getenv("MOSES_CHAT_WEBHOOK_SECRET")),
+		SecretPrevious: []byte(os.Getenv("MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS")),
 	}
 }
 
@@ -109,17 +120,29 @@ func (h *ChatWebhookHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// verifySignature tries Active first, then Previous if it's set (rotation
+// overlap). hmac.Equal is constant-time. An empty header or an unparseable
+// hex string is rejected outright. If BOTH secrets are empty (misconfigured
+// recipient) every payload is rejected — this is intentional fail-closed.
 func (h *ChatWebhookHandler) verifySignature(body []byte, header string) bool {
-	if len(h.Secret) == 0 || header == "" {
+	if header == "" {
 		return false
 	}
 	expected, err := hex.DecodeString(header)
 	if err != nil || len(expected) != sha256.Size {
 		return false
 	}
-	mac := hmac.New(sha256.New, h.Secret)
-	mac.Write(body)
-	return hmac.Equal(mac.Sum(nil), expected)
+	for _, key := range [][]byte{h.Secret, h.SecretPrevious} {
+		if len(key) == 0 {
+			continue
+		}
+		mac := hmac.New(sha256.New, key)
+		mac.Write(body)
+		if hmac.Equal(mac.Sum(nil), expected) {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *ChatWebhookHandler) persist(r *http.Request, p ChatCompletionPayload, sigValid bool) error {

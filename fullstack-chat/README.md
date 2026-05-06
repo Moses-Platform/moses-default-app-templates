@@ -20,8 +20,8 @@ See [`skills/chat-roundtrip-overview.md`](skills/chat-roundtrip-overview.md) for
 
 ## Stack
 
-- **Frontend**: React 18 + Vite, single-page (no router). 6 vitest tests covering postMessage origin checks, status banner transitions, invoke shape.
-- **Backend**: Go (stdlib `net/http`), Postgres via `lib/pq`. Handlers: `entries`, `webhook_chat`, `health`, `openapi`. Tests cover HMAC signature verification, timestamp clock-skew rejection, and entries validation.
+- **Frontend**: React 18 + Vite, single-page (no router). 7 vitest tests covering postMessage origin checks, status banner transitions, invoke shape, and the `moses_embed_open_chat` post-up envelope.
+- **Backend**: Go (stdlib `net/http`), Postgres via `lib/pq`. Handlers: `entries`, `webhook_chat`, `health`, `openapi`. Tests cover HMAC signature verification (including dual-slot rotation acceptance), timestamp clock-skew rejection, fail-closed behavior when no secret is configured, and entries validation.
 - **Helm**: multi-service chart (frontend + backend), Postgres declared in `dependencies.services`.
 - **OpenAPI** at `/api/openapi.json` declares the entries CRUD + webhook receiver so Moses' `WorkspaceToolService.discoverAndRegisterEndpoints` picks it up after deploy.
 
@@ -58,7 +58,12 @@ All four `validation.commands` in `moses-app.config.json` are required and run b
 
 The platform supports a 24h overlap window for `app_webhook_secrets` rotation (schema migration `882_app_webhook_secret_rotation.sql`, `secret_previous` + `secret_previous_expires_at`). The platform-side _sender_ is single-slot — once you rotate, every outbound signature uses the new secret immediately. **No-cutover rotation is therefore a contract on the recipient**: during the overlap the recipient must accept signatures from EITHER the active or the previous secret.
 
-> ⚠️ **The reference template only verifies the active secret** (`backend/internal/handler/webhook_chat.go` reads `MOSES_CHAT_WEBHOOK_SECRET` only). If you rotate without first extending this verifier, every webhook delivery will be rejected until you redeploy with the new value. To support no-cutover rotation, extend the verifier to also read `MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS` and fall back to it on primary HMAC mismatch — see the recipient cookbook in `moses-deployment-guide/SKILL.md` for the full flow (Python and Go variants).
+This template's `backend/internal/handler/webhook_chat.go` ships with dual-slot verification:
+
+- `MOSES_CHAT_WEBHOOK_SECRET` (required) — the currently active signing secret. Always tried first.
+- `MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS` (optional) — set to the previous secret during the rotation overlap; fallback only fires on primary HMAC mismatch. Unset (empty) outside an overlap window.
+
+Rotation procedure: (1) rotate the platform-side secret via the admin endpoint, (2) within 24h redeploy the app with the new value as `MOSES_CHAT_WEBHOOK_SECRET` AND the old value as `MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS`, (3) once you're confident no in-flight retries still carry the old signature, redeploy without `_PREVIOUS`. See `moses-deployment-guide/SKILL.md` for the full recipient cookbook (Python / Go / Node variants).
 
 ## Relationship to platform-prep beads
 

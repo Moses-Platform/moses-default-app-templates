@@ -52,6 +52,72 @@ func TestChatWebhook_AcceptsValidSignature(t *testing.T) {
 	}
 }
 
+// Rotation overlap: signed with the previous secret. The recipient has
+// rotated the active secret but kept the previous one configured. The
+// dual-slot verifier must accept it.
+func TestChatWebhook_AcceptsPreviousSecretDuringRotation(t *testing.T) {
+	active := []byte("rotated-active-secret-32-bytes-x")
+	previous := []byte("retired-previous-secret-32-bytes")
+	h := &ChatWebhookHandler{Secret: active, SecretPrevious: previous}
+
+	body := makePayload(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/webhooks/chat-complete", bytes.NewReader(body))
+	// Sender hasn't rotated yet — still signing with the previous secret.
+	req.Header.Set("X-Moses-Signature", sign(previous, body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	h.Handle(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 (previous secret should match during overlap), got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+// Negative case: previous secret is configured, but the signature matches
+// neither active nor previous. Verifier must still reject.
+func TestChatWebhook_RejectsWhenNeitherSecretMatches(t *testing.T) {
+	active := []byte("active-secret-32-bytes-padding-x")
+	previous := []byte("previous-secret-32-bytes-pad-yyy")
+	wrong := []byte("attacker-key-not-known-to-platform")
+	h := &ChatWebhookHandler{Secret: active, SecretPrevious: previous}
+
+	body := makePayload(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/webhooks/chat-complete", bytes.NewReader(body))
+	req.Header.Set("X-Moses-Signature", sign(wrong, body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	h.Handle(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "invalid_signature") {
+		t.Errorf("expected invalid_signature code in body, got %s", w.Body.String())
+	}
+}
+
+// Fail-closed: both Active and Previous empty (misconfigured recipient).
+// Even a hypothetically "correct" signature must be rejected — there's no
+// trusted secret to verify against.
+func TestChatWebhook_RejectsWhenBothSecretsEmpty(t *testing.T) {
+	h := &ChatWebhookHandler{} // both secrets nil
+
+	body := makePayload(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/webhooks/chat-complete", bytes.NewReader(body))
+	// Any 64-hex header — verifier must reject because no key can verify it.
+	req.Header.Set("X-Moses-Signature", "0000000000000000000000000000000000000000000000000000000000000000")
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	h.Handle(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
 func TestChatWebhook_RejectsInvalidSignature(t *testing.T) {
 	secret := []byte("test-secret-32-bytes-test-secret-")
 	h := &ChatWebhookHandler{Secret: secret}
