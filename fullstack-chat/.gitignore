@@ -1,5 +1,8 @@
 # Go build artifacts
-server
+# /server (root-only) — match the binary at the repo root, not the
+# `cmd/server/` source dir. CHAT-0b6g caught this when a freshly added
+# validate_env.go was silently ignored.
+/server
 *.exe
 *.dll
 *.so
