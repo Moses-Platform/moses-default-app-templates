@@ -88,6 +88,8 @@ Frontend                 Moses backend                MM AI runtime             
 
 4. **Webhook secret.** The `MOSES_CHAT_WEBHOOK_SECRET` env var is the shared HMAC key. Moses provisions it at install (rotated via the admin endpoint). Recipients ignore unsigned or stale-timestamp payloads.
 
+5. **Webhook secret rotation is recipient-driven.** Schema-882 supports a 24h overlap window (`secret_previous` + `secret_previous_expires_at`), but the platform sender is single-slot — every outbound signature uses the active secret. To get true no-cutover rotation the recipient must verify against BOTH secrets during the overlap: try `MOSES_CHAT_WEBHOOK_SECRET` first, fall back to `MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS` (optional, empty outside an overlap) on mismatch, reject if both fail. **This template's `webhook_chat.go` ships single-slot** — extend it before rotating in production. See `moses-deployment-guide/SKILL.md` for the full recipient cookbook.
+
 ## Manual end-to-end test recipe
 
 After the platform implementation lands and this template deploys:
