@@ -1,0 +1,172 @@
+{{- range .Values.services }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent-deployed-app.fullname" $ }}-{{ .name }}
+  labels:
+    {{- include "agent-deployed-app.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ .name }}
+spec:
+  replicas: {{ .replicas | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "agent-deployed-app.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ .name }}
+  template:
+    metadata:
+      labels:
+        {{- include "agent-deployed-app.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ .name }}
+        moses.ai/tenant-id: {{ $.Values.moses.tenantId | quote }}
+        {{- if $.Values.moses.chartId }}
+        moses.ai/chart-id: {{ $.Values.moses.chartId | quote }}
+        {{- end }}
+        {{- if $.Values.moses.appSlug }}
+        moses.ai/app-slug: {{ $.Values.moses.appSlug | quote }}
+        {{- end }}
+        moses.ai/managed-by: moses
+    spec:
+      containers:
+        - name: {{ .name }}
+          {{- $imgSpec := dict "repository" "placeholder" "tag" "latest" "pullPolicy" "IfNotPresent" }}
+          {{- if and $.Values.images (hasKey $.Values.images .name) }}
+          {{- $imgSpec = index $.Values.images .name }}
+          {{- else if .image }}
+          {{- $imgSpec = .image }}
+          {{- end }}
+          image: "{{ $imgSpec.repository }}:{{ $imgSpec.tag }}"
+          imagePullPolicy: {{ $imgSpec.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: http
+              containerPort: {{ .port }}
+              protocol: TCP
+          {{- if $.Values.secrets }}
+          envFrom:
+            {{- if $.Values.secrets.secretName }}
+            - secretRef:
+                name: {{ $.Values.secrets.secretName }}
+            {{- end }}
+            {{- if $.Values.secrets.configMapName }}
+            - configMapRef:
+                name: {{ $.Values.secrets.configMapName }}
+            {{- end }}
+          {{- end }}
+          env:
+            {{- /* CHAT-pbup Bug 6: derive MOSES_* env from moses.* values when
+                   globalEnv doesn't set them, so `helm install --set moses.basePath=...`
+                   produces a working container even without the platform's
+                   globalEnv overrides. globalEnv keys still win when set. */}}
+            - name: MOSES_BASE_PATH
+              value: {{ default $.Values.moses.basePath (index $.Values.globalEnv "MOSES_BASE_PATH") | quote }}
+            - name: BASE_URL
+              value: {{ default $.Values.moses.basePath (index $.Values.globalEnv "BASE_URL") | quote }}
+            - name: MOSES_EMBEDDING_FRAMING
+              value: {{ default $.Values.moses.embedding.framing (index $.Values.globalEnv "MOSES_EMBEDDING_FRAMING") | quote }}
+            - name: MOSES_EMBEDDING_ALLOWED_ANCESTORS
+              value: {{ default (join " " $.Values.moses.embedding.allowedAncestors) (index $.Values.globalEnv "MOSES_EMBEDDING_ALLOWED_ANCESTORS") | quote }}
+            - name: MOSES_EMBEDDING_REPORT_URI
+              value: {{ default $.Values.moses.embedding.reportUri (index $.Values.globalEnv "MOSES_EMBEDDING_REPORT_URI") | quote }}
+            {{- range $key, $value := $.Values.globalEnv }}
+            {{- if not (has $key (list "MOSES_BASE_PATH" "BASE_URL" "MOSES_EMBEDDING_FRAMING" "MOSES_EMBEDDING_ALLOWED_ANCESTORS" "MOSES_EMBEDDING_REPORT_URI")) }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
+            {{- /* Auto-inject backend service discovery for frontend containers */}}
+            {{- if has .name (list "frontend" "web" "ui") }}
+            {{- range $svc := $.Values.services }}
+            {{- if and (ne $svc.name "frontend") (ne $svc.name "web") (ne $svc.name "ui") }}
+            - name: BACKEND_SERVICE_HOST
+              value: "{{ include "agent-deployed-app.fullname" $ }}-{{ $svc.name }}"
+            - name: BACKEND_SERVICE_PORT
+              value: {{ $svc.port | default 8080 | quote }}
+            {{- break }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- range $key, $value := .env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- if $.Values.postgresql }}
+            {{- if $.Values.postgresql.enabled }}
+            - name: DATABASE_HOST
+              value: "{{ include "agent-deployed-app.fullname" $ }}-postgresql"
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_USER
+              value: {{ $.Values.postgresql.auth.username | default "app" | quote }}
+            - name: DATABASE_NAME
+              value: {{ $.Values.postgresql.auth.database | default "appdb" | quote }}
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agent-deployed-app.fullname" $ }}-postgresql
+                  key: postgresql-password
+            - name: DATABASE_URL
+              value: "postgresql://{{ $.Values.postgresql.auth.username | default "app" }}:$(DATABASE_PASSWORD)@{{ include "agent-deployed-app.fullname" $ }}-postgresql:5432/{{ $.Values.postgresql.auth.database | default "appdb" }}"
+            - name: DB_HOST
+              value: "{{ include "agent-deployed-app.fullname" $ }}-postgresql"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USER
+              value: {{ $.Values.postgresql.auth.username | default "app" | quote }}
+            - name: DB_NAME
+              value: {{ $.Values.postgresql.auth.database | default "appdb" | quote }}
+            - name: DB_SSLMODE
+              value: "disable"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agent-deployed-app.fullname" $ }}-postgresql
+                  key: postgresql-password
+            {{- end }}
+            {{- end }}
+          {{- if .healthCheck }}
+          startupProbe:
+            httpGet:
+              path: {{ .healthCheck.path }}
+              port: http
+            failureThreshold: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: {{ .healthCheck.path }}
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: {{ .healthCheck.path }}
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          {{- end }}
+          resources:
+            {{- toYaml .resources | nindent 12 }}
+        {{- if .sidecars }}
+        {{- range .sidecars }}
+        - name: {{ .name }}
+          image: "{{ .image }}"
+          {{- if .ports }}
+          ports:
+            {{- range .ports }}
+            - containerPort: {{ .containerPort }}
+              protocol: {{ .protocol | default "TCP" }}
+            {{- end }}
+          {{- end }}
+          {{- if .env }}
+          env:
+            {{- range $key, $value := .env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if .resources }}
+          resources:
+            {{- toYaml .resources | nindent 12 }}
+          {{- end }}
+        {{- end }}
+        {{- end }}
+{{- end }}

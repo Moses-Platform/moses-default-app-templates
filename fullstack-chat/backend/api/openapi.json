@@ -1,0 +1,117 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Fullstack Chat Roundtrip API",
+    "version": "1.0.0",
+    "description": "Demonstrates the full app↔Moses-Manager chat roundtrip. Moses Manager auto-discovers POST /api/v1/entries via the workspace-tools wedge and calls it when fulfilling chat_prompt actions. The webhook endpoint receives the AI's completion signal."
+  },
+  "servers": [
+    { "url": "/api/v1", "description": "Default base path; same shape mounted at MOSES_BASE_PATH for embedded apps." }
+  ],
+  "paths": {
+    "/entries": {
+      "get": {
+        "summary": "List feed entries",
+        "operationId": "listEntries",
+        "responses": {
+          "200": {
+            "description": "Most-recent first, capped at 200.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "entries": { "type": "array", "items": { "$ref": "#/components/schemas/Entry" } },
+                    "count":   { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Append a new feed entry",
+        "description": "Workspace-tool target. Moses Manager calls this when a chat_prompt action's AI turn decides to write back into the app. Source 'moses_manager' is the canonical roundtrip case; 'user' for direct user posts, 'agent' for execution-agent writes.",
+        "operationId": "createEntry",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["text"],
+                "properties": {
+                  "text":   { "type": "string", "maxLength": 280 },
+                  "source": { "type": "string", "enum": ["user", "moses_manager", "agent", "system"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Entry" }
+              }
+            }
+          },
+          "400": { "description": "Validation error." }
+        }
+      }
+    },
+    "/webhooks/chat-complete": {
+      "post": {
+        "summary": "Moses-Manager chat completion webhook receiver",
+        "description": "Moses fires this when the AI turn started by a chat_prompt action terminates. HMAC-SHA256 signature in X-Moses-Signature must match the per-app shared secret configured at install. Used here for end-to-end roundtrip verification.",
+        "operationId": "chatCompletionWebhook",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ChatCompletionPayload" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Recorded." },
+          "400": { "description": "Invalid JSON or out-of-skew timestamp." },
+          "401": { "description": "Signature mismatch." }
+        },
+        "x-moses-internal-only": true
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Entry": {
+        "type": "object",
+        "properties": {
+          "id":         { "type": "string", "format": "uuid" },
+          "text":       { "type": "string" },
+          "source":     { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ChatCompletionPayload": {
+        "type": "object",
+        "properties": {
+          "v":               { "type": "integer", "const": 1 },
+          "conversationId":  { "type": "string" },
+          "actionId":        { "type": "string" },
+          "appSlug":         { "type": "string" },
+          "finalMessageId":  { "type": "string" },
+          "finalText":       { "type": "string" },
+          "model":           { "type": "string" },
+          "latencyMs":       { "type": "integer" },
+          "finishReason":    { "type": "string", "enum": ["stop", "length", "error", "credential_unset"] },
+          "timestamp":       { "type": "string", "format": "date-time" },
+          "nonce":           { "type": "string" }
+        },
+        "required": ["v", "conversationId", "appSlug"]
+      }
+    }
+  }
+}
