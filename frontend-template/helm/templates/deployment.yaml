@@ -42,6 +42,7 @@ spec:
             {{- end }}
           {{- end }}
           env:
+            # Chart-required defaults that must always be present (even if not in .Values.env).
             - name: PORT
               value: {{ .Values.env.PORT | default "8080" | quote }}
             - name: NODE_ENV
@@ -62,6 +63,18 @@ spec:
               value: {{ .Values.env.MOSES_EMBEDDING_ALLOWED_ANCESTORS | default (join " " .Values.moses.embedding.allowedAncestors) | default "" | quote }}
             - name: MOSES_EMBEDDING_REPORT_URI
               value: {{ .Values.env.MOSES_EMBEDDING_REPORT_URI | default .Values.moses.embedding.reportUri | default "" | quote }}
+            {{- /* CHAT-zber (DEPS-A1b): iterate .Values.env so any platform-injected
+                   env vars (MOSES_API_BASE, MOSES_TENANT_ID, MOSES_CHART_ID,
+                   MOSES_DEPLOYMENT_ID, MOSES_APP_SLUG, MOSES_USER_ID, etc.)
+                   land in the container without per-key enumeration. Skip the
+                   keys already explicitly emitted above so we don't double-set.
+            */}}
+            {{- range $key, $value := .Values.env }}
+            {{- if not (has $key (list "PORT" "NODE_ENV" "BASE_URL" "MOSES_BASE_PATH" "MOSES_EMBEDDING_FRAMING" "MOSES_EMBEDDING_ALLOWED_ANCESTORS" "MOSES_EMBEDDING_REPORT_URI")) }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
           {{- if .Values.startupProbe }}
           startupProbe:
             {{- toYaml .Values.startupProbe | nindent 12 }}
