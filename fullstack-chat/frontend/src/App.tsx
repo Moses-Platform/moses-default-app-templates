@@ -53,6 +53,17 @@ function mosesApiBase(): string {
   return (import.meta.env.VITE_MOSES_API_BASE as string | undefined)?.replace(/\/+$/, '') ?? '';
 }
 
+function mosesChartId(): string | undefined {
+  // Platform-injected at build time (kaniko_build_service.go enrichBuildArgsForBLF).
+  // The dispatcher's GetPlatformAction lookup uses
+  // `chart_id IS NOT DISTINCT FROM $2` so omitting this when actions are
+  // registered chart-scoped (the default) returns 404 action_not_found
+  // even though the row exists. Standalone dev → undefined → server falls
+  // back to a chart-less lookup.
+  const v = import.meta.env.VITE_MOSES_CHART_ID as string | undefined;
+  return v && v.length > 0 ? v : undefined;
+}
+
 async function fetchEntries(): Promise<Entry[]> {
   const r = await fetch('api/v1/entries', { credentials: 'same-origin' });
   if (!r.ok) throw new Error(`entries fetch failed: ${r.status}`);
@@ -62,11 +73,14 @@ async function fetchEntries(): Promise<Entry[]> {
 
 async function invokeChatPrompt(topic: string): Promise<{ conversationId?: string }> {
   const url = `${mosesApiBase()}/api/v1/apps/${APP_SLUG}/actions/${ACTION_ID}/invoke`;
+  const body: Record<string, unknown> = { variables: { topic } };
+  const chartId = mosesChartId();
+  if (chartId) body.chartId = chartId;
   const r = await fetch(url, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ variables: { topic } }),
+    body: JSON.stringify(body),
   });
   if (!r.ok) {
     const detail = await r.text();
