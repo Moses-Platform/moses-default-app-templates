@@ -92,6 +92,65 @@ describe('Fullstack Chat Roundtrip — App', () => {
     expect(body.variables.topic).toBe('octopus');
   });
 
+  it('posts moses_embed_open_chat to window.parent after a successful invoke', async () => {
+    mockFetch(async (input) => {
+      const url = typeof input === 'string' ? input : (input as URL | Request).toString();
+      if (url.includes('/api/v1/apps/fullstack-chat/actions/generate-entry/invoke')) {
+        return jsonResponse({
+          status: 'succeeded',
+          result: { conversationId: 'conv-announce-1' },
+        });
+      }
+      return jsonResponse({ entries: [], count: 0 });
+    });
+
+    // window.parent === window in jsdom (no real frame). Stub `parent` with
+    // a distinct object so the `window.parent !== window` guard in App.tsx
+    // takes the announce branch, and capture postMessage calls on it.
+    const parentPostSpy = vi.fn();
+    const originalParentDescriptor = Object.getOwnPropertyDescriptor(window, 'parent');
+    Object.defineProperty(window, 'parent', {
+      configurable: true,
+      get: () => ({ postMessage: parentPostSpy } as unknown as Window),
+    });
+
+    try {
+      render(<App />);
+      const input = (await screen.findByLabelText(/topic/i)) as HTMLInputElement;
+      fireEvent.change(input, { target: { value: 'walrus' } });
+
+      const button = await screen.findByRole('button', { name: /generate entry/i });
+      fireEvent.click(button);
+
+      await waitFor(() => {
+        expect(parentPostSpy).toHaveBeenCalled();
+      });
+
+      // Find the moses_embed_open_chat envelope among any other parent posts.
+      const announceCall = parentPostSpy.mock.calls.find((args) => {
+        const data = args[0] as Record<string, unknown> | undefined;
+        return data?.type === 'moses_embed_open_chat';
+      });
+      expect(announceCall).toBeTruthy();
+      const envelope = announceCall?.[0] as Record<string, unknown>;
+      expect(envelope.v).toBe(1);
+      expect(envelope.conversationId).toBe('conv-announce-1');
+      expect(envelope.app).toBe('fullstack-chat');
+      // Targeted origin must match the host's, not '*'.
+      expect(announceCall?.[1]).toBe(window.location.origin);
+    } finally {
+      if (originalParentDescriptor) {
+        Object.defineProperty(window, 'parent', originalParentDescriptor);
+      } else {
+        // jsdom's default: parent === window.
+        Object.defineProperty(window, 'parent', {
+          configurable: true,
+          get: () => window,
+        });
+      }
+    }
+  });
+
   it('updates the status banner on a moses_embed_chat_complete postMessage', async () => {
     render(<App />);
     await screen.findByText(/no entries yet/i);
