@@ -30,9 +30,11 @@ type CompletionMessage = {
   finishReason?: 'stop' | 'length' | 'error' | 'credential_unset';
 };
 
-// moses_embed_open_chat (v1) is the host-shell-bound envelope. The app
-// neither sends nor consumes it directly; it's listed in the README and
-// covered by the "ignores host-bound events" test below for documentation.
+// moses_embed_open_chat (v1) is iframe → host-shell. The app posts it to
+// `window.parent` after a successful chat_prompt invoke so the host can
+// (a) open the global chat sidebar pinned to the new conversation, and
+// (b) register the conversationId so it can later forward
+// `auto_response_ready` WS events back here as `moses_embed_chat_complete`.
 
 type StatusBanner =
   | { kind: 'idle' }
@@ -147,6 +149,27 @@ export default function App() {
           ? { kind: 'awaiting', conversationId }
           : { kind: 'awaiting', conversationId: '(unknown)' },
       );
+      // Tell the host shell about this conversation so it (a) opens the
+      // global chat sidebar pinned to this conversationId, and (b) forwards
+      // the eventual `auto_response_ready` WS event back to us as a
+      // `moses_embed_chat_complete` postMessage. Without this announce step
+      // the host has no record of which conversations belong to this iframe.
+      if (conversationId && window.parent && window.parent !== window) {
+        try {
+          window.parent.postMessage(
+            {
+              type: 'moses_embed_open_chat',
+              v: 1,
+              conversationId,
+              app: APP_SLUG,
+            },
+            window.location.origin,
+          );
+        } catch (err) {
+          // Cross-origin posts will throw — non-fatal; polling still works.
+          console.warn('[fullstack-chat] moses_embed_open_chat post failed', err);
+        }
+      }
       // Optimistically refresh: MM may complete fast.
       window.setTimeout(() => void refresh(), 1_000);
     } catch (err) {

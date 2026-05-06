@@ -56,7 +56,7 @@
         "perMinute": 5,
         "perHour": 50
       },
-      "placement": ["app-toolbar"],
+      "placement": ["app-embed-toolbar"],
       "availableIn": ["app-standalone"]
     }
   ],
