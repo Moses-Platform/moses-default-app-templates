@@ -95,6 +95,12 @@ Frontend                 Moses backend                MM AI runtime             
 After the platform implementation lands and this template deploys:
 
 1. Deploy this app (e.g. via marketplace install or `moses_init_repo --template fullstack-chat`).
+
+   **Activation precondition (CHAT-1j43 / DEPS-A3, A4)**: the chat_prompt action is INACTIVE on first deploy. How activation happens depends on who triggered the deploy:
+
+   - **User-initiated deploy + deployer has `MANAGE/DEPLOYMENTS` permission** → DEPS-A3 auto-grants on the deployer's behalf during the post-Helm reconcile. Action becomes invocable within seconds. Continue to step 2.
+   - **Autonomous deploy (agent-driven), or deployer without `MANAGE/DEPLOYMENTS`** → DEPS-A4 banner fires in the embedded SelectedAppPanel: "Approve permissions for fullstack-chat — 1 action inactive". Click **Approve** in the banner before continuing. The banner fires within ~2s of the post-Helm reconcile completing.
+
 2. Open it in the Moses UI.
 3. Type a topic in the input ("octopus").
 4. Click "Generate entry via Moses Manager".
@@ -105,6 +111,11 @@ After the platform implementation lands and this template deploys:
 6. Verify in DB (admin only): `SELECT * FROM chat_completions ORDER BY received_at DESC LIMIT 1;` shows `signature_valid = true`.
 7. Repeat 6 times within a minute → 6th invoke returns 429 (`rate_limited`) due to the per-action cap.
 8. Open two browser tabs, click in both within 1 second → second returns 429 (`chat_prompt_concurrency_limit`) with the in-flight conversationId.
+
+### Troubleshooting
+
+- **Clicking "Generate entry" returns 409 `action_not_activated`**: the chat_prompt action wasn't activated. Check the post-deploy banner / App Permissions modal — see step 1's activation precondition. Manual recovery: Tenant Admin → Apps → fullstack-chat → Approve grant.
+- **Returns 403 `action_pending_reapproval`**: the action was previously approved but the app added new actions / scopes. The DEPS-A4 banner shows the diff; approve to re-cover.
 
 ## Negative scenarios this template helps verify
 
