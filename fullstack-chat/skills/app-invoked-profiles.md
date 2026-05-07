@@ -43,21 +43,26 @@ charts and lanes outside that app's chart. The profile is the safety rail.
 
 If you find yourself wanting a tool that's not in your default profile,
 **call `moses_discover_tools`** with a brief query for the missing
-capability. The two paths behave differently here today:
+capability. As of CHAT-ymlz the two paths behave **symmetrically** —
+discovery extends the runtime surface for both:
 
 - **Path A (chat — `app-invoked-mm`)**: discovery appends the tool to
   this conversation's `chat_conversations.exposed_extra_tools` column
-  (CHAT-ci3f Phase 1) and it becomes callable on the *next* turn. Don't
-  abandon the task — call discover, then retry.
-- **Path B (agent pod — `app-invoked-agent`)**: discovery records
-  telemetry (`app_discovery_calls`) and returns suggested tool names,
-  but it does **NOT** extend your runtime tool surface today —
-  `agent_pod_executions` has no equivalent overlay column (tracked as a
-  follow-up bead: `agent_pod_executions.exposed_extra_tools`). Use
-  discover as a *signal* that the app's declared profile is too narrow,
-  then return a clear failure to the user via `moses_agent_report_failure`
-  explaining which tool was missing. Do NOT keep retrying — the runtime
-  surface will not change mid-execution.
+  (CHAT-ci3f Phase 1, schema 885) and it becomes callable on the *next*
+  turn. Storage cap: `ProfileMosesManagerFull`.
+- **Path B (agent pod — `app-invoked-agent`, CHAT-ymlz)**: discovery
+  appends the tool to this execution's
+  `agent_pod_executions.exposed_extra_tools` column (schema 888) and it
+  becomes callable on the *next* turn — same flow as Path A. Storage
+  cap: `ProfileAppInvokedAgent` ∪ `ProfileAgentExecution` ∪
+  `ProfileMosesManagerFull` (wider than chat so legitimate agent-only
+  tools like `moses_execute_ticket`, `moses_review_execution`,
+  `moses_approve_review` are discoverable).
+
+In both paths: don't abandon the task — call discover, reissue
+`tools/list`, then retry the tool. Discovery telemetry (`app_discovery_calls`)
+still records a signal so operators can spot apps whose declared
+profile is too narrow.
 
 ## Path A — `ProfileAppInvokedMM` (chat_prompt → Moses Manager)
 
@@ -141,16 +146,25 @@ depends on which path you are on:
    not available to you — reply to the user with a clear "I cannot do X
    from this action".
 
-**Path B (agent pod — `app-invoked-agent`)**:
+**Path B (agent pod — `app-invoked-agent`, CHAT-ymlz — symmetric with Path A)**:
 
-1. Call `moses_discover_tools` so the gap is recorded as a telemetry
-   signal (`app_discovery_calls`) for the operators.
-2. The discovery result does **NOT** extend your runtime surface today
-   (no `exposed_extra_tools` column on `agent_pod_executions`). The tool
-   stays uncallable for the rest of this execution.
-3. Stop trying — escalate via `moses_agent_report_failure` with a clear
-   message naming the missing tool/capability, so the app owner can
-   widen the declared profile in `moses-app.config.json` and re-deploy.
+1. Call `moses_discover_tools` with a query like `"X"` or
+   `"<capability I need>"`. This both records the
+   `app_discovery_calls` telemetry signal AND appends the tool name to
+   this execution's `agent_pod_executions.exposed_extra_tools` column
+   (schema 888).
+2. Reissue `tools/list` (the platform unions the static profile with
+   the overlay) — the discovered tool is now visible.
+3. Retry the call — both the `tools/list` filter and the
+   `ExecuteTool` allowed-tools gate read from the same overlay, so the
+   call passes if the tool falls within the agent-context storage cap
+   (`ProfileAppInvokedAgent` ∪ `ProfileAgentExecution` ∪
+   `ProfileMosesManagerFull`).
+4. If discovery returns nothing relevant OR the gate still rejects on
+   retry (the tool lies outside the cap), escalate via
+   `moses_agent_report_failure` with a clear message naming the missing
+   tool/capability so the app owner can widen the declared profile in
+   `moses-app.config.json` and re-deploy.
 
 ## Sources of truth (platform repo)
 

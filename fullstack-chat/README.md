@@ -51,16 +51,24 @@ discipline: the calling app declared its needs in
 `moses-app.config.json`; the user clicked a button, not started a
 conversation; therefore the tool surface is scoped to *this app* only.
 Tenant-wide CRUD is out of profile by design. The discovery escape
-hatch (`moses_discover_tools`) is **asymmetric between the two paths
-today**: for `chat_prompt` (Path A), discovery appends the tool to the
-conversation's `chat_conversations.exposed_extra_tools` overlay
-(CHAT-ci3f Phase 1) and it becomes callable on the next turn. For
-`launch_agent` (Path B), discovery only records telemetry
-(`app_discovery_calls`) and returns suggested names — `agent_pod_executions`
-has no equivalent overlay column today (tracked as a follow-up bead),
-so the agent's runtime tool surface is NOT extended; the only escape is
-to widen the declared profile in `moses-app.config.json` and re-deploy.
-See `skills/app-invoked-profiles.md` for the per-path instructions.
+hatch (`moses_discover_tools`) is **symmetric across both paths
+(CHAT-ymlz)**:
+
+- For `chat_prompt` (Path A), discovery appends the tool to the
+  conversation's `chat_conversations.exposed_extra_tools` overlay
+  (CHAT-ci3f Phase 1, schema 885); it becomes callable on the next
+  turn. Storage cap: `ProfileMosesManagerFull`.
+- For `launch_agent` (Path B), discovery appends the tool to the
+  execution's `agent_pod_executions.exposed_extra_tools` overlay
+  (CHAT-ymlz, schema 888); it becomes callable on the next turn.
+  Storage cap: `ProfileAppInvokedAgent` ∪ `ProfileAgentExecution`
+  ∪ `ProfileMosesManagerFull` (wider than chat so legitimate
+  agent-only tools are discoverable).
+
+In either path, if a tool stays uncallable AFTER discovery (it lies
+outside the storage cap), widen the declared profile in
+`moses-app.config.json` and re-deploy. See
+`skills/app-invoked-profiles.md` for the per-path instructions.
 
 Sources of truth (read these for the canonical surface):
 

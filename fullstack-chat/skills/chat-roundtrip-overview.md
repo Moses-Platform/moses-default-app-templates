@@ -91,19 +91,26 @@ surface:
   `moses_agent_submit_completed`, `moses_agent_report_failure`,
   `moses_await_deployment`) plus the same chart-scoped workspace tool
   union.
-- **Discovery escape hatch — asymmetric between the two paths today**:
+- **Discovery escape hatch — symmetric between the two paths (CHAT-ymlz)**:
   - Path A (chat) — calling `moses_discover_tools` writes the result
     into the conversation's `chat_conversations.exposed_extra_tools`
-    overlay (CHAT-ci3f Phase 1); the tool is callable on the next turn.
-    Don't abandon the task — use discovery.
-  - Path B (agent pod) — `moses_discover_tools` records telemetry
-    (`app_discovery_calls`) and returns suggested tool names, but the
-    agent's runtime tool surface is **NOT** extended:
-    `agent_pod_executions` has no overlay column today (tracked as a
-    follow-up bead). For Path B, use discover as a signal that the
-    declared profile is too narrow, then escalate via
-    `moses_agent_report_failure` so the app owner can widen
-    `moses-app.config.json` and re-deploy.
+    overlay (CHAT-ci3f Phase 1, schema 885); the tool is callable on
+    the next turn. Storage cap: `ProfileMosesManagerFull`.
+  - Path B (agent pod, CHAT-ymlz) — `moses_discover_tools` writes the
+    result into the execution's
+    `agent_pod_executions.exposed_extra_tools` overlay (schema 888);
+    the tool is callable on the next turn — same model as Path A.
+    Storage cap: `ProfileAppInvokedAgent` ∪ `ProfileAgentExecution`
+    ∪ `ProfileMosesManagerFull` (wider than chat so legitimate
+    agent-only tools like `moses_execute_ticket`,
+    `moses_review_execution`, `moses_approve_review` are
+    discoverable).
+  - In both paths: don't abandon the task — call discover, reissue
+    `tools/list`, then retry. If the tool stays uncallable after a
+    successful discovery (it lies outside the storage cap), escalate
+    via `moses_agent_report_failure` (Path B) or surface a clear "I
+    cannot do X from this action" reply (Path A) so the app owner can
+    widen the declared profile in `moses-app.config.json`.
 
 INTENTIONALLY EXCLUDED from both profiles: `moses_query`, `moses_create`,
 `moses_update`, `moses_delete`, `moses_execute_ticket`,
