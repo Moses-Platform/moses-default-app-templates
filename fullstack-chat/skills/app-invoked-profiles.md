@@ -16,13 +16,18 @@ app, not to the tenant.
 
 **How do I know which profile I am running under?**
 
-- Call `moses_get_session_info`. The returned `profile` field is one of:
+- Call `moses_get_session_info`. The returned `current_profile` field is one of:
   - `app-invoked-mm` (Path A — `ProfileAppInvokedMM`, this conversation came from a `chat_prompt` action),
   - `app-invoked-agent` (Path B — `ProfileAppInvokedAgent`, this agent pod came from a `launch_agent` action),
   - `moses-manager-essentials` / `moses-manager-full` / `moses-manager-autonomous` (you are a USER-typed Manager chat — see `chat-roundtrip-overview.md` Section A),
   - `agent-execution` (you are a Basar / autopilot agent — out of scope here).
-- If the session-info call also reports `context.source == "app_action"`,
-  you are app-invoked regardless of which path.
+- There is no direct chat-context-source signal in `moses_get_session_info`
+  today (the response contains `current_profile`, `autopilot_active`,
+  tenant/user ids, etc. — it does NOT include `context.source`). Instead,
+  use the absence/presence of agent-execution lifecycle tools
+  (`moses_notify_push`, `moses_agent_request_build`, `moses_agent_submit_completed`)
+  in your `tools/list` to disambiguate Path A (chat-only profile, none of
+  these) from Path B (agent profile, all of these).
 
 If you got here from a USER typing into the chat sidebar, this skill does
 NOT apply — the full Manager surface is yours. Stop reading this and
@@ -37,10 +42,22 @@ The wedge: an app firing `summarize-feed` should not be able to mutate
 charts and lanes outside that app's chart. The profile is the safety rail.
 
 If you find yourself wanting a tool that's not in your default profile,
-**call `moses_discover_tools`** with a brief query — the discovered tool
-gets appended to this conversation's `exposed_extra_tools` overlay
-(CHAT-ci3f Phase 1) and becomes callable on the *next* turn. **Do NOT
-abandon the task.** Discovery is the safety valve, not a bug.
+**call `moses_discover_tools`** with a brief query for the missing
+capability. The two paths behave differently here today:
+
+- **Path A (chat — `app-invoked-mm`)**: discovery appends the tool to
+  this conversation's `chat_conversations.exposed_extra_tools` column
+  (CHAT-ci3f Phase 1) and it becomes callable on the *next* turn. Don't
+  abandon the task — call discover, then retry.
+- **Path B (agent pod — `app-invoked-agent`)**: discovery records
+  telemetry (`app_discovery_calls`) and returns suggested tool names,
+  but it does **NOT** extend your runtime tool surface today —
+  `agent_pod_executions` has no equivalent overlay column (tracked as a
+  follow-up bead: `agent_pod_executions.exposed_extra_tools`). Use
+  discover as a *signal* that the app's declared profile is too narrow,
+  then return a clear failure to the user via `moses_agent_report_failure`
+  explaining which tool was missing. Do NOT keep retrying — the runtime
+  surface will not change mid-execution.
 
 ## Path A — `ProfileAppInvokedMM` (chat_prompt → Moses Manager)
 
@@ -110,8 +127,10 @@ deployment exposed it, every documented operation (with a stable
 
 ## What if a tool I called returns "tool X is not available in your current profile"?
 
-That is the gate at `ai_chat_service.go ExecuteMCPTool`. The fix is
-**not** to give up — it is to:
+That is the gate at `ai_chat_service.go ExecuteMCPTool`. The fix
+depends on which path you are on:
+
+**Path A (chat — `app-invoked-mm`)**:
 
 1. Call `moses_discover_tools` with a query like `"X"` or
    `"<capability I need>"`.
@@ -119,9 +138,19 @@ That is the gate at `ai_chat_service.go ExecuteMCPTool`. The fix is
    `exposed_extra_tools` column.
 3. On the next turn, the tool is callable.
 4. If discovery returns nothing relevant, the capability is genuinely
-   not available to you — escalate by `moses_agent_report_failure` (Path
-   B) or by replying to the user with a clear "I cannot do X from this
-   action" (Path A).
+   not available to you — reply to the user with a clear "I cannot do X
+   from this action".
+
+**Path B (agent pod — `app-invoked-agent`)**:
+
+1. Call `moses_discover_tools` so the gap is recorded as a telemetry
+   signal (`app_discovery_calls`) for the operators.
+2. The discovery result does **NOT** extend your runtime surface today
+   (no `exposed_extra_tools` column on `agent_pod_executions`). The tool
+   stays uncallable for the rest of this execution.
+3. Stop trying — escalate via `moses_agent_report_failure` with a clear
+   message naming the missing tool/capability, so the app owner can
+   widen the declared profile in `moses-app.config.json` and re-deploy.
 
 ## Sources of truth (platform repo)
 

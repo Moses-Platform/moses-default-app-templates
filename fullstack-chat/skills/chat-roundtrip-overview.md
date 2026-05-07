@@ -91,11 +91,19 @@ surface:
   `moses_agent_submit_completed`, `moses_agent_report_failure`,
   `moses_await_deployment`) plus the same chart-scoped workspace tool
   union.
-- **Both paths** — `moses_discover_tools` is the escape hatch. If a tool
-  isn't in the static profile, calling discover writes the result into
-  the conversation's `exposed_extra_tools` overlay (CHAT-ci3f Phase 1)
-  and it becomes callable on the next turn. **Do not abandon the task**;
-  use discovery.
+- **Discovery escape hatch — asymmetric between the two paths today**:
+  - Path A (chat) — calling `moses_discover_tools` writes the result
+    into the conversation's `chat_conversations.exposed_extra_tools`
+    overlay (CHAT-ci3f Phase 1); the tool is callable on the next turn.
+    Don't abandon the task — use discovery.
+  - Path B (agent pod) — `moses_discover_tools` records telemetry
+    (`app_discovery_calls`) and returns suggested tool names, but the
+    agent's runtime tool surface is **NOT** extended:
+    `agent_pod_executions` has no overlay column today (tracked as a
+    follow-up bead). For Path B, use discover as a signal that the
+    declared profile is too narrow, then escalate via
+    `moses_agent_report_failure` so the app owner can widen
+    `moses-app.config.json` and re-deploy.
 
 INTENTIONALLY EXCLUDED from both profiles: `moses_query`, `moses_create`,
 `moses_update`, `moses_delete`, `moses_execute_ticket`,
