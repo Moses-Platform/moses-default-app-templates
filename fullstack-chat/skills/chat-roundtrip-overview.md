@@ -114,8 +114,8 @@ both skills). Sources of truth in the platform repo:
   `GetMosesManagerToolsForChart` chart-scoped union.
 - Parent epic: **CHAT-89ig**. Template wave: **CHAT-9oqo (AIPF-9)**.
 - Documentation epic: **CHAT-ieru** — see
-  `arch/app-invoked-profiles.md` in the platform repo for the canonical
-  contract diagram.
+  `arch/backend/MCP_SERVER.md` § "App-invoked profiles" in the
+  platform repo for the canonical contract.
 
 ---
 

@@ -65,8 +65,8 @@ Sources of truth (read these for the canonical surface):
   body).
 - `moses-platform-prep/backend/internal/mcp/tools/workspace_tool_proxy.go`
   — `GetMosesManagerToolsForChart` chart-scoped union (CHAT-cj8m).
-- The platform repo's `arch/app-invoked-profiles.md` (created under
-  CHAT-ieru) — canonical contract diagram.
+- The platform repo's `arch/backend/MCP_SERVER.md` § "App-invoked
+  profiles" subsection (CHAT-ieru) — canonical contract.
 
 The agent skill `skills/app-invoked-profiles.md` ships **inside this
 template** so any agent launched under either path reads the contract

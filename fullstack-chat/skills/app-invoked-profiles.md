@@ -137,8 +137,8 @@ That is the gate at `ai_chat_service.go ExecuteMCPTool`. The fix is
   the `ExecuteMCPTool` gate that emits the
   `tool %s is not available in your current profile` error.
 - Parent epic: **CHAT-89ig**. Template wave: **CHAT-9oqo (AIPF-9)**.
-- See also `arch/app-invoked-profiles.md` in the platform repo (created
-  under CHAT-ieru) for the canonical contract diagram.
+- See also `arch/backend/MCP_SERVER.md` § "App-invoked profiles" in the
+  platform repo (CHAT-ieru) for the canonical contract.
 
 ## Cross-reference
 
