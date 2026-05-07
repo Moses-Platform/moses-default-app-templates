@@ -18,6 +18,79 @@ A minimal Postgres-backed feed app whose sole purpose is to be a smoke-test for 
 
 See [`skills/chat-roundtrip-overview.md`](skills/chat-roundtrip-overview.md) for the full architectural walkthrough and the manual end-to-end test recipe.
 
+## Two paths: chat_prompt vs launch_agent
+
+Under epic [CHAT-89ig](../../moses-platform-prep/.beads/) this template now showcases BOTH Moses platform-action paths so you can compare the contracts side by side:
+
+| Concern | Path A — `chat_prompt` | Path B — `launch_agent` |
+|---|---|---|
+| Action id (this template) | `generate-entry` | `summarize-feed` |
+| What it creates | Visible Moses Manager conversation | One-shot agent pod against a synthetic ticket |
+| User experience | Streaming AI reply in the chat sidebar | Background work; user observes via the feed and execution UI |
+| Profile (CHAT-btd4) | `ProfileAppInvokedMM` (4 static tools) | `ProfileAppInvokedAgent` (9 static tools) |
+| Mode (CHAT-ohlv) | `ModeAppInvokedMM` | `ModeAppInvokedAgent` |
+| Workspace-tool surface | Chart-scoped union via `GetMosesManagerToolsForChart` (CHAT-cj8m) | Same chart-scoped union |
+| Escape hatch | `moses_discover_tools` | `moses_discover_tools` (NEW — `ProfileAgentExecution` lacked this) |
+| OUT of profile | `moses_query`/`moses_create`/`moses_update`/`moses_delete`, `moses_execute_ticket`, `moses_quick_build`, ticket/chart/lane CRUD | Same exclusions as Path A |
+| Rate limit (this template) | 5/min, 50/hr | 2/min, 10/hr (tighter; agent pods are heavier) |
+| Completion signal | `chatPrompt.completionWebhook` (HMAC-signed POST) + postMessage | Standard ticket completion via `moses_agent_submit_completed` + deployment pipeline |
+
+**When to use which:**
+
+- Use **`chat_prompt`** when you want the user to watch the AI think and
+  optionally steer mid-stream. Best for short, conversational tasks
+  (generate text, answer a question, draft a one-liner).
+- Use **`launch_agent`** when the work is well-defined, multi-step, and
+  benefits from being autonomous. Best for "go fetch X, transform it,
+  POST it back" tasks where the user does not need to read a transcript.
+
+### The narrow profile contract (CHAT-89ig)
+
+Both paths surface a deliberately small static tool set. The key
+discipline: the calling app declared its needs in
+`moses-app.config.json`; the user clicked a button, not started a
+conversation; therefore the tool surface is scoped to *this app* only.
+Tenant-wide CRUD is out of profile by design — the AI must
+`moses_discover_tools` if it genuinely needs a tool outside the static
+list, which appends to the conversation's `exposed_extra_tools` overlay
+(CHAT-ci3f Phase 1).
+
+Sources of truth (read these for the canonical surface):
+
+- `moses-platform-prep/backend/internal/mcp/tools/config.go` —
+  `ProfileAppInvokedMM`, `ProfileAppInvokedAgent`, the static tool lists.
+- `moses-platform-prep/backend/pkg/prompts/moses_manager.go` —
+  `ModeAppInvokedMM`, `ModeAppInvokedAgent`,
+  `buildAppInvokedManagerPrompt` (the thin app-invoked system prompt
+  body).
+- `moses-platform-prep/backend/internal/mcp/tools/workspace_tool_proxy.go`
+  — `GetMosesManagerToolsForChart` chart-scoped union (CHAT-cj8m).
+- The platform repo's `arch/app-invoked-profiles.md` (created under
+  CHAT-ieru) — canonical contract diagram.
+
+The agent skill `skills/app-invoked-profiles.md` ships **inside this
+template** so any agent launched under either path reads the contract
+without inferring it. The companion `skills/chat-roundtrip-overview.md`
+is now split into a Section A (user-typed Manager) and a Section B
+(app-invoked) that points to the new skill.
+
+### Example: how the Path B agent uses workspace tools
+
+When a user clicks **Summarize feed via narrow agent** with optional
+`focus="sentiment"`, the new agent pod's prompt instructs it to:
+
+```
+1. GET  /api/v1/entries          (workspace tool — chart-scoped)
+2. compose summary line (≤120 chars)
+3. POST /api/v1/entries          (workspace tool — chart-scoped)
+   body: {"text": "<summary>", "source": "agent"}
+4. moses_agent_submit_completed   (lifecycle tool — in profile)
+```
+
+The agent never touches `moses_query` or any other tenant-wide tool. If
+it wanted to (e.g. to look up tickets), it would have to call
+`moses_discover_tools` first. That is the wedge.
+
 ## Stack
 
 - **Frontend**: React 18 + Vite, single-page (no router). 7 vitest tests covering postMessage origin checks, status banner transitions, invoke shape, and the `moses_embed_open_chat` post-up envelope.
@@ -105,6 +178,7 @@ This template targets the implemented surface of:
 - **CHAT-qrd6** — `appData` block to surface the per-app git repo to MM and agents.
 - **CHAT-uwlm** — `variableEscapeMode: "fenced"` + `userSupplied: true` flag for prompt-injection hardening.
 - **CHAT-xu9i** — exercises the `finishReason: "credential_unset"` path when AI is unconfigured.
+- **CHAT-89ig** (parent epic) — app-invoked prompt-profile architecture. The `summarize-feed` action exercises `ProfileAppInvokedAgent`; the `generate-entry` action now flows through `ProfileAppInvokedMM`. Children: CHAT-btd4 (profiles), CHAT-ohlv (modes + thin prompt), CHAT-iq3i (chat wiring), CHAT-6q99 (agent wiring), CHAT-cj8m (chart-scoped workspace tools), CHAT-3h8z (symmetry test), CHAT-ieru (docs), **CHAT-9oqo (this template wave)**.
 
 ## Local development
 

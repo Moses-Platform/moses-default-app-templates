@@ -15,6 +15,119 @@ A reference template that exercises every chat surface in the app↔Moses-Manage
 - Embed in the host shell with sidebar-open / completion postMessage relays.
 - Use the per-app data git repo (CHAT-qrd6) for structured state visible to MM.
 
+## Two paths from app to AI: which one am I reading about?
+
+This template now ships TWO platform actions to make the contrast explicit
+under epic **CHAT-89ig**:
+
+- **`generate-entry`** (`chat_prompt`, Path A) — opens an interactive
+  Moses Manager conversation. Continues to be the focus of THIS file.
+- **`summarize-feed`** (`launch_agent`, Path B) — launches a one-shot
+  agent pod against a synthetic ticket. The agent runs to completion
+  without user back-and-forth.
+
+The two paths share one critical contract (CHAT-89ig): when a Moses chat or
+agent is created from an app action (`source == "app_action"`), the tool
+surface is **narrowed** to the app's own workspace tools + a tiny baseline
+(see profile lists below). This is **not** the same as a user-typed
+Manager chat or a Basar / autopilot agent.
+
+> **If you are an AI reading this skill from inside an app-invoked chat or
+> agent pod, jump to `app-invoked-profiles.md` for your tool-surface
+> contract.** This file's Section A still applies for the *user-typed*
+> Manager conversation that may end up in this app's context.
+
+The rest of this file is split into:
+
+- **Section A — User-typed Manager → app context (today's full Manager
+  behaviour).** What you get when a human types into the chat sidebar
+  while the fullstack-chat app is the active context. No profile
+  narrowing.
+- **Section B — App-invoked (`chat_prompt` Path A and `launch_agent`
+  Path B).** The narrow contract; full body lives in
+  `app-invoked-profiles.md`.
+
+---
+
+## Section A — User-typed Manager → app context (full surface, today)
+
+When a user types into the Moses Manager sidebar with the fullstack-chat
+app as the active context, the chat conversation is created with
+`Source != "app_action"` and resolves to one of the **full** Manager
+profiles via `getChatDefaultProfile()`:
+
+- `ProfileMosesManagerEssentials` (default) — essentials + per-conversation
+  `exposed_extra_tools` overlay.
+- `ProfileMosesManagerAutonomous` (auto-upgrade when the user has an
+  active autopilot session).
+- `ProfileMosesManagerFull` (CRUD-heavy direct project-management chat).
+
+Available tools include the full unified-CRUD surface (`moses_query`,
+`moses_create`, `moses_update`, `moses_delete`, `moses_batch`),
+ticket/chart/lane workflow tools, skills tools, deployment pipeline tools,
+agent-execution tools, plus this app's auto-discovered workspace tools
+(POST /api/v1/entries, GET /api/v1/entries) — same Path A
+WorkspaceToolProxy injection, no profile narrowing.
+
+This is the legacy / full path. **Keep using it for free-form workspace
+work, project management, and anything that genuinely needs tenant CRUD.**
+
+---
+
+## Section B — App-invoked profile (`chat_prompt` and `launch_agent`)
+
+When an app fires either platform action, the resulting Moses Manager
+conversation (Path A) or agent pod (Path B) gets a **narrow** tool
+surface:
+
+- **Path A** — `ProfileAppInvokedMM`: 4 static tools
+  (`moses_get_session_info`, `moses_discover_tools`,
+  `moses_global_search`, `moses_get_app_logs`) plus chart-scoped
+  workspace tools auto-injected at `tools/list` time by
+  `WorkspaceToolProxy.GetMosesManagerToolsForChart` (CHAT-cj8m).
+- **Path B** — `ProfileAppInvokedAgent`: 9 static tools
+  (`moses_get_session_info`, `moses_discover_tools`, `moses_read_file`,
+  `moses_list_files`, `moses_notify_push`, `moses_agent_request_build`,
+  `moses_agent_submit_completed`, `moses_agent_report_failure`,
+  `moses_await_deployment`) plus the same chart-scoped workspace tool
+  union.
+- **Both paths** — `moses_discover_tools` is the escape hatch. If a tool
+  isn't in the static profile, calling discover writes the result into
+  the conversation's `exposed_extra_tools` overlay (CHAT-ci3f Phase 1)
+  and it becomes callable on the next turn. **Do not abandon the task**;
+  use discovery.
+
+INTENTIONALLY EXCLUDED from both profiles: `moses_query`, `moses_create`,
+`moses_update`, `moses_delete`, `moses_execute_ticket`,
+`moses_quick_build`, ticket/chart/lane CRUD. The wedge: an app fired
+this action, not the user — tenant-wide blast radius is wrong.
+
+The full contract, including how to detect which profile you are running
+under, lives in **`skills/app-invoked-profiles.md`** (this template ships
+both skills). Sources of truth in the platform repo:
+
+- `backend/internal/mcp/tools/config.go` — `ProfileAppInvokedMM` /
+  `ProfileAppInvokedAgent` constants and their static tool lists.
+- `backend/pkg/prompts/moses_manager.go` — `ModeAppInvokedMM` /
+  `ModeAppInvokedAgent` + `buildAppInvokedManagerPrompt`.
+- `backend/internal/mcp/tools/workspace_tool_proxy.go` —
+  `GetMosesManagerToolsForChart` chart-scoped union.
+- Parent epic: **CHAT-89ig**. Template wave: **CHAT-9oqo (AIPF-9)**.
+- Documentation epic: **CHAT-ieru** — see
+  `arch/app-invoked-profiles.md` in the platform repo for the canonical
+  contract diagram.
+
+---
+
+## Section A details (Path A `chat_prompt` roundtrip — current behaviour)
+
+The original chat-roundtrip walkthrough below applies to BOTH user-typed
+Manager chats AND app-invoked `chat_prompt` actions — the *transport*
+(POST /apps/.../actions/.../invoke → dispatchChatPrompt → MM auto-response
+→ workspace-tool callback → completion webhook → postMessage) is identical.
+What differs is the **tool surface visible inside the conversation**, and
+that is described in `app-invoked-profiles.md`.
+
 ## Roundtrip flow
 
 ```
