@@ -175,6 +175,78 @@ describe('Fullstack Chat Roundtrip — App', () => {
     });
   });
 
+  // CHAT-mux7: when the platform returns 409 action_not_activated with a
+  // structured `hint` field, the template must render the hint verbatim
+  // (not the opaque "(409): {raw json}" string). The hint points the user
+  // at the SelectedAppPanel activation banner above the iframe — without
+  // it, the user sees a code-tagged JSON blob and gives up.
+  it('renders the platform 409 action_not_activated hint instead of raw JSON', async () => {
+    const ACTIVATION_HINT =
+      "Open the app's tab in Moses Manager and approve permissions in the banner above the panel.";
+    mockFetch(async (input) => {
+      const url = typeof input === 'string' ? input : (input as URL | Request).toString();
+      if (url.includes('/api/v1/apps/fullstack-chat/actions/generate-entry/invoke')) {
+        return new Response(
+          JSON.stringify({
+            error: 'action not yet activated; awaiting grant approval',
+            code: 'action_not_activated',
+            invocationId: '',
+            hint: ACTIVATION_HINT,
+          }),
+          { status: 409, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return jsonResponse({ entries: [], count: 0 });
+    });
+
+    render(<App />);
+    const input = (await screen.findByLabelText(/topic/i)) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'octopus' } });
+    const button = await screen.findByRole('button', { name: /generate entry/i });
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(screen.getByText(new RegExp(ACTIVATION_HINT.slice(0, 30), 'i'))).toBeTruthy();
+    });
+
+    // Critically: the noisy "(409):" prefix must NOT appear when the hint is
+    // present. Templates that just append the hint after the raw error
+    // message defeat the purpose of CHAT-mux7.
+    expect(screen.queryByText(/\(409\):/)).toBeNull();
+  });
+
+  // CHAT-mux7 fallback: when the platform returns a 4xx without a hint
+  // (e.g. plain rate_limited, internal_error, non-JSON proxy 502), the
+  // template falls back to the previous "invoke failed (status): detail"
+  // message so the user still sees something actionable. This guards
+  // against the over-eager refactor where the hint path swallows all 4xx.
+  it('falls back to "invoke failed" when the 4xx body has no hint', async () => {
+    mockFetch(async (input) => {
+      const url = typeof input === 'string' ? input : (input as URL | Request).toString();
+      if (url.includes('/api/v1/apps/fullstack-chat/actions/generate-entry/invoke')) {
+        return new Response(
+          JSON.stringify({
+            error: 'rate limit exceeded for this action',
+            code: 'rate_limited',
+            invocationId: '',
+          }),
+          { status: 429, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return jsonResponse({ entries: [], count: 0 });
+    });
+
+    render(<App />);
+    const input = (await screen.findByLabelText(/topic/i)) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'walrus' } });
+    const button = await screen.findByRole('button', { name: /generate entry/i });
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(screen.getByText(/invoke failed \(429\)/i)).toBeTruthy();
+    });
+  });
+
   it('ignores postMessage events from a different origin', async () => {
     render(<App />);
     await screen.findByText(/no entries yet/i);
