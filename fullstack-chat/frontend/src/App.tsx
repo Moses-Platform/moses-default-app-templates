@@ -71,6 +71,24 @@ async function fetchEntries(): Promise<Entry[]> {
   return j.entries ?? [];
 }
 
+// InvokeError carries the structured 4xx envelope shape from the platform's
+// platform-action dispatcher so the UI can render a human-readable hint when
+// available (CHAT-mux7) instead of "invoke failed (409): {raw json}". The
+// platform's HTTP handler flattens the dispatcher's Meta map into top-level
+// body fields, so `hint` arrives as a sibling of `error` and `code`.
+class InvokeError extends Error {
+  status: number;
+  errorCode?: string;
+  hint?: string;
+  constructor(message: string, status: number, errorCode?: string, hint?: string) {
+    super(message);
+    this.name = 'InvokeError';
+    this.status = status;
+    this.errorCode = errorCode;
+    this.hint = hint;
+  }
+}
+
 async function invokeChatPrompt(topic: string): Promise<{ conversationId?: string }> {
   const url = `${mosesApiBase()}/api/v1/apps/${APP_SLUG}/actions/${ACTION_ID}/invoke`;
   const body: Record<string, unknown> = { variables: { topic } };
@@ -84,7 +102,36 @@ async function invokeChatPrompt(topic: string): Promise<{ conversationId?: strin
   });
   if (!r.ok) {
     const detail = await r.text();
-    throw new Error(`invoke failed (${r.status}): ${detail.slice(0, 200)}`);
+    // Try to parse the platform's structured error envelope. The dispatcher
+    // emits {error, code, invocationId, hint?, retryAfterSeconds?, floor?} on
+    // 4xx. Fall back to the raw text on parse failure (cluster errors, proxy
+    // 5xx, etc.).
+    let errorCode: string | undefined;
+    let hint: string | undefined;
+    try {
+      const parsed = JSON.parse(detail) as {
+        error?: string;
+        code?: string;
+        hint?: string;
+      };
+      if (typeof parsed.code === 'string') errorCode = parsed.code;
+      if (typeof parsed.hint === 'string' && parsed.hint.length > 0) hint = parsed.hint;
+    } catch {
+      // Non-JSON body — keep errorCode/hint undefined and use the raw detail.
+    }
+    // CHAT-mux7: when the platform stamps a hint on the 409 envelope, surface
+    // it verbatim instead of the opaque "invoke failed (409): ..." string.
+    // The hint already tells the user where to click; prefixing with the
+    // status code adds noise.
+    if (errorCode === 'action_not_activated' && hint) {
+      throw new InvokeError(hint, r.status, errorCode, hint);
+    }
+    throw new InvokeError(
+      `invoke failed (${r.status}): ${detail.slice(0, 200)}`,
+      r.status,
+      errorCode,
+      hint,
+    );
   }
   const j = (await r.json()) as { result?: { conversationId?: string } };
   return { conversationId: j.result?.conversationId };
