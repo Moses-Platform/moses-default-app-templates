@@ -19,6 +19,12 @@ images:
     tag: "latest"
     pullPolicy: IfNotPresent
 
+# CHAT-pxeo.12 — RollingUpdate race window note:
+# fullstack-unified has no persistent storage today, so the rollout
+# race window described in the persistent templates does not produce
+# orphaned rows here. The note is kept for symmetry: if you add a
+# database, MUST follow the chat/showcase pattern (idempotent tenant
+# rewrite at startup BEFORE listener; document the race window here).
 services:
   - name: app
     image:

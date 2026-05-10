@@ -39,8 +39,15 @@ func Logging(next http.Handler) http.Handler {
 		// Process request
 		next.ServeHTTP(wrapped, r)
 
-		// Log request details
+		// Log request details. CHAT-pxeo.12: log the deploy-pinned self
+		// tenant (storage authority) plus a hint when the caller header
+		// disagrees, since that's the most common cross-tenant attack
+		// signal worth surfacing in steady-state logs.
 		duration := time.Since(start)
+		tenantField := mosesCtx.SelfTenantID
+		if mosesCtx.CallerTenantID != "" && mosesCtx.CallerTenantID != mosesCtx.SelfTenantID {
+			tenantField = mosesCtx.SelfTenantID + " (caller=" + mosesCtx.CallerTenantID + ")"
+		}
 		log.Printf(
 			"[%s] %s %s %d %v %s",
 			requestID,
@@ -48,7 +55,7 @@ func Logging(next http.Handler) http.Handler {
 			r.URL.Path,
 			wrapped.statusCode,
 			duration,
-			mosesCtx.TenantID,
+			tenantField,
 		)
 	})
 }

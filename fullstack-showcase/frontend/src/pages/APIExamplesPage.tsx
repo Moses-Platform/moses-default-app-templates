@@ -176,7 +176,7 @@ export default function APIExamplesPage() {
           <ul>
             <li><strong>Headers Middleware:</strong> Extract X-Moses-* headers for context</li>
             <li><strong>OpenAPI Spec:</strong> Document all endpoints with operationIds</li>
-            <li><strong>Tenant Scoping:</strong> Use X-Moses-Tenant-ID to filter data</li>
+            <li><strong>Tenant Scoping (CHAT-pxeo.12):</strong> Read your self tenant from <code>MOSES_TENANT_ID</code> env (via <code>internal/config.SelfTenantID()</code>). The <code>X-Moses-Tenant-ID</code> header is caller-context only — audit + 403 cross-check on writes — and must NOT be used for storage keys.</li>
             <li><strong>Health Checks:</strong> Implement /health for deployment verification</li>
             <li><strong>CORS:</strong> Allow Moses backend origin for frontend→backend calls</li>
             <li><strong>Relative URLs:</strong> Use relative api/* paths (no leading /) for nginx proxy compatibility</li>

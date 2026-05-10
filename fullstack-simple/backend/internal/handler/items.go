@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/moses-platform/fullstack-simple/internal/config"
 )
 
 // Item represents a simple data entry scoped to a tenant.
@@ -57,11 +60,45 @@ func (h *ItemsHandler) HandleWithID(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *ItemsHandler) list(w http.ResponseWriter, r *http.Request) {
-	tenantID := r.Header.Get("X-Moses-Tenant-ID")
-	if tenantID == "" {
-		tenantID = "default"
+// CHAT-pxeo.12: in-memory store has no persistent state across restarts,
+// but the storage key contract is the same as the persistent templates:
+// reads/writes use config.SelfTenantID(); the X-Moses-Tenant-ID header
+// is caller-context only.
+
+// strictTenantCheckEnabled gates the 403 cross-check. Default true.
+func strictTenantCheckEnabled() bool {
+	v := strings.TrimSpace(os.Getenv("MOSES_STRICT_TENANT_CHECK"))
+	if v == "" {
+		return true
 	}
+	switch strings.ToLower(v) {
+	case "0", "false", "no", "off":
+		return false
+	}
+	return true
+}
+
+// enforceTenantMatch returns true when it has written a 403 response. Caller
+// MUST stop processing on a true return. Body intentionally omits UUIDs.
+func enforceTenantMatch(w http.ResponseWriter, r *http.Request) bool {
+	if !strictTenantCheckEnabled() {
+		return false
+	}
+	caller := strings.TrimSpace(r.Header.Get("X-Moses-Tenant-ID"))
+	if caller == "" || caller == config.SelfTenantID() {
+		return false
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusForbidden)
+	_, _ = w.Write([]byte(`{"error":"tenant_mismatch","code":"E_TENANT_MISMATCH"}`))
+	return true
+}
+
+func (h *ItemsHandler) list(w http.ResponseWriter, r *http.Request) {
+	if enforceTenantMatch(w, r) {
+		return
+	}
+	tenantID := config.SelfTenantID()
 
 	h.mu.RLock()
 	items := h.store[tenantID]
@@ -76,10 +113,10 @@ func (h *ItemsHandler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ItemsHandler) create(w http.ResponseWriter, r *http.Request) {
-	tenantID := r.Header.Get("X-Moses-Tenant-ID")
-	if tenantID == "" {
-		tenantID = "default"
+	if enforceTenantMatch(w, r) {
+		return
 	}
+	tenantID := config.SelfTenantID()
 
 	var body struct {
 		Title string `json:"title"`
@@ -109,10 +146,10 @@ func (h *ItemsHandler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ItemsHandler) delete(w http.ResponseWriter, r *http.Request) {
-	tenantID := r.Header.Get("X-Moses-Tenant-ID")
-	if tenantID == "" {
-		tenantID = "default"
+	if enforceTenantMatch(w, r) {
+		return
 	}
+	tenantID := config.SelfTenantID()
 
 	// Extract ID from path: /api/v1/items/{id}.
 	// CHAT-pbup.17: derive ID via the literal segment (not TrimPrefix

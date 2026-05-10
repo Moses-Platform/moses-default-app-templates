@@ -3,6 +3,8 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/moses-platform/backend-template/internal/middleware"
 	"github.com/moses-platform/backend-template/internal/model"
@@ -18,19 +20,53 @@ func NewItemHandler(store *model.ItemStore) *ItemHandler {
 	return &ItemHandler{store: store}
 }
 
+// CHAT-pxeo.12: storage tenant_id is deploy-pinned (env). The
+// X-Moses-Tenant-ID header is caller-context only and drives the 403
+// cross-check on writes.
+
+// strictTenantCheckEnabled gates the 403 cross-check. Default true.
+func strictTenantCheckEnabled() bool {
+	v := strings.TrimSpace(os.Getenv("MOSES_STRICT_TENANT_CHECK"))
+	if v == "" {
+		return true
+	}
+	switch strings.ToLower(v) {
+	case "0", "false", "no", "off":
+		return false
+	}
+	return true
+}
+
+// enforceTenantMatch returns true when it has written a 403 response.
+// Body intentionally omits the actual UUIDs.
+func enforceTenantMatch(w http.ResponseWriter, mc *middleware.MosesContext) bool {
+	if !strictTenantCheckEnabled() {
+		return false
+	}
+	caller := strings.TrimSpace(mc.CallerTenantID)
+	if caller == "" || caller == mc.SelfTenantID {
+		return false
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusForbidden)
+	_, _ = w.Write([]byte(`{"error":"tenant_mismatch","code":"E_TENANT_MISMATCH"}`))
+	return true
+}
+
 // ListItems handles GET /api/v1/items
-// Returns all items, filtered by tenant when X-Moses-Tenant-ID header is present.
+//
+// CHAT-pxeo.12: scoped to the deploy-pinned self tenant. The historical
+// "no Moses headers → return all items" branch is gone — running without
+// MOSES_TENANT_ID falls back to the 'local-dev' sentinel which scopes to
+// rows tagged 'local-dev' (the same value the in-memory seed uses for
+// pre-populated samples when SelfTenantID() == 'local-dev').
 func (h *ItemHandler) ListItems(w http.ResponseWriter, r *http.Request) {
 	mosesCtx := middleware.GetMosesContext(r)
-
-	var items []model.Item
-	if mosesCtx.TenantID != "" {
-		// Filter by tenant when Moses headers are present
-		items = h.store.GetByTenant(mosesCtx.TenantID)
-	} else {
-		// Return all items for local development (no tenant filtering)
-		items = h.store.GetAll()
+	if enforceTenantMatch(w, mosesCtx) {
+		return
 	}
+
+	items := h.store.GetByTenant(mosesCtx.SelfTenantID)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -42,7 +78,7 @@ func (h *ItemHandler) ListItems(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetItem handles GET /api/v1/items/{id}
-// Returns a single item by ID, with tenant validation when Moses headers are present.
+// Returns a single item by ID, scoped to the deploy-pinned self tenant.
 func (h *ItemHandler) GetItem(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -51,6 +87,9 @@ func (h *ItemHandler) GetItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mosesCtx := middleware.GetMosesContext(r)
+	if enforceTenantMatch(w, mosesCtx) {
+		return
+	}
 
 	item, found := h.store.GetByID(id)
 	if !found {
@@ -58,8 +97,8 @@ func (h *ItemHandler) GetItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Enforce tenant isolation when Moses headers are present
-	if mosesCtx.TenantID != "" && item.TenantID != mosesCtx.TenantID {
+	// Enforce tenant isolation against the deploy-pinned self tenant.
+	if item.TenantID != mosesCtx.SelfTenantID {
 		http.Error(w, "Item not found", http.StatusNotFound)
 		return
 	}
@@ -80,8 +119,13 @@ type CreateItemRequest struct {
 }
 
 // CreateItem handles POST /api/v1/items
-// Creates a new item and associates it with the tenant from Moses headers.
+// Creates a new item and associates it with the deploy-pinned self tenant.
 func (h *ItemHandler) CreateItem(w http.ResponseWriter, r *http.Request) {
+	mosesCtx := middleware.GetMosesContext(r)
+	if enforceTenantMatch(w, mosesCtx) {
+		return
+	}
+
 	var req CreateItemRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -94,10 +138,8 @@ func (h *ItemHandler) CreateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mosesCtx := middleware.GetMosesContext(r)
-
-	// Create item with tenant ID from Moses headers
-	item := h.store.Add(req.Name, req.Description, mosesCtx.TenantID)
+	// CHAT-pxeo.12: tenant id from env, NOT header.
+	item := h.store.Add(req.Name, req.Description, mosesCtx.SelfTenantID)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

@@ -23,6 +23,17 @@ images:
     tag: "latest"
     pullPolicy: IfNotPresent
 
+# CHAT-pxeo.12 — RollingUpdate race window note:
+# This chart uses Helm/K8s defaults for Deployment.spec.strategy
+# (RollingUpdate). During a rollout the OLD pod keeps serving while the
+# NEW pod boots and runs its idempotent tenant-rewrite migration on the
+# notes table. If the OLD pod still ships header-fallback storage logic
+# it can write a handful of rows under '' / 'local-dev' tenant during
+# cutover. They are rewritten on the NEXT pod restart by the same
+# idempotent migration. If you cannot tolerate that window, override the
+# strategy to `Recreate` for the cutover deploy ONLY and revert
+# afterward, or run the UPDATE manually post-cutover. Default is NOT
+# changed here: Recreate causes user-visible downtime on every release.
 services:
   - name: frontend
     image:

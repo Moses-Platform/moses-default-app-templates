@@ -22,7 +22,7 @@ export default function AuthFlowPage() {
   ];
 
   const mosesHeaders = [
-    { header: 'X-Moses-Tenant-ID', description: 'Current tenant UUID' },
+    { header: 'X-Moses-Tenant-ID', description: 'Caller tenant UUID (audit-only post-CHAT-pxeo.12; storage uses MOSES_TENANT_ID env)' },
     { header: 'X-Moses-User-ID', description: 'Authenticated user UUID' },
     { header: 'X-Moses-Chart-ID', description: 'Current chart/project UUID' },
     { header: 'X-Moses-Tool-ID', description: 'Workspace tool UUID (if applicable)' },

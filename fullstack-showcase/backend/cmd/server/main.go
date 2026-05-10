@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/moses-platform/fullstack-showcase/internal/config"
 	"github.com/moses-platform/fullstack-showcase/internal/database"
 	"github.com/moses-platform/fullstack-showcase/internal/handler"
 	"github.com/moses-platform/fullstack-showcase/internal/middleware"
@@ -17,6 +18,11 @@ import (
 
 func main() {
 	log.Println("Starting Moses Showcase server...")
+
+	// CHAT-pxeo.12: hard fail-fast when MOSES_TENANT_ID is unset on a
+	// deployed pod. Storage/lookup keys flow from this env via
+	// internal/config.SelfTenantID().
+	config.Validate()
 
 	// Connect to database
 	dbConfig := database.NewConfigFromEnv()
@@ -34,6 +40,12 @@ func main() {
 		log.Fatalf("Database migration failed: %v", err)
 	}
 	log.Println("Database migration complete")
+
+	// CHAT-pxeo.12: rewrite legacy 'local-dev'/'default'/'' tenant rows
+	// once schema is in place but BEFORE the listener starts. Idempotent.
+	if err := database.MigrateTenant(db, config.SelfTenantID()); err != nil {
+		log.Fatalf("CHAT-pxeo.12 tenant migration failed: %v", err)
+	}
 
 	// Create handlers
 	notesHandler := handler.NewNotesHandler(db)

@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/moses-platform/fullstack-chat/internal/config"
 	"github.com/moses-platform/fullstack-chat/internal/database"
 	"github.com/moses-platform/fullstack-chat/internal/handler"
 	"github.com/moses-platform/fullstack-chat/internal/middleware"
@@ -31,6 +32,11 @@ func main() {
 	// before any work begins. In prod mode (MOSES_DEPLOYED=1) missing
 	// required vars are fatal; in standalone/dev they only warn.
 	validatePlatformEnv(os.Exit)
+
+	// CHAT-pxeo.12: hard fail-fast when MOSES_TENANT_ID is unset on a
+	// deployed pod. Storage/lookup keys flow from this; running with the
+	// "local-dev" sentinel in production silently corrupts tenant scope.
+	config.Validate()
 
 	dbConfig := database.NewConfigFromEnv()
 	log.Printf("Connecting to database at %s:%s...", dbConfig.Host, dbConfig.Port)
@@ -46,6 +52,15 @@ func main() {
 		log.Fatalf("Database migration failed: %v", err)
 	}
 	log.Println("Database migration complete")
+
+	// CHAT-pxeo.12: rewrite legacy 'local-dev'/'default'/'' tenant rows
+	// once the schema is in place but before the listener starts. Runs
+	// every boot (idempotent) so data lands under the real tenant on the
+	// first deploy after this rollout. Failure is fatal — we'd rather
+	// CrashLoopBackOff than serve under inconsistent tenant state.
+	if err := database.MigrateTenant(db, config.SelfTenantID()); err != nil {
+		log.Fatalf("CHAT-pxeo.12 tenant migration failed: %v", err)
+	}
 
 	entries := handler.NewEntriesHandler(db)
 	chatWebhook := handler.NewChatWebhookHandler(db)

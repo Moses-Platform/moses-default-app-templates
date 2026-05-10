@@ -23,6 +23,13 @@ images:
     tag: "latest"
     pullPolicy: IfNotPresent
 
+# CHAT-pxeo.12 — RollingUpdate race window note:
+# This template is in-memory only; tenant migration is moot here (state
+# is wiped on every restart). The RollingUpdate strategy is documented
+# anyway for symmetry with the persistent templates: during a rollout
+# the OLD pod keeps serving while the NEW pod boots. Concurrent writes
+# during cutover land on whichever pod the load balancer hits — and
+# vanish from the old pod when the rollout completes.
 services:
   - name: frontend
     image:

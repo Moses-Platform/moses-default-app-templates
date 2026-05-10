@@ -13,6 +13,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/moses-platform/fullstack-unified/internal/config"
 )
 
 //go:embed static/*
@@ -72,6 +74,11 @@ func renderIndex(w http.ResponseWriter, ctx indexContext) bool {
 }
 
 func main() {
+	// CHAT-pxeo.12: hard fail-fast when MOSES_TENANT_ID is unset on a
+	// deployed pod. fullstack-unified has no persistent storage in this
+	// template, but the contract is symmetrical with the other templates.
+	config.Validate()
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -167,20 +174,59 @@ func main() {
 }
 
 // mosesContext holds Moses platform headers extracted from the request.
+//
+// CHAT-pxeo.12: CallerTenantID is the value of X-Moses-Tenant-ID from
+// the inbound request — it represents the *caller's* tenant context,
+// NOT this app's self-identification. Self tenant comes from the
+// MOSES_TENANT_ID env (config.SelfTenantID()). They MAY agree
+// (workspace-tool calls) or disagree (cross-tenant access attempt) —
+// the latter triggers the strict-tenant-check 403 path.
 type mosesContext struct {
-	TenantID  string `json:"tenant_id"`
-	UserID    string `json:"user_id"`
-	ChartID   string `json:"chart_id"`
-	RequestID string `json:"request_id"`
+	SelfTenantID   string `json:"self_tenant_id"`
+	CallerTenantID string `json:"caller_tenant_id"`
+	UserID         string `json:"user_id"`
+	ChartID        string `json:"chart_id"`
+	RequestID      string `json:"request_id"`
 }
 
 func getMosesContext(r *http.Request) mosesContext {
 	return mosesContext{
-		TenantID:  r.Header.Get("X-Moses-Tenant-ID"),
-		UserID:    r.Header.Get("X-Moses-User-ID"),
-		ChartID:   r.Header.Get("X-Moses-Chart-ID"),
-		RequestID: r.Header.Get("X-Moses-Request-ID"),
+		SelfTenantID:   config.SelfTenantID(),
+		CallerTenantID: r.Header.Get("X-Moses-Tenant-ID"),
+		UserID:         r.Header.Get("X-Moses-User-ID"),
+		ChartID:        r.Header.Get("X-Moses-Chart-ID"),
+		RequestID:      r.Header.Get("X-Moses-Request-ID"),
 	}
+}
+
+// strictTenantCheckEnabled gates the 403 cross-check. Default true.
+func strictTenantCheckEnabled() bool {
+	v := strings.TrimSpace(os.Getenv("MOSES_STRICT_TENANT_CHECK"))
+	if v == "" {
+		return true
+	}
+	switch strings.ToLower(v) {
+	case "0", "false", "no", "off":
+		return false
+	}
+	return true
+}
+
+// enforceTenantMatch returns true and writes a 403 when the caller-supplied
+// header tenant disagrees with the deploy-pinned self tenant. Body
+// intentionally omits UUIDs.
+func enforceTenantMatch(w http.ResponseWriter, r *http.Request) bool {
+	if !strictTenantCheckEnabled() {
+		return false
+	}
+	caller := strings.TrimSpace(r.Header.Get("X-Moses-Tenant-ID"))
+	if caller == "" || caller == config.SelfTenantID() {
+		return false
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusForbidden)
+	_, _ = w.Write([]byte(`{"error":"tenant_mismatch","code":"E_TENANT_MISMATCH"}`))
+	return true
 }
 
 // embeddingPolicy is the resolved CSP frame-ancestors policy this server
@@ -284,6 +330,9 @@ func handleOpenAPI(w http.ResponseWriter, _ *http.Request) {
 }
 
 func handleStatus(w http.ResponseWriter, r *http.Request) {
+	if enforceTenantMatch(w, r) {
+		return
+	}
 	mc := getMosesContext(r)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{

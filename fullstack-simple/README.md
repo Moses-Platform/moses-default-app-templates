@@ -50,6 +50,8 @@ The frontend nginx proxies `/api/*` → `http://${BACKEND_SERVICE_HOST}:${BACKEN
 | Env var | Purpose |
 |---|---|
 | `MOSES_BASE_PATH` | Path prefix the app is mounted under (e.g. `/apps/<tenant>/<slug>/`). Frontend renders into `<meta name="moses-base-path">`; backend strips it from incoming routes. |
+| `MOSES_TENANT_ID` | **Required on a deployed pod (CHAT-pxeo.12).** Authoritative storage/lookup key for the in-memory items map. Read via `internal/config.SelfTenantID()`. The `X-Moses-Tenant-ID` header is caller-context only (audit + 403 cross-check), NOT a fallback for storage. |
+| `MOSES_STRICT_TENANT_CHECK` | Optional, default `true`. When a write request supplies a non-empty `X-Moses-Tenant-ID` that disagrees with `MOSES_TENANT_ID`, the handler returns 403 with `{"error":"tenant_mismatch","code":"E_TENANT_MISMATCH"}`. Set to `false` to disable the cross-check. |
 | `MOSES_EMBEDDING_FRAMING` | `moses-only` (default) / `public` / `denied`. Drives `Content-Security-Policy: frame-ancestors`. |
 | `MOSES_EMBEDDING_ALLOWED_ANCESTORS` | Space-separated CSP source list when `framing=moses-only`. |
 | `MOSES_EMBEDDING_REPORT_URI` | Optional `report-uri` for CSP violations. |

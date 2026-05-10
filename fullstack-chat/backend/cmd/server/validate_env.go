@@ -55,7 +55,10 @@ var requiredPlatformEnv = []struct {
 	chatPrompt  bool // only required when the app declares a chat_prompt action
 }{
 	{envMosesAPIBase, "MOSES_API_BASE — origin of the Moses platform API", false},
-	{envMosesTenantID, "MOSES_TENANT_ID — backend self-identification", false},
+	// CHAT-pxeo.12: MOSES_TENANT_ID is now authoritative for storage keys
+	// (read via internal/config.SelfTenantID()). Already-deployed apps
+	// without it will fail-fast in main() via config.Validate().
+	{envMosesTenantID, "MOSES_TENANT_ID — backend self-identification (REQUIRED — storage key)", false},
 	{envMosesChartID, "MOSES_CHART_ID — scope queries to own chart", false},
 	{envMosesAppSlug, "MOSES_APP_SLUG — webhook-claim verification", false},
 	{envWebhookSecret, "MOSES_CHAT_WEBHOOK_SECRET — HMAC verification (chat_prompt apps)", true},

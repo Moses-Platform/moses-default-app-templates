@@ -10,10 +10,17 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/moses-platform/fullstack-simple/internal/config"
 	"github.com/moses-platform/fullstack-simple/internal/handler"
 )
 
 func main() {
+	// CHAT-pxeo.12: hard fail-fast when MOSES_TENANT_ID is unset on a
+	// deployed pod. fullstack-simple is in-memory only, so there is no
+	// startup data migration to run — restarts wipe state, and tenant
+	// scoping starts clean under the deploy-pinned env value.
+	config.Validate()
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"

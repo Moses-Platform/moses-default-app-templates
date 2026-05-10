@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -36,14 +37,51 @@ func NewNotesHandler(db *sql.DB) *NotesHandler {
 	return &NotesHandler{db: db}
 }
 
-// ListNotes returns all notes for the current tenant
+// CHAT-pxeo.12: storage tenant_id is deploy-pinned (env). Header is
+// caller-context only and drives the 403 cross-check on writes.
+
+// strictTenantCheckEnabled gates the 403 cross-check. Default true.
+func strictTenantCheckEnabled() bool {
+	v := strings.TrimSpace(os.Getenv("MOSES_STRICT_TENANT_CHECK"))
+	if v == "" {
+		return true
+	}
+	switch strings.ToLower(v) {
+	case "0", "false", "no", "off":
+		return false
+	}
+	return true
+}
+
+// enforceTenantMatch returns true and writes 403 when the caller-supplied
+// header tenant disagrees with the deploy-pinned self tenant. Body
+// intentionally omits the actual UUIDs so we never leak tenant ids.
+func enforceTenantMatch(w http.ResponseWriter, mc middleware.MosesContext) bool {
+	if !strictTenantCheckEnabled() {
+		return false
+	}
+	caller := strings.TrimSpace(mc.CallerTenantID)
+	if caller == "" || caller == mc.SelfTenantID {
+		return false
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusForbidden)
+	_, _ = w.Write([]byte(`{"error":"tenant_mismatch","code":"E_TENANT_MISMATCH"}`))
+	return true
+}
+
+// ListNotes returns all notes for the deploy-pinned self tenant.
 func (h *NotesHandler) ListNotes(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	tenantID := middleware.GetMosesContext(r.Context()).TenantID
+	mc := middleware.GetMosesContext(r.Context())
+	if enforceTenantMatch(w, mc) {
+		return
+	}
+	tenantID := mc.SelfTenantID
 
 	rows, err := h.db.QueryContext(r.Context(),
 		`SELECT id, tenant_id, title, content, created_at, updated_at
@@ -72,10 +110,15 @@ func (h *NotesHandler) ListNotes(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(notes)
 }
 
-// CreateNote creates a new note for the current tenant
+// CreateNote creates a new note for the deploy-pinned self tenant.
 func (h *NotesHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	mc := middleware.GetMosesContext(r.Context())
+	if enforceTenantMatch(w, mc) {
 		return
 	}
 
@@ -90,7 +133,7 @@ func (h *NotesHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenantID := middleware.GetMosesContext(r.Context()).TenantID
+	tenantID := mc.SelfTenantID
 
 	var note Note
 	err := h.db.QueryRowContext(r.Context(),
@@ -108,7 +151,8 @@ func (h *NotesHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(note)
 }
 
-// GetNote returns a single note by ID, scoped to tenant.
+// GetNote returns a single note by ID, scoped to the deploy-pinned self
+// tenant.
 // CHAT-pbup.17: derive ID via the literal segment (not TrimPrefix against
 // r.URL.Path) so both root and MOSES_BASE_PATH-prefixed mounts work.
 func (h *NotesHandler) GetNote(w http.ResponseWriter, r *http.Request) {
@@ -123,7 +167,11 @@ func (h *NotesHandler) GetNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenantID := middleware.GetMosesContext(r.Context()).TenantID
+	mc := middleware.GetMosesContext(r.Context())
+	if enforceTenantMatch(w, mc) {
+		return
+	}
+	tenantID := mc.SelfTenantID
 
 	var note Note
 	err := h.db.QueryRowContext(r.Context(),
@@ -143,7 +191,7 @@ func (h *NotesHandler) GetNote(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(note)
 }
 
-// DeleteNote deletes a note by ID, scoped to tenant.
+// DeleteNote deletes a note by ID, scoped to the deploy-pinned self tenant.
 // CHAT-pbup.17: derive ID via the literal segment (not TrimPrefix against
 // r.URL.Path) so both root and MOSES_BASE_PATH-prefixed mounts work.
 func (h *NotesHandler) DeleteNote(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +206,11 @@ func (h *NotesHandler) DeleteNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenantID := middleware.GetMosesContext(r.Context()).TenantID
+	mc := middleware.GetMosesContext(r.Context())
+	if enforceTenantMatch(w, mc) {
+		return
+	}
+	tenantID := mc.SelfTenantID
 
 	result, err := h.db.ExecContext(r.Context(),
 		`DELETE FROM notes WHERE id = $1 AND tenant_id = $2`, id, tenantID)

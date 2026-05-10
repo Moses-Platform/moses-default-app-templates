@@ -78,6 +78,49 @@ func TestRenderIndex_EmptyContextStillRendersTag(t *testing.T) {
 	}
 }
 
+// CHAT-pxeo.12: TestStatus_TenantMismatch403 verifies the 403 cross-check
+// fires on /api/v1/status when the caller-supplied X-Moses-Tenant-ID
+// header disagrees with the deploy-pinned MOSES_TENANT_ID env. The
+// response body must NOT contain either UUID.
+func TestStatus_TenantMismatch403(t *testing.T) {
+	t.Setenv("MOSES_TENANT_ID", "self-tenant-uuid-deploy-pinned")
+	t.Setenv("MOSES_DEPLOYED", "")
+	t.Setenv("MOSES_STRICT_TENANT_CHECK", "true")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	req.Header.Set("X-Moses-Tenant-ID", "caller-tenant-uuid-different")
+	rec := httptest.NewRecorder()
+	handleStatus(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	got := rec.Body.String()
+	if !strings.Contains(got, `"error":"tenant_mismatch"`) {
+		t.Errorf("expected tenant_mismatch error, got %q", got)
+	}
+	if !strings.Contains(got, `"code":"E_TENANT_MISMATCH"`) {
+		t.Errorf("expected E_TENANT_MISMATCH code, got %q", got)
+	}
+	if strings.Contains(got, "caller-tenant-uuid-different") || strings.Contains(got, "self-tenant-uuid-deploy-pinned") {
+		t.Errorf("body must NOT echo any tenant UUID; got %q", got)
+	}
+}
+
+// CHAT-pxeo.12: with the strict check disabled the cross-check is skipped.
+func TestStatus_StrictTenantCheckDisabled(t *testing.T) {
+	t.Setenv("MOSES_STRICT_TENANT_CHECK", "false")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	req.Header.Set("X-Moses-Tenant-ID", "caller-different")
+	rec := httptest.NewRecorder()
+	handleStatus(rec, req)
+
+	if rec.Code == http.StatusForbidden {
+		t.Errorf("cross-check should be skipped, got 403")
+	}
+}
+
 // CHAT-pbup: TestEmbeddingHeadersMiddleware verifies that withEmbeddingHeaders
 // emits Content-Security-Policy: frame-ancestors per the resolved policy
 // AND that X-Frame-Options is only emitted for "denied". The package-level

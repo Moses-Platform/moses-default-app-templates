@@ -64,12 +64,12 @@
       "get": {
         "operationId": "listItems",
         "summary": "List all items for the current tenant",
-        "description": "Returns all items scoped to the tenant identified by the X-Moses-Tenant-ID header.",
+        "description": "Returns all items scoped to the tenant pinned by the deploy-time MOSES_TENANT_ID env (CHAT-pxeo.12). The X-Moses-Tenant-ID header, if present, is audit-only.",
         "parameters": [
           {
             "name": "X-Moses-Tenant-ID",
             "in": "header",
-            "description": "Tenant ID for item scoping (injected by Moses platform)",
+            "description": "Caller-context tenant audit header (CHAT-pxeo.12). Audit-only on the user-facing path; NOT authoritative for storage. Storage keys come from the deploy-pinned MOSES_TENANT_ID env. When set and disagreeing with the env, write handlers return 403 {error:tenant_mismatch,code:E_TENANT_MISMATCH} (gated by MOSES_STRICT_TENANT_CHECK).",
             "schema": { "type": "string" }
           }
         ],
@@ -95,7 +95,7 @@
           {
             "name": "X-Moses-Tenant-ID",
             "in": "header",
-            "description": "Tenant ID for item scoping (injected by Moses platform)",
+            "description": "Caller-context tenant audit header (CHAT-pxeo.12). Audit-only on the user-facing path; NOT authoritative for storage. Storage keys come from the deploy-pinned MOSES_TENANT_ID env. When set and disagreeing with the env, write handlers return 403 {error:tenant_mismatch,code:E_TENANT_MISMATCH} (gated by MOSES_STRICT_TENANT_CHECK).",
             "schema": { "type": "string" }
           }
         ],
@@ -152,7 +152,7 @@
           {
             "name": "X-Moses-Tenant-ID",
             "in": "header",
-            "description": "Tenant ID for item scoping (injected by Moses platform)",
+            "description": "Caller-context tenant audit header (CHAT-pxeo.12). Audit-only on the user-facing path; NOT authoritative for storage. Storage keys come from the deploy-pinned MOSES_TENANT_ID env. When set and disagreeing with the env, write handlers return 403 {error:tenant_mismatch,code:E_TENANT_MISMATCH} (gated by MOSES_STRICT_TENANT_CHECK).",
             "schema": { "type": "string" }
           }
         ],

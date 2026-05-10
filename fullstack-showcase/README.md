@@ -65,7 +65,20 @@ A fullstack application showcasing Moses platform features including MCP tools, 
 Browser → Frontend nginx:8080 → Proxy /api/* → Backend:8080
                                       ↓
                         Moses Headers (X-Moses-Tenant-ID, etc.)
+                        — caller-context only post-CHAT-pxeo.12 —
 ```
+
+**Tenant identity (CHAT-pxeo.12).** The backend reads its self-tenant
+from the `MOSES_TENANT_ID` env var (via `internal/config.SelfTenantID()`)
+and uses it as the authoritative storage/lookup key for the `notes`
+table. The `X-Moses-Tenant-ID` header is preserved as caller context
+(`MosesContext.CallerTenantID`) for audit and the 403 cross-check on
+writes — `{"error":"tenant_mismatch","code":"E_TENANT_MISMATCH"}` is
+returned when a request supplies a non-empty header that disagrees with
+the deploy-pinned env. Toggle the cross-check via
+`MOSES_STRICT_TENANT_CHECK=false`. On a deployed pod (`MOSES_DEPLOYED=1`)
+the server fail-fast panics if `MOSES_TENANT_ID` is unset; in local dev
+it falls back to the sentinel `local-dev`.
 
 ## Running Locally
 

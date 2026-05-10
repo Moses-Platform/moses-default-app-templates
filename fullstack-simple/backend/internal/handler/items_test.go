@@ -5,17 +5,21 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
 // itemsCreate POSTs a fresh item via the handler and returns its ID.
 // Mirrors the production wiring (mux dispatches to Handle for the
-// collection route).
+// collection route). Caller is expected to have set MOSES_TENANT_ID via
+// t.Setenv before calling, OR rely on the default 'local-dev' sentinel.
 func itemsCreate(t *testing.T, h *ItemsHandler) string {
 	t.Helper()
 	body, _ := json.Marshal(map[string]string{"title": "test"})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/items", bytes.NewReader(body))
-	req.Header.Set("X-Moses-Tenant-ID", "tenant-1")
+	// CHAT-pxeo.12: header is caller-audit, not authoritative for storage.
+	// Setting it to match the env keeps the cross-check happy; storage key
+	// comes from config.SelfTenantID().
 	rec := httptest.NewRecorder()
 	h.Handle(rec, req)
 	if rec.Code != http.StatusCreated {
@@ -35,7 +39,6 @@ func TestItemsDelete_RootMount(t *testing.T) {
 	id := itemsCreate(t, h)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/items/"+id, nil)
-	req.Header.Set("X-Moses-Tenant-ID", "tenant-1")
 	rec := httptest.NewRecorder()
 	h.HandleWithID(rec, req)
 
@@ -56,7 +59,6 @@ func TestItemsDelete_SubPath(t *testing.T) {
 
 	subPath := "/apps/tenant/slug/api/v1/items/" + id
 	req := httptest.NewRequest(http.MethodDelete, subPath, nil)
-	req.Header.Set("X-Moses-Tenant-ID", "tenant-1")
 	rec := httptest.NewRecorder()
 	h.HandleWithID(rec, req)
 
@@ -74,11 +76,52 @@ func TestItemsDelete_EmptyID400(t *testing.T) {
 		"/apps/t/x/api/v1/items/",
 	} {
 		req := httptest.NewRequest(http.MethodDelete, urlPath, nil)
-		req.Header.Set("X-Moses-Tenant-ID", "tenant-1")
 		rec := httptest.NewRecorder()
 		h.HandleWithID(rec, req)
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("DELETE %s: expected 400 (empty ID), got %d", urlPath, rec.Code)
 		}
+	}
+}
+
+// CHAT-pxeo.12 acceptance test #2 (cross-check): when the caller sends a
+// X-Moses-Tenant-ID that disagrees with the deploy-pinned env, the write
+// is rejected with 403 + the canonical error envelope. The body MUST NOT
+// echo either UUID.
+func TestItems_TenantMismatch403(t *testing.T) {
+	h := NewItemsHandler()
+	body, _ := json.Marshal(map[string]string{"title": "x"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/items", bytes.NewReader(body))
+	req.Header.Set("X-Moses-Tenant-ID", "header-different-tenant-uuid")
+	rec := httptest.NewRecorder()
+	h.Handle(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	got := rec.Body.String()
+	if !strings.Contains(got, `"error":"tenant_mismatch"`) {
+		t.Errorf("expected error tenant_mismatch in body, got %q", got)
+	}
+	if !strings.Contains(got, `"code":"E_TENANT_MISMATCH"`) {
+		t.Errorf("expected code E_TENANT_MISMATCH in body, got %q", got)
+	}
+	if strings.Contains(got, "header-different-tenant-uuid") {
+		t.Errorf("body must NOT echo caller tenant; got %q", got)
+	}
+}
+
+// CHAT-pxeo.12 — the cross-check is opt-out via env knob.
+func TestItems_StrictTenantCheckDisabled(t *testing.T) {
+	t.Setenv("MOSES_STRICT_TENANT_CHECK", "false")
+	h := NewItemsHandler()
+	body, _ := json.Marshal(map[string]string{"title": "x"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/items", bytes.NewReader(body))
+	req.Header.Set("X-Moses-Tenant-ID", "still-mismatched")
+	rec := httptest.NewRecorder()
+	h.Handle(rec, req)
+
+	if rec.Code == http.StatusForbidden {
+		t.Errorf("expected cross-check skipped with MOSES_STRICT_TENANT_CHECK=false, got 403")
 	}
 }

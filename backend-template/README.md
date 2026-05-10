@@ -133,9 +133,12 @@ X-Moses-MCP-Source: claude-code
 X-Moses-API-Key-ID: key_xyz789
 ```
 
-### Tenant Isolation
+### Tenant Isolation (CHAT-pxeo.12)
 
-The middleware automatically extracts tenant information:
+Self-tenant identification is read from the `MOSES_TENANT_ID` env var
+via `internal/config.SelfTenantID()`, NOT from the request header. The
+`X-Moses-Tenant-ID` header is preserved as caller context for audit and
+the 403 cross-check on writes.
 
 ```go
 import "github.com/moses-platform/backend-template/internal/middleware"
@@ -143,19 +146,20 @@ import "github.com/moses-platform/backend-template/internal/middleware"
 func MyHandler(w http.ResponseWriter, r *http.Request) {
     mosesCtx := middleware.GetMosesContext(r)
 
-    if mosesCtx.TenantID != "" {
-        // Running on Moses platform - enforce tenant filtering
-        items := store.GetByTenant(mosesCtx.TenantID)
-    } else {
-        // Local development - return all items
-        items := store.GetAll()
-    }
+    // Storage scope: deploy-pinned self tenant (env-driven)
+    items := store.GetByTenant(mosesCtx.SelfTenantID)
 
-    // Use request ID for tracing
-    log.Printf("[%s] Request from user %s",
-        mosesCtx.RequestID, mosesCtx.UserID)
+    // Audit only: caller context from the X-Moses-Tenant-ID header
+    log.Printf("[%s] Request from user %s, caller_tenant=%s",
+        mosesCtx.RequestID, mosesCtx.UserID, mosesCtx.CallerTenantID)
 }
 ```
+
+| Env var | Purpose |
+|---|---|
+| `MOSES_TENANT_ID` | **Required on a deployed pod.** Authoritative storage/lookup key, surfaced via `internal/config.SelfTenantID()`. |
+| `MOSES_DEPLOYED` | Set to `1` by the platform's deployment template; flips `config.Validate()` from warn-only to fail-fast on missing `MOSES_TENANT_ID`. |
+| `MOSES_STRICT_TENANT_CHECK` | Optional, default `true`. When a request supplies a non-empty `X-Moses-Tenant-ID` that disagrees with `MOSES_TENANT_ID`, write/diagnostic handlers return 403 with `{"error":"tenant_mismatch","code":"E_TENANT_MISMATCH"}`. Set to `false` to disable. |
 
 ### OpenAPI Discovery
 

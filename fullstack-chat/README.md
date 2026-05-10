@@ -199,11 +199,16 @@ This template targets the implemented surface of:
 
 The template assumes deployment via Moses' Helm pipeline. For pure local dev (no Moses), run the backend and frontend independently with a local Postgres; the chat-action flow won't fire (Moses is the dispatcher), but you can exercise the entries CRUD and the webhook receiver via curl.
 
+**CHAT-pxeo.12 — tenant identity from env, not header.** The backend now reads its self-tenant identifier from `MOSES_TENANT_ID` (via `internal/config.SelfTenantID()`), NOT from the `X-Moses-Tenant-ID` request header. The header is preserved as caller context (audit / cross-check), but storage and lookup keys come from the deploy-pinned env. On a deployed pod (`MOSES_DEPLOYED=1`) the server fail-fast panics if `MOSES_TENANT_ID` is unset; in local dev it falls back to the sentinel `local-dev`. A 403 with `{"error":"tenant_mismatch","code":"E_TENANT_MISMATCH"}` is returned when a request supplies a non-empty `X-Moses-Tenant-ID` that disagrees with the deploy-pinned value. Toggle the cross-check via `MOSES_STRICT_TENANT_CHECK=false` if you need to debug.
+
 ```bash
 # Backend with local Postgres
+# MOSES_TENANT_ID is optional in local dev — omit and the sentinel
+# 'local-dev' is used. Set it to mirror a real deploy.
 DB_HOST=localhost DB_PORT=5432 DB_NAME=fullstack_chat \
   DB_USER=postgres DB_PASSWORD=postgres \
   MOSES_CHAT_WEBHOOK_SECRET=dev-secret \
+  MOSES_TENANT_ID=local-dev \
   go run ./cmd/server
 
 # Frontend with Vite proxy

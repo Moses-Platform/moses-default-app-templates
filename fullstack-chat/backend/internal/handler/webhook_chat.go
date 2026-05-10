@@ -12,6 +12,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/moses-platform/fullstack-chat/internal/config"
 )
 
 // ChatCompletionPayload mirrors the Moses-side outbound webhook envelope
@@ -149,11 +151,15 @@ func (h *ChatWebhookHandler) persist(r *http.Request, p ChatCompletionPayload, s
 	if h.DB == nil {
 		return nil // best-effort in unit tests with nil DB
 	}
+	// CHAT-pxeo.12: storage key is deploy-pinned (env). The platform→app
+	// webhook is HMAC-signed body only; no X-Moses-Tenant-ID header is
+	// sent here, so the cross-check skips cleanly. Spec deliberately does
+	// NOT add a 403 path on this route.
 	_, err := h.DB.ExecContext(r.Context(),
 		`INSERT INTO chat_completions
 		   (tenant_id, conversation_id, final_message_id, final_text, model, latency_ms, finish_reason, signature_valid)
 		 VALUES ($1, $2, NULLIF($3,''), NULLIF($4,''), NULLIF($5,''), NULLIF($6,0), NULLIF($7,''), $8)`,
-		mosesTenant(r),
+		config.SelfTenantID(),
 		p.ConversationID,
 		p.FinalMessageID,
 		p.FinalText,

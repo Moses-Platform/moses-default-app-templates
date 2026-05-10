@@ -14,6 +14,13 @@ moses:
     allowedAncestors: []
     reportUri: ""
 
+# CHAT-pxeo.12 — RollingUpdate race window note:
+# This template is in-memory only; tenant migration is moot here (state
+# is wiped on every restart). The note is kept for symmetry with the
+# persistent templates: if you add a database, follow the showcase/chat
+# pattern (idempotent tenant rewrite at startup BEFORE the listener;
+# document the race window here).
+
 replicaCount: 1
 
 image:

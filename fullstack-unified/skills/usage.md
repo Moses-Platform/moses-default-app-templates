@@ -57,4 +57,4 @@ Unlike `fullstack-simple` (separate frontend + backend containers with nginx pro
 
 ## Moses Integration
 
-The backend extracts Moses headers (X-Moses-Tenant-ID, X-Moses-User-ID, X-Moses-Chart-ID, X-Moses-Request-ID) and returns them in the `/api/v1/status` response. BASE_URL environment variable is respected for ingress path prefixing.
+The backend extracts Moses headers (X-Moses-Tenant-ID — caller audit context only post-CHAT-pxeo.12, X-Moses-User-ID, X-Moses-Chart-ID, X-Moses-Request-ID) and returns them in the `/api/v1/status` response alongside `self_tenant_id`, the deploy-pinned tenant id read from `MOSES_TENANT_ID` via `internal/config.SelfTenantID()`. BASE_URL environment variable is respected for ingress path prefixing.

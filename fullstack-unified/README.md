@@ -62,6 +62,8 @@ To update the spec: edit `api/openapi.json`, then rebuild the binary. There is n
 | Env var | Purpose |
 |---|---|
 | `MOSES_BASE_PATH` | Path prefix; mounts every route under it. Both raw routes and `/{prefix}/...` aliases work. |
+| `MOSES_TENANT_ID` | **Required on a deployed pod (CHAT-pxeo.12).** Authoritative self-identification, exposed to handlers via `internal/config.SelfTenantID()`. The `X-Moses-Tenant-ID` header is caller-context only (audit + 403 cross-check), NOT a fallback. |
+| `MOSES_STRICT_TENANT_CHECK` | Optional, default `true`. When a request supplies a non-empty `X-Moses-Tenant-ID` that disagrees with `MOSES_TENANT_ID`, write/diagnostic handlers return 403 with `{"error":"tenant_mismatch","code":"E_TENANT_MISMATCH"}`. Set to `false` to disable. |
 | `MOSES_EMBEDDING_FRAMING` | `moses-only` (default) / `public` / `denied`. Drives the `Content-Security-Policy: frame-ancestors` middleware. |
 | `MOSES_EMBEDDING_ALLOWED_ANCESTORS` | Explicit override for the moses-only ancestors list. |
 | `MOSES_EMBEDDING_REPORT_URI` | Optional CSP report-uri. |
