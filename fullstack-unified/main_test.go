@@ -107,6 +107,33 @@ func TestStatus_TenantMismatch403(t *testing.T) {
 	}
 }
 
+// CHAT-w6gt: the happy-path /status response must NOT include
+// self_tenant_id or caller_tenant_id JSON keys (defense in depth — the
+// 403 path already redacted UUIDs from the error body, but the success
+// body still echoed both fields). The redaction is enforced by
+// `json:"-"` on the mosesContext struct.
+func TestStatus_HappyPath_NoTenantUUIDsInBody(t *testing.T) {
+	t.Setenv("MOSES_TENANT_ID", "self-tenant-uuid-deploy-pinned")
+	t.Setenv("MOSES_DEPLOYED", "")
+	t.Setenv("MOSES_STRICT_TENANT_CHECK", "false") // disable the 403 path so we hit the happy body
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	req.Header.Set("X-Moses-Tenant-ID", "self-tenant-uuid-deploy-pinned") // matches → no 403
+	rec := httptest.NewRecorder()
+	handleStatus(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	got := rec.Body.String()
+	if strings.Contains(got, "self_tenant_id") || strings.Contains(got, "caller_tenant_id") {
+		t.Errorf("body must NOT include tenant JSON keys; got %q", got)
+	}
+	if strings.Contains(got, "self-tenant-uuid-deploy-pinned") {
+		t.Errorf("body must NOT echo the tenant UUID; got %q", got)
+	}
+}
+
 // CHAT-pxeo.12: with the strict check disabled the cross-check is skipped.
 func TestStatus_StrictTenantCheckDisabled(t *testing.T) {
 	t.Setenv("MOSES_STRICT_TENANT_CHECK", "false")

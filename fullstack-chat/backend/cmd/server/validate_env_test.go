@@ -4,6 +4,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -74,6 +76,110 @@ func TestValidatePlatformEnv_DevMode_MissingRequired_DoesNotExit(t *testing.T) {
 	}
 	if exitCalled {
 		t.Errorf("dev mode must NOT call exit even when required vars are missing — only warn")
+	}
+}
+
+// writeConfigJSON writes a moses-app.config.json fixture to a tmp file and
+// returns its path. It also sets MOSES_APP_CONFIG_PATH for the test.
+func writeConfigJSON(t *testing.T, body string) string {
+	t.Helper()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "moses-app.config.json")
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		t.Fatalf("write config fixture: %v", err)
+	}
+	t.Setenv("MOSES_APP_CONFIG_PATH", p)
+	return p
+}
+
+// CHAT-ct5q: a fork without chat_prompt actions deploys in prod mode
+// WITHOUT setting MOSES_CHAT_WEBHOOK_SECRET.
+func TestValidatePlatformEnv_NoChatPromptAction_WebhookSecretNotRequired(t *testing.T) {
+	writeConfigJSON(t, `{
+        "name": "fork-without-chat-prompt",
+        "platformActions": [
+            {"id": "do", "type": "launch_agent"}
+        ]
+    }`)
+	setEnvMap(t, map[string]string{
+		envMosesDeployed: "1",
+		envMosesAPIBase:  "https://moses.example.com",
+		envMosesTenantID: "00000000-0000-0000-0000-000000000001",
+		envMosesChartID:  "00000000-0000-0000-0000-000000000002",
+		envMosesAppSlug:  "fork-without-chat-prompt",
+		envWebhookSecret: "", // deliberately missing
+	})
+
+	exitCalled := false
+	exit := func(int) { exitCalled = true }
+	ok := validatePlatformEnv(exit)
+	if !ok {
+		t.Errorf("expected validation to pass when config declares no chat_prompt action and webhook secret is absent")
+	}
+	if exitCalled {
+		t.Errorf("exit must NOT be called when chat_prompt is not declared and webhook secret is absent")
+	}
+}
+
+// CHAT-ct5q: a fork WITH chat_prompt declared continues to fail-fast on
+// missing webhook secret — no regression for canonical fullstack-chat.
+func TestValidatePlatformEnv_ChatPromptDeclared_WebhookSecretRequired(t *testing.T) {
+	writeConfigJSON(t, `{
+        "name": "fork-with-chat-prompt",
+        "platformActions": [
+            {"id": "do", "type": "chat_prompt"}
+        ]
+    }`)
+	setEnvMap(t, map[string]string{
+		envMosesDeployed: "1",
+		envMosesAPIBase:  "https://moses.example.com",
+		envMosesTenantID: "00000000-0000-0000-0000-000000000001",
+		envMosesChartID:  "00000000-0000-0000-0000-000000000002",
+		envMosesAppSlug:  "fork-with-chat-prompt",
+		envWebhookSecret: "", // missing → must fail-fast
+	})
+
+	exitCalled := false
+	exit := func(int) { exitCalled = true }
+	ok := validatePlatformEnv(exit)
+	if ok {
+		t.Errorf("expected validation to fail when chat_prompt is declared and webhook secret is missing")
+	}
+	if !exitCalled {
+		t.Errorf("expected exit to be called in prod mode when webhook secret is missing for a chat_prompt-declared fork")
+	}
+}
+
+// CHAT-ct5q: missing/unreadable config falls back to strict mode
+// (preserves historical behaviour — webhook secret stays required).
+func TestValidatePlatformEnv_NoConfigFile_FallsBackToStrict(t *testing.T) {
+	// Point MOSES_APP_CONFIG_PATH at a non-existent file and ensure no
+	// stray ./moses-app.config.json is in the test cwd.
+	t.Setenv("MOSES_APP_CONFIG_PATH", filepath.Join(t.TempDir(), "does-not-exist.json"))
+	setEnvMap(t, map[string]string{
+		envMosesDeployed: "1",
+		envMosesAPIBase:  "https://moses.example.com",
+		envMosesTenantID: "00000000-0000-0000-0000-000000000001",
+		envMosesChartID:  "00000000-0000-0000-0000-000000000002",
+		envMosesAppSlug:  "fullstack-chat",
+		envWebhookSecret: "",
+	})
+
+	// chdir to tmpdir so the ./moses-app.config.json fallback path also misses.
+	cwd, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	exitCalled := false
+	exit := func(int) { exitCalled = true }
+	ok := validatePlatformEnv(exit)
+	if ok {
+		t.Errorf("expected validation to fail when webhook secret is missing and config cannot be located (strict fallback)")
+	}
+	if !exitCalled {
+		t.Errorf("expected exit to be called under strict fallback when webhook secret is missing")
 	}
 }
 

@@ -13,8 +13,11 @@ interface StatusResponse {
   app: string
   version: string
   uptime: string
+  // CHAT-w6gt: tenant_id intentionally omitted from the response body
+  // (defense in depth — the caller already knows their tenant context
+  // from the request header they sent in). user_id / chart_id /
+  // request_id remain.
   moses: {
-    tenant_id: string
     user_id: string
     chart_id: string
     request_id: string
@@ -147,7 +150,7 @@ function App() {
           )}
         </section>
 
-        {status && status.moses.tenant_id && (
+        {status && status.moses.chart_id && (
           <section className="card">
             <h2>Moses Context</h2>
             <div className="status">

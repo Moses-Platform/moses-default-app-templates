@@ -10,12 +10,15 @@ import (
 var startTime = time.Now()
 
 func Status(w http.ResponseWriter, r *http.Request) {
+	// CHAT-w6gt: omit tenant_id from the JSON response (defense in
+	// depth — the caller already knows their tenant context via the
+	// header they sent in). user_id / chart_id / request_id remain so
+	// the demo card still shows Moses-platform context.
 	response := map[string]interface{}{
 		"app":     "fullstack-simple",
 		"version": "1.0.0",
 		"uptime":  time.Since(startTime).String(),
 		"moses": map[string]string{
-			"tenant_id":  r.Header.Get("X-Moses-Tenant-ID"),
 			"user_id":    r.Header.Get("X-Moses-User-ID"),
 			"chart_id":   r.Header.Get("X-Moses-Chart-ID"),
 			"request_id": r.Header.Get("X-Moses-Request-ID"),

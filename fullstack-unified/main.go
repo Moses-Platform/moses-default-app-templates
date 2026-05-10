@@ -181,9 +181,16 @@ func main() {
 // MOSES_TENANT_ID env (config.SelfTenantID()). They MAY agree
 // (workspace-tool calls) or disagree (cross-tenant access attempt) —
 // the latter triggers the strict-tenant-check 403 path.
+//
+// CHAT-w6gt: tenant UUIDs are kept for internal logic (the 403
+// cross-check, audit trails) but omitted from JSON responses so the
+// /status debug endpoint doesn't broaden the tenant-UUID attack surface
+// via screenshots / log channels / cross-pod aggregation. The
+// caller-tenant value is still observable via the X-Moses-Tenant-ID
+// request header they sent in.
 type mosesContext struct {
-	SelfTenantID   string `json:"self_tenant_id"`
-	CallerTenantID string `json:"caller_tenant_id"`
+	SelfTenantID   string `json:"-"`
+	CallerTenantID string `json:"-"`
 	UserID         string `json:"user_id"`
 	ChartID        string `json:"chart_id"`
 	RequestID      string `json:"request_id"`

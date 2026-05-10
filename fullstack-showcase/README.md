@@ -80,6 +80,15 @@ the deploy-pinned env. Toggle the cross-check via
 the server fail-fast panics if `MOSES_TENANT_ID` is unset; in local dev
 it falls back to the sentinel `local-dev`.
 
+**Future schema tightening (CHAT-suvi).** The `notes.tenant_id` column is
+currently `TEXT NOT NULL DEFAULT ''` to accommodate the `local-dev`
+sentinel string. If a future template revision tightens the column to
+`UUID NOT NULL`, any rows written under the sentinel must first be
+re-tenanted to a real UUID (or purged) — otherwise the type cast will
+reject them. The boot-time fix-up in `internal/database/db.go` that
+re-writes legacy `'local-dev' | 'default' | ''` rows is the migration
+hook for that future change.
+
 ## Running Locally
 
 ### Option 1: Docker Compose (Recommended)

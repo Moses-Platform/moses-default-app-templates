@@ -4,6 +4,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -72,13 +73,80 @@ func isProdMode() bool {
 	return v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes")
 }
 
+// chatPromptActionDeclared reports whether the deployed
+// `moses-app.config.json` (if discoverable next to the binary) declares
+// at least one `platformActions[].type == "chat_prompt"` entry.
+//
+// CHAT-ct5q: gates the chatPrompt-flagged env vars so a fork that drops
+// chat_prompt actions doesn't fail-fast on missing
+// MOSES_CHAT_WEBHOOK_SECRET. Resolution rules:
+//
+//   - MOSES_APP_CONFIG_PATH (env override) wins if set.
+//   - Else search a few standard locations next to the binary.
+//   - If no config is found OR parsing fails, RETURN TRUE — preserve
+//     the historical "always required" behaviour so the strict default
+//     still protects the canonical fullstack-chat shape. Forks that
+//     drop chat_prompt opt into the gate by ensuring the config travels
+//     with the image (Dockerfile COPY) at a discoverable path.
+func chatPromptActionDeclared() bool {
+	candidates := []string{}
+	if p := strings.TrimSpace(os.Getenv("MOSES_APP_CONFIG_PATH")); p != "" {
+		candidates = append(candidates, p)
+	}
+	candidates = append(candidates,
+		"./moses-app.config.json",
+		"/app/moses-app.config.json",
+		"../moses-app.config.json",
+	)
+
+	var data []byte
+	var readErr error
+	found := ""
+	for _, p := range candidates {
+		b, err := os.ReadFile(p)
+		if err == nil {
+			data = b
+			found = p
+			break
+		}
+		readErr = err
+	}
+	if data == nil {
+		log.Printf("CHAT-ct5q: moses-app.config.json not found (last err: %v); defaulting to strict chat_prompt-required mode", readErr)
+		return true
+	}
+
+	var cfg struct {
+		PlatformActions []struct {
+			Type string `json:"type"`
+		} `json:"platformActions"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		log.Printf("CHAT-ct5q: failed to parse %s: %v; defaulting to strict chat_prompt-required mode", found, err)
+		return true
+	}
+	for _, a := range cfg.PlatformActions {
+		if a.Type == "chat_prompt" {
+			return true
+		}
+	}
+	log.Printf("CHAT-ct5q: %s declares no chat_prompt actions; chatPrompt-flagged env vars are NOT required", found)
+	return false
+}
+
 // validatePlatformEnv inspects the env and either exits (prod) or warns
 // (dev) for each missing required variable. Returns true when all
 // required vars were present. The exit hook is parameterised so tests
 // can intercept it without crashing the test binary.
 func validatePlatformEnv(exit func(int)) bool {
+	chatPromptRequired := chatPromptActionDeclared()
 	missing := make([]string, 0, len(requiredPlatformEnv))
 	for _, v := range requiredPlatformEnv {
+		// CHAT-ct5q: skip chatPrompt-flagged entries when the deployed
+		// config declares no chat_prompt action.
+		if v.chatPrompt && !chatPromptRequired {
+			continue
+		}
 		if strings.TrimSpace(os.Getenv(v.name)) == "" {
 			missing = append(missing, v.description)
 		}
@@ -110,10 +178,15 @@ func validatePlatformEnv(exit func(int)) bool {
 
 // formatMissingEnvList is a tiny helper exported for the test harness.
 // It produces a comma-separated list of missing env names (no descriptions)
-// for assertion.
+// for assertion. Honors the chatPrompt gate (CHAT-ct5q) so it stays in
+// lockstep with validatePlatformEnv.
 func formatMissingEnvList() string {
+	chatPromptRequired := chatPromptActionDeclared()
 	missing := make([]string, 0, len(requiredPlatformEnv))
 	for _, v := range requiredPlatformEnv {
+		if v.chatPrompt && !chatPromptRequired {
+			continue
+		}
 		if strings.TrimSpace(os.Getenv(v.name)) == "" {
 			missing = append(missing, v.name)
 		}

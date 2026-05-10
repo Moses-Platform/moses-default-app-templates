@@ -11,10 +11,16 @@ import (
 	"github.com/moses-platform/fullstack-showcase/internal/middleware"
 )
 
-// Note represents a stored note
+// Note represents a stored note.
+//
+// CHAT-w6gt: TenantID is kept for storage/logic but omitted from JSON
+// responses (defense-in-depth). The caller has already proven they reach
+// this pod (which serves a single tenant), so echoing the UUID back
+// broadens the attack surface for screenshot/log/aggregation channels
+// without adding any function the frontend depends on.
 type Note struct {
 	ID        string    `json:"id"`
-	TenantID  string    `json:"tenant_id"`
+	TenantID  string    `json:"-"`
 	Title     string    `json:"title"`
 	Content   string    `json:"content"`
 	CreatedAt time.Time `json:"created_at"`
