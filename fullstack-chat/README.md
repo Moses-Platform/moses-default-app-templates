@@ -180,6 +180,12 @@ MOSES_CHAT_WEBHOOK_SECRET=$NEW_SECRET go run ./cmd/server
 
 If your `completionWebhook.url` points at an HTTPS URL outside the cluster (rare), the K8s Secret bridge does NOT reach you. Operators recover the secret from the install-time audit log (see `moses-deployment-guide/SKILL.md` § *"Off-cluster webhook recipients"*).
 
+### Forks that drop chat_prompt (CHAT-ct5q)
+
+The backend's `validate_env.go` startup gate makes `MOSES_CHAT_WEBHOOK_SECRET` **conditionally** required: it parses `moses-app.config.json` at boot and only enforces the var when the config declares at least one `chat_prompt` platform action. The config is searched via `MOSES_APP_CONFIG_PATH`, then `./moses-app.config.json`, `/app/moses-app.config.json`, `../moses-app.config.json`. If the config is missing or unparseable the gate falls back to **strict mode** (treats `chat_prompt` as declared) so a misconfigured deploy fails loud, not silently.
+
+A fork that drops chat_prompt entirely should EITHER ship the trimmed config alongside the binary (so the gate sees an empty `platformActions[]` and relaxes) OR set `MOSES_CHAT_WEBHOOK_SECRET` to a placeholder — running the strict-fallback path with no secret still fail-fasts in production.
+
 ## Relationship to platform-prep beads
 
 This template targets the implemented surface of:
