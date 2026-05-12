@@ -20,12 +20,13 @@ func setEnvMap(t *testing.T, m map[string]string) {
 
 func TestValidatePlatformEnv_ProdMode_AllPresent_NoExit(t *testing.T) {
 	setEnvMap(t, map[string]string{
-		envMosesDeployed: "1",
-		envMosesAPIBase:  "https://moses.example.com",
-		envMosesTenantID: "00000000-0000-0000-0000-000000000001",
-		envMosesChartID:  "00000000-0000-0000-0000-000000000002",
-		envMosesAppSlug:  "fullstack-chat",
-		envWebhookSecret: "abc123",
+		envMosesDeployed:        "1",
+		envMosesAPIBase:         "https://moses.example.com",
+		envMosesTenantID:        "00000000-0000-0000-0000-000000000001",
+		envMosesChartID:         "00000000-0000-0000-0000-000000000002",
+		envMosesAppSlug:         "fullstack-chat",
+		envWebhookSecret:        "abc123",
+		envMosesInternalAPIBase: "http://moses-backend.moses.svc.cluster.local:8080",
 	})
 
 	exitCalled := false
@@ -102,12 +103,13 @@ func TestValidatePlatformEnv_NoChatPromptAction_WebhookSecretNotRequired(t *test
         ]
     }`)
 	setEnvMap(t, map[string]string{
-		envMosesDeployed: "1",
-		envMosesAPIBase:  "https://moses.example.com",
-		envMosesTenantID: "00000000-0000-0000-0000-000000000001",
-		envMosesChartID:  "00000000-0000-0000-0000-000000000002",
-		envMosesAppSlug:  "fork-without-chat-prompt",
-		envWebhookSecret: "", // deliberately missing
+		envMosesDeployed:        "1",
+		envMosesAPIBase:         "https://moses.example.com",
+		envMosesTenantID:        "00000000-0000-0000-0000-000000000001",
+		envMosesChartID:         "00000000-0000-0000-0000-000000000002",
+		envMosesAppSlug:         "fork-without-chat-prompt",
+		envWebhookSecret:        "", // deliberately missing (no chat_prompt → not required)
+		envMosesInternalAPIBase: "", // deliberately missing (no chat_prompt → not required)
 	})
 
 	exitCalled := false
@@ -131,12 +133,13 @@ func TestValidatePlatformEnv_ChatPromptDeclared_WebhookSecretRequired(t *testing
         ]
     }`)
 	setEnvMap(t, map[string]string{
-		envMosesDeployed: "1",
-		envMosesAPIBase:  "https://moses.example.com",
-		envMosesTenantID: "00000000-0000-0000-0000-000000000001",
-		envMosesChartID:  "00000000-0000-0000-0000-000000000002",
-		envMosesAppSlug:  "fork-with-chat-prompt",
-		envWebhookSecret: "", // missing → must fail-fast
+		envMosesDeployed:        "1",
+		envMosesAPIBase:         "https://moses.example.com",
+		envMosesTenantID:        "00000000-0000-0000-0000-000000000001",
+		envMosesChartID:         "00000000-0000-0000-0000-000000000002",
+		envMosesAppSlug:         "fork-with-chat-prompt",
+		envWebhookSecret:        "",                                                   // missing → must fail-fast
+		envMosesInternalAPIBase: "http://moses-backend.moses.svc.cluster.local:8080", // present; the webhook secret is what's missing
 	})
 
 	exitCalled := false
@@ -147,6 +150,39 @@ func TestValidatePlatformEnv_ChatPromptDeclared_WebhookSecretRequired(t *testing
 	}
 	if !exitCalled {
 		t.Errorf("expected exit to be called in prod mode when webhook secret is missing for a chat_prompt-declared fork")
+	}
+}
+
+// CHAT-pswm.9: chat_prompt-declared fork ALSO fails-fast when
+// MOSES_INTERNAL_API_BASE is missing — mosesproxy-go would otherwise
+// return 503 moses_unconfigured on every iframe click. Gated on
+// chat_prompt presence because forks that drop chat_prompt do not mount
+// the proxy.
+func TestValidatePlatformEnv_ChatPromptDeclared_InternalAPIBaseRequired(t *testing.T) {
+	writeConfigJSON(t, `{
+        "name": "fork-with-chat-prompt",
+        "platformActions": [
+            {"id": "do", "type": "chat_prompt"}
+        ]
+    }`)
+	setEnvMap(t, map[string]string{
+		envMosesDeployed:        "1",
+		envMosesAPIBase:         "https://moses.example.com",
+		envMosesTenantID:        "00000000-0000-0000-0000-000000000001",
+		envMosesChartID:         "00000000-0000-0000-0000-000000000002",
+		envMosesAppSlug:         "fork-with-chat-prompt",
+		envWebhookSecret:        "abc123",
+		envMosesInternalAPIBase: "", // missing → must fail-fast
+	})
+
+	exitCalled := false
+	exit := func(int) { exitCalled = true }
+	ok := validatePlatformEnv(exit)
+	if ok {
+		t.Errorf("expected validation to fail when chat_prompt is declared and MOSES_INTERNAL_API_BASE is missing")
+	}
+	if !exitCalled {
+		t.Errorf("expected exit to be called when MOSES_INTERNAL_API_BASE is missing for a chat_prompt-declared fork")
 	}
 }
 

@@ -23,6 +23,7 @@ import (
 	"github.com/moses-platform/fullstack-chat/internal/database"
 	"github.com/moses-platform/fullstack-chat/internal/handler"
 	"github.com/moses-platform/fullstack-chat/internal/middleware"
+	mosesproxy "github.com/moses-platform/moses-templates-shared/mosesproxy-go"
 )
 
 func main() {
@@ -87,9 +88,25 @@ func main() {
 	mux.HandleFunc("/api/openapi.json", handler.OpenAPI)
 	mux.HandleFunc("/api/spec", handler.OpenAPI)
 
+	// CHAT-pswm.8/.9 — mosesproxy. The in-iframe SDK at
+	// /api/v1/sdk/iframe-sdk.js POSTs to this path (same-origin under
+	// nginx subpath routing) with the user's access_token cookie. The
+	// proxy extracts the JWT and forwards pod-to-pod to moses-backend
+	// at ${MOSES_INTERNAL_API_BASE}, preserving the user's identity so
+	// the resulting chat_conversation lands with user_id populated and
+	// shows up in the user's Moses-Manager sidebar.
+	//
+	// RequireRequestedWith=true closes the same-origin CSRF window on
+	// /__moses/invoke: vanilla <form>/<img> CSRF gadgets cannot set the
+	// custom X-Requested-With header the SDK emits, so a drive-by
+	// attacker can't ride the user's cookie into a free invoke. The SDK
+	// adds the header in CHAT-pswm.9.
+	proxyCfg := mosesproxy.ConfigFromEnv()
+	proxyCfg.RequireRequestedWith = true
 	registerAPI := func(prefix string) {
 		mux.HandleFunc(prefix+"/api/v1/entries", entries.Entries)
 		mux.HandleFunc(prefix+"/api/v1/webhooks/chat-complete", chatWebhook.Handle)
+		mux.HandleFunc(prefix+mosesproxy.InvokePath, mosesproxy.NewHandler(proxyCfg))
 	}
 	registerAPI("")
 	if basePath != "" {

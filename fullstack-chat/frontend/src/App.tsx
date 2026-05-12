@@ -2,13 +2,16 @@
  * Fullstack Chat Roundtrip — reference template demonstrating the app↔Moses-Manager
  * round-trip with all chat surfaces wired up.
  *
- * MOSES ROUTING:
+ * MOSES ROUTING (CHAT-pswm.2/.8/.9 — canonical reference impl):
  *   - Calls to THIS APP's backend use relative paths: `fetch('api/v1/entries')`.
  *     They route through the app's nginx proxy to our Go backend.
- *   - Calls to MOSES BACKEND use absolute paths via VITE_MOSES_API_BASE:
- *     `fetch(`${import.meta.env.VITE_MOSES_API_BASE}/apps/${slug}/actions/${id}/invoke`)`.
- *     The platform injects VITE_MOSES_API_BASE at build time
- *     (kaniko_build_service.go); falls back to relative for local dev.
+ *   - Calls to MOSES platform actions go through `window.moses.actions.invoke`,
+ *     supplied by the iframe SDK loaded in index.html. The SDK POSTs to
+ *     `/__moses/invoke` on this app's OWN backend (same-origin under the
+ *     iframe's nginx subpath); the backend's mosesproxy-go handler forwards
+ *     pod-to-pod to moses-backend with the user's JWT preserved. The
+ *     iframe never contacts moses-backend directly — see iframe_sdk_handler.go
+ *     for the SDK source and shared/mosesproxy-go/proxy.go for the proxy.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import './App.css';
@@ -48,93 +51,11 @@ const ACTION_ID = 'generate-entry';
 
 const POLL_INTERVAL_MS = 2_000;
 
-function mosesApiBase(): string {
-  // Platform-injected at build time; relative fallback for standalone dev.
-  return (import.meta.env.VITE_MOSES_API_BASE as string | undefined)?.replace(/\/+$/, '') ?? '';
-}
-
-function mosesChartId(): string | undefined {
-  // Platform-injected at build time (kaniko_build_service.go enrichBuildArgsForBLF).
-  // The dispatcher's GetPlatformAction lookup uses
-  // `chart_id IS NOT DISTINCT FROM $2` so omitting this when actions are
-  // registered chart-scoped (the default) returns 404 action_not_found
-  // even though the row exists. Standalone dev → undefined → server falls
-  // back to a chart-less lookup.
-  const v = import.meta.env.VITE_MOSES_CHART_ID as string | undefined;
-  return v && v.length > 0 ? v : undefined;
-}
-
 async function fetchEntries(): Promise<Entry[]> {
   const r = await fetch('api/v1/entries', { credentials: 'same-origin' });
   if (!r.ok) throw new Error(`entries fetch failed: ${r.status}`);
   const j = (await r.json()) as EntriesResponse;
   return j.entries ?? [];
-}
-
-// InvokeError carries the structured 4xx envelope shape from the platform's
-// platform-action dispatcher so the UI can render a human-readable hint when
-// available (CHAT-mux7) instead of "invoke failed (409): {raw json}". The
-// platform's HTTP handler flattens the dispatcher's Meta map into top-level
-// body fields, so `hint` arrives as a sibling of `error` and `code`.
-class InvokeError extends Error {
-  status: number;
-  errorCode?: string;
-  hint?: string;
-  constructor(message: string, status: number, errorCode?: string, hint?: string) {
-    super(message);
-    this.name = 'InvokeError';
-    this.status = status;
-    this.errorCode = errorCode;
-    this.hint = hint;
-  }
-}
-
-async function invokeChatPrompt(topic: string): Promise<{ conversationId?: string }> {
-  const url = `${mosesApiBase()}/api/v1/apps/${APP_SLUG}/actions/${ACTION_ID}/invoke`;
-  const body: Record<string, unknown> = { variables: { topic } };
-  const chartId = mosesChartId();
-  if (chartId) body.chartId = chartId;
-  const r = await fetch(url, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) {
-    const detail = await r.text();
-    // Try to parse the platform's structured error envelope. The dispatcher
-    // emits {error, code, invocationId, hint?, retryAfterSeconds?, floor?} on
-    // 4xx. Fall back to the raw text on parse failure (cluster errors, proxy
-    // 5xx, etc.).
-    let errorCode: string | undefined;
-    let hint: string | undefined;
-    try {
-      const parsed = JSON.parse(detail) as {
-        error?: string;
-        code?: string;
-        hint?: string;
-      };
-      if (typeof parsed.code === 'string') errorCode = parsed.code;
-      if (typeof parsed.hint === 'string' && parsed.hint.length > 0) hint = parsed.hint;
-    } catch {
-      // Non-JSON body — keep errorCode/hint undefined and use the raw detail.
-    }
-    // CHAT-mux7: when the platform stamps a hint on the 409 envelope, surface
-    // it verbatim instead of the opaque "invoke failed (409): ..." string.
-    // The hint already tells the user where to click; prefixing with the
-    // status code adds noise.
-    if (errorCode === 'action_not_activated' && hint) {
-      throw new InvokeError(hint, r.status, errorCode, hint);
-    }
-    throw new InvokeError(
-      `invoke failed (${r.status}): ${detail.slice(0, 200)}`,
-      r.status,
-      errorCode,
-      hint,
-    );
-  }
-  const j = (await r.json()) as { result?: { conversationId?: string } };
-  return { conversationId: j.result?.conversationId };
 }
 
 export default function App() {
@@ -204,7 +125,23 @@ export default function App() {
     setBusy(true);
     setStatus({ kind: 'invoking' });
     try {
-      const { conversationId } = await invokeChatPrompt(trimmed);
+      // CHAT-pswm.9 — fire the chat_prompt via the iframe SDK
+      // (loaded by index.html from /api/v1/sdk/iframe-sdk.js).
+      // The SDK POSTs to /__moses/invoke on this app's own backend,
+      // which forwards pod-to-pod to moses-backend with the user's
+      // JWT preserved. If the SDK script failed to load (offline,
+      // gateway misconfig, or the proxy backend is down), `window.moses`
+      // is undefined and we surface a clear error instead of a TypeError.
+      const invoke = window.moses?.actions?.invoke;
+      if (typeof invoke !== 'function') {
+        throw new Error(
+          'Moses SDK not loaded — /api/v1/sdk/iframe-sdk.js failed to fetch. ' +
+            'Is the iframe served via the Moses platform?',
+        );
+      }
+      const result = await invoke(ACTION_ID, { topic: trimmed });
+      const conversationId =
+        (result as { result?: { conversationId?: string } } | undefined)?.result?.conversationId;
       setStatus(
         conversationId
           ? { kind: 'awaiting', conversationId }
@@ -234,7 +171,16 @@ export default function App() {
       // Optimistically refresh: MM may complete fast.
       window.setTimeout(() => void refresh(), 1_000);
     } catch (err) {
-      setStatus({ kind: 'error', message: (err as Error).message });
+      // The SDK reshapes the platform's structured 4xx envelope so .hint
+      // (e.g. CHAT-mux7 action_not_activated) lands on the error object
+      // directly. Prefer hint > message so the user sees the actionable
+      // remediation rather than a status-code-prefixed JSON blob.
+      const e = err as { hint?: string; message?: string; status?: number };
+      const fallback =
+        typeof e?.status === 'number'
+          ? `invoke failed (${e.status}): ${e.message ?? 'unknown error'}`
+          : e?.message ?? 'invoke failed';
+      setStatus({ kind: 'error', message: e?.hint ?? fallback });
     } finally {
       setBusy(false);
     }

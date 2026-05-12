@@ -18,6 +18,56 @@ A minimal Postgres-backed feed app whose sole purpose is to be a smoke-test for 
 
 See [`skills/chat-roundtrip-overview.md`](skills/chat-roundtrip-overview.md) for the full architectural walkthrough and the manual end-to-end test recipe.
 
+## Round-trip mechanics (CHAT-pswm.2/.8/.9)
+
+`fullstack-chat` is the canonical reference for the iframe-SDK + backend-proxy
+contract. Three pieces wire together:
+
+1. **Iframe SDK** — `<script src="/api/v1/sdk/iframe-sdk.js" defer>` in
+   [`frontend/index.html`](frontend/index.html). Served by `moses-backend`
+   ([`backend/internal/api/iframe_sdk_handler.go`][sdk-handler] in the
+   platform repo). The SDK installs `window.moses.actions.invoke(actionId,
+   variables)`. The frontend never calls moses-backend directly: the SDK
+   POSTs to `/__moses/invoke` on this app's own backend, with
+   `X-Requested-With: moses-iframe` so the proxy can gate cross-origin CSRF.
+
+2. **mosesproxy-go** — the shared Go handler at
+   [`shared/mosesproxy-go/`](../shared/mosesproxy-go/). Mounted by
+   [`backend/cmd/server/main.go`](backend/cmd/server/main.go) at
+   `mosesproxy.InvokePath` (= `/__moses/invoke`). Extracts the user's JWT
+   from `Authorization: Bearer` or the `access_token` cookie, then forwards
+   pod-to-pod to `${MOSES_INTERNAL_API_BASE}/api/v1/apps/{slug}/actions/{id}/invoke`
+   with the JWT preserved. `Set-Cookie` from moses-backend is stripped so
+   the upstream's session cookie cannot bleed into the iframe's origin.
+   `cfg.RequireRequestedWith = true` rejects any POST missing the custom
+   header — vanilla `<form>` / `<img>` CSRF gadgets cannot satisfy that
+   requirement.
+
+3. **Backend → moses-backend hop** — the proxy runs inside the cluster.
+   Moses' `AuthMiddleware` accepts the forwarded Bearer (CSRF-exempt
+   branch in `backend/internal/api/middleware.go`); the user-scoped
+   dispatcher persists `platform_action_invocations.user_id` so the
+   resulting chat conversation appears in the user's Moses Manager
+   sidebar without any browser-side CSRF/Origin negotiation.
+
+The contract holds in every browser (Chrome on Minikube/Rancher, Tauri,
+production K3s) because the iframe → app-backend hop is same-origin: the
+session cookie travels normally, and the JWT is forwarded by the proxy.
+There is no Tauri-only `AUTH_HEADER_INJECTION_SHIM` dependence anymore.
+
+Two env vars must reach the backend pod or the proxy returns 503
+`moses_unconfigured`:
+
+- `MOSES_INTERNAL_API_BASE` — e.g. `http://moses-backend.moses.svc.cluster.local:8080`
+  (injected by the platform provisioner, CHAT-pswm.1).
+- `MOSES_APP_SLUG` — already wired (provisioner).
+
+`MOSES_CHART_ID` and `MOSES_TENANT_ID` are forwarded when present (the
+proxy includes `chartId` in the invoke body and sets `X-Tenant-ID`); both
+are routine in deployed apps.
+
+[sdk-handler]: ../../moses-platform-prep/backend/internal/api/iframe_sdk_handler.go
+
 ## Two paths: chat_prompt vs launch_agent
 
 Under epic [CHAT-89ig](../../moses-platform-prep/.beads/) this template now showcases BOTH Moses platform-action paths so you can compare the contracts side by side:

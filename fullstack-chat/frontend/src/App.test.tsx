@@ -15,15 +15,47 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
   });
 }
 
+/**
+ * CHAT-pswm.9 — the in-iframe SDK is supplied via <script src="..."> on
+ * the real platform. In tests we stub the runtime shape directly on
+ * window.moses; cleanup restores any prior value after each test.
+ *
+ * The signature mirrors window.moses.actions.invoke. Tests pass an impl
+ * that asserts call shape and/or returns a tailored envelope.
+ */
+function installMosesSDK(
+  invoke?: (actionId: string, variables?: Record<string, unknown>) => Promise<unknown>,
+): { spy: ReturnType<typeof vi.fn>; restore: () => void } {
+  const prior = (window as unknown as { moses?: unknown }).moses;
+  const spy = vi.fn(
+    invoke ??
+      (async () => ({ status: 'succeeded', result: { conversationId: 'conv-default-1' } })),
+  );
+  (window as unknown as { moses?: unknown }).moses = {
+    __iframeSDKVersion: '1.0.0-test',
+    actions: { invoke: spy },
+  };
+  return {
+    spy,
+    restore: () => {
+      (window as unknown as { moses?: unknown }).moses = prior;
+    },
+  };
+}
+
 describe('Fullstack Chat Roundtrip — App', () => {
   beforeEach(() => {
-    // Default: empty entries, no errors.
+    // Default: empty entries, no errors. fetch is used ONLY for the app's
+    // own backend (api/v1/entries). Platform-action invokes go through
+    // window.moses.actions.invoke (installed per-test via installMosesSDK).
     mockFetch(async () => jsonResponse({ entries: [], count: 0 }));
   });
 
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    // Clear any window.moses left by individual tests.
+    delete (window as unknown as { moses?: unknown }).moses;
   });
 
   it('renders the empty-state message when no entries exist', async () => {
@@ -55,54 +87,43 @@ describe('Fullstack Chat Roundtrip — App', () => {
     expect((button as HTMLButtonElement).disabled).toBe(true); // disabled until topic typed
   });
 
-  it('invokes the platform-action endpoint with the typed topic', async () => {
-    const calls: { url: string; init?: RequestInit }[] = [];
-    mockFetch(async (input, init) => {
-      const url = typeof input === 'string' ? input : (input as URL | Request).toString();
-      calls.push({ url, init });
-      if (url.includes('/api/v1/apps/fullstack-chat/actions/generate-entry/invoke')) {
-        return jsonResponse({
-          status: 'succeeded',
-          result: { conversationId: 'conv-test-1' },
-        });
-      }
-      return jsonResponse({ entries: [], count: 0 });
-    });
+  // CHAT-pswm.9 — the round-trip now goes through window.moses.actions.invoke
+  // (supplied by the iframe SDK loaded from /api/v1/sdk/iframe-sdk.js). We
+  // stub the runtime contract instead of stubbing fetch, mirroring the real
+  // call boundary: App.tsx hands the user-supplied topic to the SDK, which
+  // is responsible for POSTing to /__moses/invoke on the app's own backend.
+  it('invokes window.moses.actions.invoke with the action id and typed topic', async () => {
+    const { spy, restore } = installMosesSDK(async () => ({
+      status: 'succeeded',
+      result: { conversationId: 'conv-test-1' },
+    }));
 
-    render(<App />);
-    const input = (await screen.findByLabelText(/topic/i)) as HTMLInputElement;
-    fireEvent.change(input, { target: { value: 'octopus' } });
+    try {
+      render(<App />);
+      const input = (await screen.findByLabelText(/topic/i)) as HTMLInputElement;
+      fireEvent.change(input, { target: { value: 'octopus' } });
 
-    const button = await screen.findByRole('button', { name: /generate entry/i });
-    fireEvent.click(button);
+      const button = await screen.findByRole('button', { name: /generate entry/i });
+      fireEvent.click(button);
 
-    await waitFor(() => {
-      const invoked = calls.some((c) =>
-        c.url.includes('/api/v1/apps/fullstack-chat/actions/generate-entry/invoke'),
-      );
-      expect(invoked).toBe(true);
-    });
+      await waitFor(() => {
+        expect(spy).toHaveBeenCalled();
+      });
 
-    const invokeCall = calls.find((c) =>
-      c.url.includes('/api/v1/apps/fullstack-chat/actions/generate-entry/invoke'),
-    );
-    expect(invokeCall).toBeTruthy();
-    expect(invokeCall?.init?.method).toBe('POST');
-    const body = JSON.parse((invokeCall?.init?.body ?? '{}') as string);
-    expect(body.variables.topic).toBe('octopus');
+      // The platform-action invocation contract is (actionId, variables).
+      // chartId / chartContext etc. are NOT carried by App.tsx anymore — the
+      // proxy backend injects them from MOSES_CHART_ID / MOSES_APP_SLUG env.
+      expect(spy).toHaveBeenCalledWith('generate-entry', { topic: 'octopus' });
+    } finally {
+      restore();
+    }
   });
 
   it('posts moses_embed_open_chat to window.parent after a successful invoke', async () => {
-    mockFetch(async (input) => {
-      const url = typeof input === 'string' ? input : (input as URL | Request).toString();
-      if (url.includes('/api/v1/apps/fullstack-chat/actions/generate-entry/invoke')) {
-        return jsonResponse({
-          status: 'succeeded',
-          result: { conversationId: 'conv-announce-1' },
-        });
-      }
-      return jsonResponse({ entries: [], count: 0 });
-    });
+    const { restore } = installMosesSDK(async () => ({
+      status: 'succeeded',
+      result: { conversationId: 'conv-announce-1' },
+    }));
 
     // window.parent === window in jsdom (no real frame). Stub `parent` with
     // a distinct object so the `window.parent !== window` guard in App.tsx
@@ -148,7 +169,25 @@ describe('Fullstack Chat Roundtrip — App', () => {
           get: () => window,
         });
       }
+      restore();
     }
+  });
+
+  // CHAT-pswm.9 — when the SDK script fails to load (offline, network policy
+  // blocks the platform path, or the iframe is opened standalone) window.moses
+  // is undefined. App.tsx must surface a clear "Moses SDK not loaded" error
+  // instead of a confusing "Cannot read properties of undefined" stack.
+  it('shows "Moses SDK not loaded" when window.moses is undefined', async () => {
+    // No installMosesSDK — leave window.moses undefined.
+    render(<App />);
+    const input = (await screen.findByLabelText(/topic/i)) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'orca' } });
+    const button = await screen.findByRole('button', { name: /generate entry/i });
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Moses SDK not loaded/i)).toBeTruthy();
+    });
   });
 
   it('updates the status banner on a moses_embed_chat_complete postMessage', async () => {
@@ -180,39 +219,43 @@ describe('Fullstack Chat Roundtrip — App', () => {
   // (not the opaque "(409): {raw json}" string). The hint points the user
   // at the SelectedAppPanel activation banner above the iframe — without
   // it, the user sees a code-tagged JSON blob and gives up.
+  //
+  // CHAT-pswm.9: the SDK reshapes the 4xx envelope onto Error.code/.hint
+  // (see iframe_sdk_handler.go). App.tsx prefers hint > message when
+  // rendering the status banner.
   it('renders the platform 409 action_not_activated hint instead of raw JSON', async () => {
     const ACTIVATION_HINT =
       "Open the app's tab in Moses Manager and approve permissions in the banner above the panel.";
-    mockFetch(async (input) => {
-      const url = typeof input === 'string' ? input : (input as URL | Request).toString();
-      if (url.includes('/api/v1/apps/fullstack-chat/actions/generate-entry/invoke')) {
-        return new Response(
-          JSON.stringify({
-            error: 'action not yet activated; awaiting grant approval',
-            code: 'action_not_activated',
-            invocationId: '',
-            hint: ACTIVATION_HINT,
-          }),
-          { status: 409, headers: { 'Content-Type': 'application/json' } },
-        );
-      }
-      return jsonResponse({ entries: [], count: 0 });
+    const { restore } = installMosesSDK(async () => {
+      const err = new Error('action not yet activated; awaiting grant approval') as Error & {
+        status?: number;
+        code?: string;
+        hint?: string;
+      };
+      err.status = 409;
+      err.code = 'action_not_activated';
+      err.hint = ACTIVATION_HINT;
+      throw err;
     });
 
-    render(<App />);
-    const input = (await screen.findByLabelText(/topic/i)) as HTMLInputElement;
-    fireEvent.change(input, { target: { value: 'octopus' } });
-    const button = await screen.findByRole('button', { name: /generate entry/i });
-    fireEvent.click(button);
+    try {
+      render(<App />);
+      const input = (await screen.findByLabelText(/topic/i)) as HTMLInputElement;
+      fireEvent.change(input, { target: { value: 'octopus' } });
+      const button = await screen.findByRole('button', { name: /generate entry/i });
+      fireEvent.click(button);
 
-    await waitFor(() => {
-      expect(screen.getByText(new RegExp(ACTIVATION_HINT.slice(0, 30), 'i'))).toBeTruthy();
-    });
+      await waitFor(() => {
+        expect(screen.getByText(new RegExp(ACTIVATION_HINT.slice(0, 30), 'i'))).toBeTruthy();
+      });
 
-    // Critically: the noisy "(409):" prefix must NOT appear when the hint is
-    // present. Templates that just append the hint after the raw error
-    // message defeat the purpose of CHAT-mux7.
-    expect(screen.queryByText(/\(409\):/)).toBeNull();
+      // Critically: the noisy "(409):" prefix must NOT appear when the hint
+      // is present. Templates that just append the hint after the raw error
+      // message defeat the purpose of CHAT-mux7.
+      expect(screen.queryByText(/\(409\):/)).toBeNull();
+    } finally {
+      restore();
+    }
   });
 
   // CHAT-mux7 fallback: when the platform returns a 4xx without a hint
@@ -221,30 +264,29 @@ describe('Fullstack Chat Roundtrip — App', () => {
   // message so the user still sees something actionable. This guards
   // against the over-eager refactor where the hint path swallows all 4xx.
   it('falls back to "invoke failed" when the 4xx body has no hint', async () => {
-    mockFetch(async (input) => {
-      const url = typeof input === 'string' ? input : (input as URL | Request).toString();
-      if (url.includes('/api/v1/apps/fullstack-chat/actions/generate-entry/invoke')) {
-        return new Response(
-          JSON.stringify({
-            error: 'rate limit exceeded for this action',
-            code: 'rate_limited',
-            invocationId: '',
-          }),
-          { status: 429, headers: { 'Content-Type': 'application/json' } },
-        );
-      }
-      return jsonResponse({ entries: [], count: 0 });
+    const { restore } = installMosesSDK(async () => {
+      const err = new Error('rate limit exceeded for this action') as Error & {
+        status?: number;
+        code?: string;
+      };
+      err.status = 429;
+      err.code = 'rate_limited';
+      throw err;
     });
 
-    render(<App />);
-    const input = (await screen.findByLabelText(/topic/i)) as HTMLInputElement;
-    fireEvent.change(input, { target: { value: 'walrus' } });
-    const button = await screen.findByRole('button', { name: /generate entry/i });
-    fireEvent.click(button);
+    try {
+      render(<App />);
+      const input = (await screen.findByLabelText(/topic/i)) as HTMLInputElement;
+      fireEvent.change(input, { target: { value: 'walrus' } });
+      const button = await screen.findByRole('button', { name: /generate entry/i });
+      fireEvent.click(button);
 
-    await waitFor(() => {
-      expect(screen.getByText(/invoke failed \(429\)/i)).toBeTruthy();
-    });
+      await waitFor(() => {
+        expect(screen.getByText(/invoke failed \(429\)/i)).toBeTruthy();
+      });
+    } finally {
+      restore();
+    }
   });
 
   it('ignores postMessage events from a different origin', async () => {
