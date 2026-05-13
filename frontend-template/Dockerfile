@@ -1,27 +1,26 @@
-# Multi-stage build with Moses BLF-B late-stage ARG pattern (CHAT-kdep).
+# Single-stage builder doing npm install + Vite/TS build in ONE RUN,
+# then a slim nginx runtime.
 #
-# The `deps` stage installs npm packages — it must be insensitive to
-# per-build values like chart_id / deployment_id, otherwise every Moses
-# deploy would re-download the entire dependency graph. Moving the ARG
-# declarations into the `build` stage scopes their cache-busting effect to
-# the final Vite invocation only.
+# CHAT-1mp04: Kaniko has a long-standing tar-serialization bug
+# (kaniko#1743, upstream archived UNFIXED) where npm-deduped hardlinks
+# are written with absolute-path targets and corrupt to 0-byte files
+# on tar restore. This bites at every Kaniko tar round-trip: registry
+# cache push/pull (mitigated by --cache=false on the platform), inter-
+# stage handoff (mitigated by single stage), AND per-RUN intra-stage
+# snapshot (mitigated by combining npm install + tsc + vite into one
+# RUN, so no Kaniko snapshot happens between node_modules creation
+# and use).
+#
+# Trade-off: no layer-level reuse of npm install — any source change
+# triggers a full reinstall. Matches the --cache=false steady state.
 
-# --- Dependencies (cacheable across builds) -----------------------------
-FROM node:20-alpine AS deps
-WORKDIR /app
-
-COPY package.json package-lock.json* ./
-RUN npm install
-
-# --- Build (re-runs per build, but `deps` layer stays cached) ------------
-FROM deps AS build
+# --- Builder (install + Vite/TS build, all in ONE RUN) ------------------
+FROM node:20-alpine AS build
 WORKDIR /app
 
 COPY . .
 
-# Moses BLF-B build args. Declare ONLY in this stage to preserve the
-# `deps` layer cache (Kaniko cache TTL is 72h; busting it on every build
-# would saturate the registry under concurrent tenant load).
+# Moses BLF-B build args. ARG scope is bounded to this stage.
 ARG VITE_MOSES_CHART_ID=""
 ARG VITE_MOSES_DEPLOYMENT_ID=""
 ARG VITE_MOSES_API_BASE=""
@@ -29,7 +28,7 @@ ARG VITE_MOSES_API_BASE=""
 RUN VITE_MOSES_CHART_ID="$VITE_MOSES_CHART_ID" \
     VITE_MOSES_DEPLOYMENT_ID="$VITE_MOSES_DEPLOYMENT_ID" \
     VITE_MOSES_API_BASE="$VITE_MOSES_API_BASE" \
-    npx tsc -p tsconfig.build.json && npx vite build
+    sh -c 'npm install && npx tsc -p tsconfig.build.json && npx vite build'
 
 # --- Runtime ------------------------------------------------------------
 FROM nginx:alpine
