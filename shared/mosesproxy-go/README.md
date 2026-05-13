@@ -8,35 +8,56 @@ with the user's JWT preserved. This is the receiving half of the
 iframe SDK contract; see CHAT-pswm (epic) for the full round-trip
 architecture.
 
-## Install
+## Install (vendored — canonical)
 
-This is a same-monorepo Go module. Wire it into your template via a
-Go workspace (recommended — see `../../go.work` at the repo root) or a
-`replace` directive in your template's `go.mod`:
+Consuming templates **vendor** this package by copying `proxy.go` +
+`proxy_test.go` into their own `backend/internal/mosesproxy/`
+subdirectory and importing from their own module path. No `replace`
+directive, no Go workspace, no path dependency on the templates
+monorepo — the template ships as a self-contained repo that compiles
+without `shared/` on disk (CHAT-45nq8).
+
+The canonical reference is `fullstack-chat/backend/internal/mosesproxy/`.
+Each vendored file carries a `VENDORED COPY` header comment at the top
+that documents the re-sync recipe:
 
 ```go
-// fullstack-chat/backend/go.mod
-require github.com/moses-platform/moses-templates-shared/mosesproxy-go v0.0.0
-
-replace github.com/moses-platform/moses-templates-shared/mosesproxy-go => ../../shared/mosesproxy-go
+// VENDORED COPY of shared/mosesproxy-go/proxy.go.
+//
+// Canonical source: ../../shared/mosesproxy-go/proxy.go
+// (relative to the templates monorepo root)
+//
+// To re-sync after upstream changes, run (from the templates monorepo root):
+//   cp shared/mosesproxy-go/proxy.go fullstack-chat/backend/internal/mosesproxy/proxy.go
+//   cp shared/mosesproxy-go/proxy_test.go fullstack-chat/backend/internal/mosesproxy/proxy_test.go
+//   cd fullstack-chat/backend && go build ./... && go test ./...
 ```
 
-Then mount the handler in `main.go`:
+Preserve that header on re-sync; drop only the canonical file's
+package-level comment so the "VENDORED COPY" notice stays at the top.
+CI runs `tools/check-vendored-mosesproxy.sh` on every PR that touches
+either `shared/mosesproxy-go/**` or any vendored copy and fails if the
+bodies diverge (modulo the header).
+
+Then mount the handler in `main.go`, importing from your template's
+own module path:
 
 ```go
 import (
     "net/http"
 
-    mosesproxy "github.com/moses-platform/moses-templates-shared/mosesproxy-go"
+    "github.com/moses-platform/moses-templates/fullstack-chat/backend/internal/mosesproxy"
 )
 
 func main() {
     mux := http.NewServeMux()
 
     // Receive in-iframe SDK calls. The well-known path is
-    // mosesproxy.InvokePath ("/__moses/invoke"); the SDK at
-    // CHAT-pswm.2 expects that exact path.
-    mux.HandleFunc(mosesproxy.InvokePath, mosesproxy.NewHandler(mosesproxy.ConfigFromEnv()))
+    // mosesproxy.InvokePath ("/__moses/invoke"); the SDK expects
+    // that exact path.
+    cfg := mosesproxy.ConfigFromEnv()
+    cfg.RequireRequestedWith = true // recommended; see CSRF section
+    mux.HandleFunc(mosesproxy.InvokePath, mosesproxy.NewHandler(cfg))
 
     // ...rest of your app's routes
     http.ListenAndServe(":8080", mux)
@@ -45,6 +66,26 @@ func main() {
 
 The handler is a plain `http.HandlerFunc` and composes cleanly with
 `net/http`, `chi`, `gorilla/mux`, or `gin` (via `gin.WrapF`).
+
+## Install (workspace, dev only)
+
+Inside the templates monorepo it's occasionally convenient to consume
+the canonical `shared/mosesproxy-go/` module directly — e.g. when
+iterating on the proxy and a downstream template in the same change.
+For that flow only, wire a Go workspace (`../../go.work` at the repo
+root) or a `replace` directive in your template's `go.mod`:
+
+```go
+// templates-monorepo development only — user repos always vendor.
+require github.com/moses-platform/moses-templates-shared/mosesproxy-go v0.0.0
+
+replace github.com/moses-platform/moses-templates-shared/mosesproxy-go => ../../shared/mosesproxy-go
+```
+
+This shape is **not** suitable for distribution: `moses_init_repo`
+clones a template subtree as a standalone repo, and a `replace`
+pointing at `../../shared/` is broken outside the monorepo. Always
+re-vendor before merging template changes.
 
 ## Env contract
 
@@ -118,9 +159,11 @@ are available:
   when true, the proxy rejects requests that don't carry the custom
   header. A drive-by `<form>`/`<img>` cannot set custom headers, so
   this closes the window even when SameSite default is overridden.
-  **Off by default in v1** because the SDK shipped by CHAT-pswm.2 does
-  not yet send the header; flip it on once the SDK is updated and the
-  contract is locked.
+  The SDK emits the header as of CHAT-pswm.9. The field still defaults
+  to `false` so existing consumers that haven't picked up the SDK
+  update don't break, but the canonical `fullstack-chat` reference
+  impl turns it on (`main.go`: `proxyCfg.RequireRequestedWith = true`)
+  and **new templates SHOULD set it to `true` in their `main.go`**.
 
 ## Behaviour summary
 
