@@ -1,32 +1,38 @@
-# Multi-stage build with Moses BLF-B late-stage ARG pattern (CHAT-kdep).
+# Single-stage builder (npm install + Vite/TS build) + slim nginx runtime.
 #
-# The `deps` stage installs npm packages and the `builder` stage runs the
-# actual Vite/TS build with per-deploy ARGs. Declaring per-deploy ARGs only
-# in the `builder` stage scopes their visibility and keeps Dockerfile intent
-# explicit.
+# Why ONE builder stage (not deps + builder split):
+# Kaniko has a long-standing bug (kaniko#1743, upstream archived UNFIXED
+# 2025-06-03) where its tar serialization writes npm-deduped hardlinks
+# with an absolute-path target. Both the inter-stage tar handoff (saving
+# stage output to /kaniko/stages/<n> and restoring it as the base for the
+# next stage) AND the registry cache push/pull paths apply this broken
+# serialization. CHAT-1mp04 disabled the registry cache, but the
+# inter-stage handoff path bites the same way: a deps stage followed by
+# `FROM deps AS builder` re-extracts node_modules from a tar, and the
+# launcher shim at node_modules/esbuild/bin/esbuild lands as a 0-byte
+# file, producing EACCES / ENOEXEC at `npx tsc` / `npx vite`.
 #
-# Note (CHAT-1mp04): the platform runs Kaniko with --cache=false, so the
-# `deps` stage layer is NOT actually cached across builds. `npm install`
-# re-runs on every Moses deploy. The multi-stage split remains useful for
-# organizational clarity and ARG scope, but is no longer a performance
-# optimisation. The intermediate-layer cache was disabled to fix an
-# upstream Kaniko bug with npm hardlink corruption (kaniko#1743).
+# Collapsing deps + build into one stage avoids the node_modules tar
+# round-trip entirely. The runtime stage's COPY --from=builder only
+# pulls /app/dist (built static assets — no node_modules, no hardlinks),
+# which is safe.
+#
+# Trade-off (small): `npm install` and the Vite build live in one layer,
+# so an isolated `RUN` change can't reuse a frozen npm-install layer.
+# With --cache=false this is already the steady state — no functional
+# change.
 
-# --- Dependencies -------------------------------------------------------
-FROM node:20-alpine AS deps
+# --- Builder (install + Vite/TS build) ----------------------------------
+FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
 RUN npm install
 
-# --- Build --------------------------------------------------------------
-FROM deps AS builder
-WORKDIR /app
-
 COPY . .
 
-# Moses BLF-B build args. Declared ONLY in this stage so they don't leak
-# into the deps stage's ARG scope.
+# Moses BLF-B build args. ARG scope is bounded to this stage by virtue
+# of being the only stage in the chain that consumes user code.
 ARG VITE_MOSES_CHART_ID=""
 ARG VITE_MOSES_DEPLOYMENT_ID=""
 ARG VITE_MOSES_API_BASE=""
