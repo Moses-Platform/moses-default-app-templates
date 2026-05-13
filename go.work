@@ -1,0 +1,20 @@
+go 1.24
+
+// Go workspace for the moses-default-app-templates monorepo.
+//
+// Listing each Go module here lets templates depend on the shared
+// mosesproxy-go package without requiring a `replace` directive in
+// every template's go.mod, AND keeps `go build ./...` working in
+// each module when run in isolation (the workspace file is consulted
+// only when present in the working directory's ancestry).
+//
+// Adding a new Go module under this repo? Add it here as well.
+
+use (
+	./backend-template
+	./fullstack-chat/backend
+	./fullstack-showcase/backend
+	./fullstack-simple/backend
+	./fullstack-unified
+	./shared/mosesproxy-go
+)

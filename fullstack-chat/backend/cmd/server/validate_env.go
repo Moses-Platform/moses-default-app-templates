@@ -39,12 +39,13 @@ import (
 // log.Fatal by mocking out the os.Exit path via the validateExit helper.
 
 const (
-	envMosesAPIBase    = "MOSES_API_BASE"
-	envMosesTenantID   = "MOSES_TENANT_ID"
-	envMosesChartID    = "MOSES_CHART_ID"
-	envMosesAppSlug    = "MOSES_APP_SLUG"
-	envWebhookSecret   = "MOSES_CHAT_WEBHOOK_SECRET"
-	envMosesDeployed   = "MOSES_DEPLOYED"
+	envMosesAPIBase         = "MOSES_API_BASE"
+	envMosesTenantID        = "MOSES_TENANT_ID"
+	envMosesChartID         = "MOSES_CHART_ID"
+	envMosesAppSlug         = "MOSES_APP_SLUG"
+	envWebhookSecret        = "MOSES_CHAT_WEBHOOK_SECRET"
+	envMosesInternalAPIBase = "MOSES_INTERNAL_API_BASE"
+	envMosesDeployed        = "MOSES_DEPLOYED"
 )
 
 // requiredPlatformEnv is the canonical list of platform-injected vars the
@@ -63,6 +64,12 @@ var requiredPlatformEnv = []struct {
 	{envMosesChartID, "MOSES_CHART_ID — scope queries to own chart", false},
 	{envMosesAppSlug, "MOSES_APP_SLUG — webhook-claim verification", false},
 	{envWebhookSecret, "MOSES_CHAT_WEBHOOK_SECRET — HMAC verification (chat_prompt apps)", true},
+	// CHAT-pswm.1/.9: MOSES_INTERNAL_API_BASE is the cluster-DNS base
+	// the mosesproxy-go handler forwards to. Without it, /__moses/invoke
+	// returns 503 moses_unconfigured and the in-iframe SDK fires "Moses
+	// SDK error" on every click — same gating as the webhook secret
+	// because both are required only when chat_prompt is declared.
+	{envMosesInternalAPIBase, "MOSES_INTERNAL_API_BASE — cluster-internal moses-backend FQDN (mosesproxy-go forward target)", true},
 }
 
 // isProdMode reports whether MOSES_DEPLOYED=1 (the platform sets this in
