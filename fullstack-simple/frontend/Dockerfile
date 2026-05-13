@@ -25,10 +25,14 @@ ARG VITE_MOSES_CHART_ID=""
 ARG VITE_MOSES_DEPLOYMENT_ID=""
 ARG VITE_MOSES_API_BASE=""
 
-RUN VITE_MOSES_CHART_ID="$VITE_MOSES_CHART_ID" \
+# CHAT-s6qf3: optional Moses in-cluster package cache (Nexus). Empty = upstream default.
+ARG NPM_REGISTRY=""
+
+RUN NPM_REGISTRY="$NPM_REGISTRY" \
+    VITE_MOSES_CHART_ID="$VITE_MOSES_CHART_ID" \
     VITE_MOSES_DEPLOYMENT_ID="$VITE_MOSES_DEPLOYMENT_ID" \
     VITE_MOSES_API_BASE="$VITE_MOSES_API_BASE" \
-    sh -c 'npm install && npx tsc -p tsconfig.build.json && npx vite build'
+    sh -c 'if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi && npm install && npx tsc -p tsconfig.build.json && npx vite build'
 
 # --- Runtime ------------------------------------------------------------
 FROM nginx:alpine

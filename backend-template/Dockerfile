@@ -3,6 +3,13 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /build
 
+# CHAT-s6qf3: optional Moses in-cluster package cache (Nexus). When the
+# platform sets GOPROXY=http://moses-package-cache:8081/repository/go-proxy/,direct
+# the Go module download routes through the cache; otherwise we keep the
+# Go toolchain default (proxy.golang.org,direct).
+ARG GOPROXY=""
+ENV GOPROXY=${GOPROXY:-https://proxy.golang.org,direct}
+
 # Copy dependency manifest. go.sum* glob handles templates with no
 # external deps (where go mod tidy produces no go.sum).
 COPY go.mod go.sum* ./

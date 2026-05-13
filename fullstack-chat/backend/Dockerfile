@@ -3,6 +3,10 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /build
 
+# CHAT-s6qf3: optional Moses in-cluster package cache (Nexus). Empty = upstream default.
+ARG GOPROXY=""
+ENV GOPROXY=${GOPROXY:-https://proxy.golang.org,direct}
+
 COPY go.mod go.sum* ./
 RUN go mod download
 
