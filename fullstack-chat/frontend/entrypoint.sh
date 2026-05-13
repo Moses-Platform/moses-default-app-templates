@@ -99,6 +99,14 @@ if [ -n "$MOSES_BASE_PATH_PREFIX" ]; then
     proxy_pass_header X-Moses-Chart-ID;
     proxy_pass_header X-Moses-Request-ID;
   }
+  location ^~ ${MOSES_BASE_PATH_PREFIX}/__moses/ {
+    proxy_pass http://${BACKEND_SERVICE_HOST}:${BACKEND_SERVICE_PORT}/__moses/;
+    proxy_http_version 1.1;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+  }
   location ^~ ${MOSES_BASE_PATH_PREFIX}/ {
     absolute_redirect off;
     rewrite ^${MOSES_BASE_PATH_PREFIX}/(.*)\$ /\$1 last;
