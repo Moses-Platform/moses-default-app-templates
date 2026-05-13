@@ -1,26 +1,32 @@
 # Multi-stage build with Moses BLF-B late-stage ARG pattern (CHAT-kdep).
 #
-# The `deps` stage installs npm packages — it must be insensitive to
-# per-build values like chart_id / deployment_id, otherwise every Moses
-# deploy would re-download the entire dependency graph. Moving the ARG
-# declarations into the `build` stage scopes their cache-busting effect to
-# the final Vite invocation only.
+# The `deps` stage installs npm packages and the `builder` stage runs the
+# actual Vite/TS build with per-deploy ARGs. Declaring per-deploy ARGs only
+# in the `builder` stage scopes their visibility and keeps Dockerfile intent
+# explicit.
+#
+# Note (CHAT-1mp04): the platform runs Kaniko with --cache=false, so the
+# `deps` stage layer is NOT actually cached across builds. `npm install`
+# re-runs on every Moses deploy. The multi-stage split remains useful for
+# organizational clarity and ARG scope, but is no longer a performance
+# optimisation. The intermediate-layer cache was disabled to fix an
+# upstream Kaniko bug with npm hardlink corruption (kaniko#1743).
 
-# --- Dependencies (cacheable across builds) -----------------------------
+# --- Dependencies -------------------------------------------------------
 FROM node:20-alpine AS deps
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
 RUN npm install
 
-# --- Build (re-runs per build, but `deps` layer stays cached) ------------
+# --- Build --------------------------------------------------------------
 FROM deps AS builder
 WORKDIR /app
 
 COPY . .
 
-# Moses BLF-B build args. Declare ONLY in this stage to preserve the
-# `deps` layer cache.
+# Moses BLF-B build args. Declared ONLY in this stage so they don't leak
+# into the deps stage's ARG scope.
 ARG VITE_MOSES_CHART_ID=""
 ARG VITE_MOSES_DEPLOYMENT_ID=""
 ARG VITE_MOSES_API_BASE=""
