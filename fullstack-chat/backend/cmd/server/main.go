@@ -23,7 +23,7 @@ import (
 	"github.com/moses-platform/fullstack-chat/internal/database"
 	"github.com/moses-platform/fullstack-chat/internal/handler"
 	"github.com/moses-platform/fullstack-chat/internal/middleware"
-	mosesproxy "github.com/moses-platform/moses-templates-shared/mosesproxy-go"
+	"github.com/moses-platform/fullstack-chat/internal/mosesproxy"
 )
 
 func main() {

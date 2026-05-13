@@ -31,9 +31,15 @@ contract. Three pieces wire together:
    POSTs to `/__moses/invoke` on this app's own backend, with
    `X-Requested-With: moses-iframe` so the proxy can gate cross-origin CSRF.
 
-2. **mosesproxy-go** — the shared Go handler at
-   [`shared/mosesproxy-go/`](../shared/mosesproxy-go/). Mounted by
-   [`backend/cmd/server/main.go`](backend/cmd/server/main.go) at
+2. **mosesproxy-go** — the Go handler vendored into this template at
+   [`backend/internal/mosesproxy/`](backend/internal/mosesproxy/) so the
+   template is **self-contained**: `moses_init_repo` and manual subdirectory
+   clones produce a buildable repo with no `replace` directives pointing
+   outside it. The canonical upstream copy lives in the templates monorepo
+   at `shared/mosesproxy-go/` — re-sync instructions are in the header
+   comment of `backend/internal/mosesproxy/proxy.go`.
+
+   Mounted by [`backend/cmd/server/main.go`](backend/cmd/server/main.go) at
    `mosesproxy.InvokePath` (= `/__moses/invoke`). Extracts the user's JWT
    from `Authorization: Bearer` or the `access_token` cookie, then forwards
    pod-to-pod to `${MOSES_INTERNAL_API_BASE}/api/v1/apps/{slug}/actions/{id}/invoke`

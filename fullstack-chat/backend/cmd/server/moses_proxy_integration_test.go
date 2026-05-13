@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	mosesproxy "github.com/moses-platform/moses-templates-shared/mosesproxy-go"
+	"github.com/moses-platform/fullstack-chat/internal/mosesproxy"
 )
 
 // CHAT-pswm.3 §C — cross-repo integration test (proxy → simulated
