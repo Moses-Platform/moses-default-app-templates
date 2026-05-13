@@ -1,0 +1,19 @@
+name: Vendored mosesproxy-go drift check
+on:
+  pull_request:
+    paths:
+      - 'shared/mosesproxy-go/**'
+      - 'fullstack-chat/backend/internal/mosesproxy/**'
+      - 'tools/check-vendored-mosesproxy.sh'
+  push:
+    branches: [main]
+    paths:
+      - 'shared/mosesproxy-go/**'
+      - 'fullstack-chat/backend/internal/mosesproxy/**'
+      - 'tools/check-vendored-mosesproxy.sh'
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./tools/check-vendored-mosesproxy.sh

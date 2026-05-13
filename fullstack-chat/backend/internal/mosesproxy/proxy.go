@@ -10,8 +10,12 @@
 //
 // IMPORTANT: when re-syncing, preserve this header comment block — drop
 // only the canonical file's package comment so the "VENDORED COPY" notice
-// stays attached. A future bead will add a Makefile target + CI gate that
-// diffs vendored copies against shared/ to catch drift automatically.
+// stays attached.
+//
+// To verify this copy is in sync with the canonical source, run from the
+// templates repo root:
+//   ./tools/check-vendored-mosesproxy.sh
+// CI runs the same check on PRs that touch either shared/ or this file.
 //
 // Why vendored: fullstack-chat ships as a standalone repo (via
 // `moses_init_repo template=fullstack-chat` or a subdirectory clone of the
