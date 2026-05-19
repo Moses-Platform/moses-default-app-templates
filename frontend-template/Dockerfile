@@ -15,7 +15,7 @@
 # triggers a full reinstall. Matches the --cache=false steady state.
 
 # --- Builder (install + Vite/TS build, all in ONE RUN) ------------------
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 
 COPY . .
@@ -37,7 +37,7 @@ RUN NPM_REGISTRY="$NPM_REGISTRY" \
     sh -c 'if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi && npm install && npx tsc -p tsconfig.build.json && npx vite build'
 
 # --- Runtime ------------------------------------------------------------
-FROM nginx:alpine
+FROM nginx:1.28-alpine
 
 # CHAT-pbup: nginx config is rendered at container start by entrypoint.sh
 # from MOSES_EMBEDDING_FRAMING + MOSES_EMBEDDING_ALLOWED_ANCESTORS so a

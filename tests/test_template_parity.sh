@@ -97,16 +97,18 @@ for t in $TEMPLATES; do
 done
 
 # ---------------------------------------------------------------------------
-# 4. Go module + Dockerfile version parity. The platform itself runs Go
-#    1.24+; we keep the templates aligned so a template that adopts a
-#    transitive dependency requiring `go 1.23+` doesn't fail builds.
+# 4. Go module + Dockerfile version parity. The platform itself pins Go
+#    1.25.10 (moses-platform-prep/backend/go.mod + agent-base/Dockerfile);
+#    we keep the templates on the same exact patch so a template that adopts
+#    a transitive dependency requiring `go 1.25+` doesn't fail builds and so
+#    builds stay reproducible across the fleet.
 #
-#    All four `go.mod` files must declare exactly `go 1.24`. The check below
-#    is exact-match — when bumping to 1.25 or later, update both
+#    All `go.mod` files must declare exactly `go 1.25.10`. The check below
+#    is exact-match — when bumping to 1.26 or later, update both
 #    EXPECTED_GO_MAJOR_MINOR AND the Dockerfile golang base tag in this file
 #    in the same PR (see rule #5 below).
 # ---------------------------------------------------------------------------
-EXPECTED_GO_MAJOR_MINOR="1.24"
+EXPECTED_GO_MAJOR_MINOR="1.25.10"
 for gm in $(find . -maxdepth 4 -name go.mod -not -path './node_modules/*' 2>/dev/null); do
   declared=$(awk '/^go [0-9]/ { print $2 }' "$gm")
   if [ "$declared" = "$EXPECTED_GO_MAJOR_MINOR" ]; then
@@ -118,12 +120,12 @@ done
 
 # ---------------------------------------------------------------------------
 # 5. Dockerfile base image parity. Every Dockerfile that uses golang must
-#    pin the same major.minor as go.mod. Every Dockerfile that uses alpine
-#    runtime must pin the same alpine tag (3.19) so security scanning is
-#    consistent.
+#    pin the same major.minor.patch as go.mod. Every Dockerfile that uses
+#    alpine runtime must pin the same alpine tag (3.21) so security scanning
+#    is consistent with the platform's agent-base image.
 # ---------------------------------------------------------------------------
-EXPECTED_GOLANG_TAG="golang:1.24-alpine"
-EXPECTED_ALPINE_TAG="alpine:3.19"
+EXPECTED_GOLANG_TAG="golang:1.25.10-alpine"
+EXPECTED_ALPINE_TAG="alpine:3.21"
 
 for df in $(find . -maxdepth 4 -name Dockerfile -not -path './node_modules/*' 2>/dev/null); do
   # Only check FROM lines that reference golang.
