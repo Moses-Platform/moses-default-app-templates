@@ -32,7 +32,7 @@ spec:
     spec:
       containers:
         - name: postgresql
-          image: "{{ .Values.postgresql.image.repository | default "postgres" }}:{{ .Values.postgresql.image.tag | default "16-alpine" }}"
+          image: "{{ .Values.postgresql.image.repository | default "postgres" }}:{{ .Values.postgresql.image.tag | default "17-alpine" }}"
           ports:
             - containerPort: 5432
           env:
@@ -47,12 +47,20 @@ spec:
               value: {{ .Values.postgresql.auth.database | default "appdb" | quote }}
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
+          # pg_isready needs both -U (user) AND -d (database). Without -d,
+          # the probe connects to a db that defaults to the user name ("app"),
+          # which does not exist (we created "appdb"), and the postgres server
+          # log fills with `FATAL: database "app" does not exist` on every
+          # probe tick. pg_isready still exits 0 because the server responded,
+          # so the probe passes — but the log noise hides real failures.
           readinessProbe:
             exec:
               command:
                 - pg_isready
                 - -U
                 - {{ .Values.postgresql.auth.username | default "app" | quote }}
+                - -d
+                - {{ .Values.postgresql.auth.database | default "appdb" | quote }}
             initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 3
@@ -63,6 +71,8 @@ spec:
                 - pg_isready
                 - -U
                 - {{ .Values.postgresql.auth.username | default "app" | quote }}
+                - -d
+                - {{ .Values.postgresql.auth.database | default "appdb" | quote }}
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5

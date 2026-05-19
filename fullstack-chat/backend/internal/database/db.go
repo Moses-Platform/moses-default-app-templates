@@ -2,12 +2,14 @@ package database
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"time"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 // Config holds database connection configuration.
@@ -52,7 +54,7 @@ func Connect(cfg Config) (*sql.DB, error) {
 	maxRetries := 30
 
 	for i := 0; i < maxRetries; i++ {
-		db, err = sql.Open("postgres", dsn)
+		db, err = sql.Open("pgx", dsn)
 		if err != nil {
 			log.Printf("Database open attempt %d/%d failed: %v", i+1, maxRetries, err)
 			time.Sleep(2 * time.Second)
@@ -71,10 +73,11 @@ func Connect(cfg Config) (*sql.DB, error) {
 		// self-heal, so 30 retries are wasted time and noisy logs. Most
 		// commonly hit when the chart's postgresql.auth.username doesn't
 		// match the platform-injected DB_USER.
-		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "28P01" {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "28P01" {
 			db.Close()
 			return nil, fmt.Errorf(
-				"DB password mismatch (pq 28P01 invalid_password) — verify chart's postgresql.auth.username matches DB_USER=%q. error: %w",
+				"DB password mismatch (SQLSTATE 28P01 invalid_password) — verify chart's postgresql.auth.username matches DB_USER=%q. error: %w",
 				cfg.User, err,
 			)
 		}

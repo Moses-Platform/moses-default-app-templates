@@ -114,8 +114,11 @@ export default function OverviewPage() {
         <h3>Explore Platform Capabilities</h3>
         <div className="features-grid">
           {features.map((feature) => (
+            // key=title because two features intentionally deep-link to the
+            // same path (Deployment Pipeline and OpenAPI Discovery both land
+            // on /deployment); titles are unique even when paths overlap.
             <FeatureCard
-              key={feature.path}
+              key={feature.title}
               icon={feature.icon}
               title={feature.title}
               description={feature.description}
