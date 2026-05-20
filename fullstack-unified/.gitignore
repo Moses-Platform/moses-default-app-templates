@@ -1,6 +1,7 @@
-# Go build artifacts
-server
-fullstack-unified
+# Go build artifacts — anchored to the repo root so they only match the
+# compiled binary, NOT a `server/` source directory or a `server.go` file.
+/server
+/fullstack-unified
 *.exe
 *.test
 *.out
