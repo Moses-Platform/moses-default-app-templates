@@ -46,14 +46,14 @@ import (
 // §C test here is the templates-side half of the same contract.
 
 // mountFullChain rebuilds the relevant slice of cmd/server/main.go's
-// router so the test exercises the SAME wiring as a real pod boot:
-// the proxy lives under InvokePath, optionally prefixed by basePath.
+// router so the test exercises the SAME wiring as a real pod boot.
+//
+// CHAT-8qiu0: the proxy InvokePath is registered ONCE, under basePath —
+// "" for a standalone deploy (collapses to the canonical /__moses/invoke)
+// and "/apps/<tenant>/<slug>" for a Moses sub-path deploy.
 func mountFullChain(cfg mosesproxy.Config, basePath string) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc(mosesproxy.InvokePath, mosesproxy.NewHandler(cfg))
-	if basePath != "" {
-		mux.HandleFunc(strings.TrimSuffix(basePath, "/")+mosesproxy.InvokePath, mosesproxy.NewHandler(cfg))
-	}
+	mux.HandleFunc(strings.TrimSuffix(basePath, "/")+mosesproxy.InvokePath, mosesproxy.NewHandler(cfg))
 	return mux
 }
 
@@ -275,10 +275,10 @@ func TestIntegration_StripsUpstreamSetCookie(t *testing.T) {
 }
 
 // TestIntegration_BasePathMount_RoutesProxyThroughSubpath
-// — fullstack-chat mounts both the root path AND the basePath alias
-// for sub-path deploys (main.go:registerAPI). Verify the proxy reaches
-// the upstream when the iframe lives at /apps/{tenant}/{slug}/ and the
-// SDK posts to a base-path-relative /__moses/invoke.
+// — CHAT-8qiu0: fullstack-chat mounts the proxy ONCE, under basePath
+// (main.go:buildMux). Verify the proxy reaches the upstream when the
+// iframe lives at /apps/{tenant}/{slug}/ and the SDK posts to a
+// base-path-relative /__moses/invoke.
 func TestIntegration_BasePathMount_RoutesProxyThroughSubpath(t *testing.T) {
 	fc := newForwardCapture(t)
 	cfg := mosesproxy.Config{

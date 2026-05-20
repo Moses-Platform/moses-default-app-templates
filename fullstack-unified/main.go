@@ -95,14 +95,8 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// Health check — always at root (Kubernetes probes bypass ingress)
-	mux.HandleFunc("/health", handleHealth)
-
-	// OpenAPI spec — served at root for probe discovery
-	mux.HandleFunc("/api/openapi.json", handleOpenAPI)
-
-	// API endpoints — prefixed with BASE_URL for ingress compatibility
-	mux.HandleFunc(baseURL+"/api/v1/status", handleStatus)
+	// Register health / OpenAPI / API routes (see registerAPIRoutes).
+	registerAPIRoutes(mux, baseURL)
 
 	// Static files — served at BASE_URL prefix via Go embed
 	staticFS, err := fs.Sub(staticFiles, "static")
@@ -171,6 +165,36 @@ func main() {
 		log.Fatalf("Server forced shutdown: %v", err)
 	}
 	log.Println("Server stopped")
+}
+
+// registerAPIRoutes wires the health / OpenAPI / API routes onto mux.
+// Single source of truth shared by main() and the tests.
+//
+// MOSES ROUTING (CHAT-8qiu0). Moses deploys apps at a sub-path; the pod
+// receives that path in MOSES_BASE_PATH and the ingress does NOT strip it.
+// The platform's workspace-tool proxy calls the app's API *under*
+// MOSES_BASE_PATH, so the API is registered ONCE there — baseURL is "" for
+// standalone/dev deploys and "/apps/<tenant>/<slug>" for Moses sub-path
+// deploys.
+//
+//   - /health: registered at BOTH /health and {baseURL}/health — the kubelet
+//     probe hits the canonical /health (it bypasses the ingress), while a
+//     sub-path caller reaching the pod still gets a 200.
+//   - /api/openapi.json: stays canonical — the platform's discovery hook
+//     fetches it at the bare path, never browser-facing.
+//   - /api/v1/* : registered ONCE under baseURL (its browser-facing home).
+func registerAPIRoutes(mux *http.ServeMux, baseURL string) {
+	// Health check — canonical for the K8s probe, plus the base-path alias.
+	mux.HandleFunc("/health", handleHealth)
+	if baseURL != "" {
+		mux.HandleFunc(baseURL+"/health", handleHealth)
+	}
+
+	// OpenAPI spec — canonical only, the WorkspaceToolProxy discovery hook.
+	mux.HandleFunc("/api/openapi.json", handleOpenAPI)
+
+	// API endpoints — registered ONCE under MOSES_BASE_PATH.
+	mux.HandleFunc(baseURL+"/api/v1/status", handleStatus)
 }
 
 // mosesContext holds Moses platform headers extracted from the request.
@@ -305,7 +329,9 @@ func withEmbeddingHeaders(next http.Handler) http.Handler {
 // SECURITY WARNING: This template uses permissive CORS (Allow-Origin: "*") for
 // development convenience. For production deployments, restrict this to your actual
 // domain(s). Example:
-//   w.Header().Set("Access-Control-Allow-Origin", "https://yourdomain.com")
+//
+//	w.Header().Set("Access-Control-Allow-Origin", "https://yourdomain.com")
+//
 // See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 func withMosesHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

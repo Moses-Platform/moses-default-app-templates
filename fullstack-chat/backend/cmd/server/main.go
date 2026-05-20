@@ -3,10 +3,10 @@
 //
 //   - GET  /api/v1/entries        — list (frontend reads after WS push)
 //   - POST /api/v1/entries        — create (Moses Manager calls this via the
-//                                     workspace-tools wedge after a
-//                                     chat_prompt action fires)
+//     workspace-tools wedge after a
+//     chat_prompt action fires)
 //   - POST /api/v1/webhooks/chat-complete — Moses fires this when the AI
-//                                     turn finishes; HMAC-verified
+//     turn finishes; HMAC-verified
 package main
 
 import (
@@ -66,9 +66,9 @@ func main() {
 	entries := handler.NewEntriesHandler(db)
 	chatWebhook := handler.NewChatWebhookHandler(db)
 
-	// Mount API routes under MOSES_BASE_PATH for sub-path deploys.
-	// /health + /api/openapi.json stay at root for K8s probes and
-	// WorkspaceToolProxy auto-discovery.
+	// CHAT-pbup / CHAT-8qiu0: read MOSES_BASE_PATH (canonical) with BASE_URL as
+	// the deprecated alias. API routes are registered ONCE under this prefix
+	// (see buildMux). basePath is "" (root) or "/foo/bar" (no trailing slash).
 	basePath := strings.TrimSuffix(os.Getenv("MOSES_BASE_PATH"), "/")
 	if basePath == "" {
 		alias := strings.TrimSuffix(os.Getenv("BASE_URL"), "/")
@@ -78,18 +78,8 @@ func main() {
 		}
 	}
 
-	mux := http.NewServeMux()
-	var h http.Handler = mux
-	h = middleware.Logging(h)
-	h = middleware.MosesHeaders(h)
-	h = middleware.CORS(h)
-
-	mux.HandleFunc("/health", handler.Health)
-	mux.HandleFunc("/api/openapi.json", handler.OpenAPI)
-	mux.HandleFunc("/api/spec", handler.OpenAPI)
-
 	// CHAT-pswm.8/.9 — mosesproxy. The in-iframe SDK at
-	// /api/v1/sdk/iframe-sdk.js POSTs to this path (same-origin under
+	// /api/v1/sdk/iframe-sdk.js POSTs to InvokePath (same-origin under
 	// nginx subpath routing) with the user's access_token cookie. The
 	// proxy extracts the JWT and forwards pod-to-pod to moses-backend
 	// at ${MOSES_INTERNAL_API_BASE}, preserving the user's identity so
@@ -103,15 +93,12 @@ func main() {
 	// adds the header in CHAT-pswm.9.
 	proxyCfg := mosesproxy.ConfigFromEnv()
 	proxyCfg.RequireRequestedWith = true
-	registerAPI := func(prefix string) {
-		mux.HandleFunc(prefix+"/api/v1/entries", entries.Entries)
-		mux.HandleFunc(prefix+"/api/v1/webhooks/chat-complete", chatWebhook.Handle)
-		mux.HandleFunc(prefix+mosesproxy.InvokePath, mosesproxy.NewHandler(proxyCfg))
-	}
-	registerAPI("")
-	if basePath != "" {
-		registerAPI(basePath)
-	}
+
+	mux := buildMux(basePath, entries, chatWebhook, proxyCfg)
+	var h http.Handler = mux
+	h = middleware.Logging(h)
+	h = middleware.MosesHeaders(h)
+	h = middleware.CORS(h)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -144,4 +131,41 @@ func main() {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 	log.Println("Server exited")
+}
+
+// buildMux wires every route this server serves. Single source of truth
+// shared by main() and the cmd/server tests.
+//
+// MOSES ROUTING. Moses deploys apps at a sub-path; the pod receives that
+// path in MOSES_BASE_PATH and the ingress does NOT strip it. The platform's
+// workspace-tool proxy calls the app's API *under* MOSES_BASE_PATH, so the
+// API (including the mosesproxy InvokePath the in-iframe SDK posts to) is
+// registered ONCE there — basePath is "" for standalone/dev deploys and
+// "/apps/<tenant>/<slug>" for Moses sub-path deploys.
+//
+//   - API routes: single registration under basePath (its browser-facing home).
+//   - /health: registered at BOTH /health and {basePath}/health — the kubelet
+//     probe hits the canonical /health (it bypasses the ingress), while a
+//     sub-path caller reaching the pod still gets a 200.
+//   - /api/openapi.json: stays canonical — the platform's discovery hook
+//     fetches it at the bare path, never browser-facing.
+func buildMux(basePath string, entries *handler.EntriesHandler, chatWebhook *handler.ChatWebhookHandler, proxyCfg mosesproxy.Config) *http.ServeMux {
+	mux := http.NewServeMux()
+
+	// Health check — canonical for the K8s probe, plus the base-path alias.
+	mux.HandleFunc("/health", handler.Health)
+	if basePath != "" {
+		mux.HandleFunc(basePath+"/health", handler.Health)
+	}
+
+	// OpenAPI spec — canonical only, the WorkspaceToolProxy auto-discovery hook.
+	mux.HandleFunc("/api/openapi.json", handler.OpenAPI)
+	mux.HandleFunc("/api/spec", handler.OpenAPI)
+
+	// API endpoints — registered ONCE under MOSES_BASE_PATH.
+	mux.HandleFunc(basePath+"/api/v1/entries", entries.Entries)
+	mux.HandleFunc(basePath+"/api/v1/webhooks/chat-complete", chatWebhook.Handle)
+	mux.HandleFunc(basePath+mosesproxy.InvokePath, mosesproxy.NewHandler(proxyCfg))
+
+	return mux
 }

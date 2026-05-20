@@ -6,7 +6,7 @@
     "description": "Demonstrates the full app↔Moses-Manager chat roundtrip. Moses Manager auto-discovers POST /api/v1/entries via the workspace-tools wedge and calls it when fulfilling chat_prompt actions. The webhook endpoint receives the AI's completion signal."
   },
   "servers": [
-    { "url": "/api/v1", "description": "Default base path; same shape mounted at MOSES_BASE_PATH for embedded apps." }
+    { "url": "/api/v1", "description": "Canonical API base. MUST stay base-path-free: the platform's workspace-tool proxy prepends MOSES_BASE_PATH itself (CHAT-8qiu0)." }
   ],
   "paths": {
     "/entries": {

@@ -1,5 +1,8 @@
 # Go build artifacts
-server
+# /server (root-only) — match the compiled binary at the module root, NOT
+# the `cmd/server/` source dir. An un-anchored `server` silently ignores
+# cmd/server/*.go (CHAT-8qiu0 caught main.go + main_test.go never committed).
+/server
 *.exe
 *.test
 *.out

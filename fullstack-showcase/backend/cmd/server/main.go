@@ -51,9 +51,9 @@ func main() {
 	notesHandler := handler.NewNotesHandler(db)
 	usersHandler := handler.NewUsersHandler()
 
-	// CHAT-pbup Bug 5: mount API routes under MOSES_BASE_PATH for sub-path
-	// deploys. /health + /api/openapi.json stay at root for K8s probes and
-	// WorkspaceToolProxy auto-discovery.
+	// CHAT-pbup / CHAT-8qiu0: read MOSES_BASE_PATH (canonical) with BASE_URL as
+	// the deprecated alias. API routes are registered ONCE under this prefix
+	// (see buildMux). basePath is "" (root) or "/foo/bar" (no trailing slash).
 	basePath := strings.TrimSuffix(os.Getenv("MOSES_BASE_PATH"), "/")
 	if basePath == "" {
 		alias := strings.TrimSuffix(os.Getenv("BASE_URL"), "/")
@@ -63,32 +63,14 @@ func main() {
 		}
 	}
 
-	// Create router
-	mux := http.NewServeMux()
+	// Create router with all routes registered (see buildMux).
+	mux := buildMux(basePath, notesHandler, usersHandler)
 
 	// Apply middleware
 	var h http.Handler = mux
 	h = middleware.Logging(h)
 	h = middleware.MosesHeaders(h)
 	h = middleware.CORS(h)
-
-	// Register routes
-	mux.HandleFunc("/health", handler.Health)
-	mux.HandleFunc("/api/openapi.json", handler.OpenAPI)
-	mux.HandleFunc("/api/spec", handler.OpenAPI)
-
-	registerAPI := func(prefix string) {
-		mux.HandleFunc(prefix+"/api/v1/moses-info", handler.MosesInfo)
-		mux.HandleFunc(prefix+"/api/v1/capabilities", handler.ListCapabilities)
-		mux.HandleFunc(prefix+"/api/v1/capabilities/", handler.GetCapability)
-		mux.HandleFunc(prefix+"/api/v1/notes", notesHandler.Notes)
-		mux.HandleFunc(prefix+"/api/v1/notes/", notesHandler.Notes)
-		mux.HandleFunc(prefix+"/api/v1/users", usersHandler.Users)
-	}
-	registerAPI("")
-	if basePath != "" {
-		registerAPI(basePath)
-	}
 
 	// Create server
 	port := os.Getenv("PORT")
@@ -127,4 +109,43 @@ func main() {
 	}
 
 	log.Println("Server exited")
+}
+
+// buildMux wires every route this server serves. Single source of truth
+// shared by main() and the cmd/server tests.
+//
+// MOSES ROUTING. Moses deploys apps at a sub-path; the pod receives that
+// path in MOSES_BASE_PATH and the ingress does NOT strip it. The platform's
+// workspace-tool proxy calls the app's API *under* MOSES_BASE_PATH, so the
+// API is registered ONCE there — basePath is "" for standalone/dev deploys
+// and "/apps/<tenant>/<slug>" for Moses sub-path deploys.
+//
+//   - API routes: single registration under basePath (its browser-facing home).
+//   - /health: registered at BOTH /health and {basePath}/health — the kubelet
+//     probe hits the canonical /health (it bypasses the ingress), while a
+//     sub-path caller reaching the pod still gets a 200.
+//   - /api/openapi.json: stays canonical — the platform's discovery hook
+//     fetches it at the bare path, never browser-facing.
+func buildMux(basePath string, notesHandler *handler.NotesHandler, usersHandler *handler.UsersHandler) *http.ServeMux {
+	mux := http.NewServeMux()
+
+	// Health check — canonical for the K8s probe, plus the base-path alias.
+	mux.HandleFunc("/health", handler.Health)
+	if basePath != "" {
+		mux.HandleFunc(basePath+"/health", handler.Health)
+	}
+
+	// OpenAPI spec — canonical only, the WorkspaceToolProxy auto-discovery hook.
+	mux.HandleFunc("/api/openapi.json", handler.OpenAPI)
+	mux.HandleFunc("/api/spec", handler.OpenAPI)
+
+	// API endpoints — registered ONCE under MOSES_BASE_PATH.
+	mux.HandleFunc(basePath+"/api/v1/moses-info", handler.MosesInfo)
+	mux.HandleFunc(basePath+"/api/v1/capabilities", handler.ListCapabilities)
+	mux.HandleFunc(basePath+"/api/v1/capabilities/", handler.GetCapability)
+	mux.HandleFunc(basePath+"/api/v1/notes", notesHandler.Notes)
+	mux.HandleFunc(basePath+"/api/v1/notes/", notesHandler.Notes)
+	mux.HandleFunc(basePath+"/api/v1/users", usersHandler.Users)
+
+	return mux
 }

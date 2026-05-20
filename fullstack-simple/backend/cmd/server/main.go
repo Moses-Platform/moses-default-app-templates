@@ -26,10 +26,9 @@ func main() {
 		port = "8080"
 	}
 
-	// CHAT-pbup Bug 5: mount API routes under MOSES_BASE_PATH so
-	// /apps/<tenant>/<slug>/api/... reaches the backend even when the nginx
-	// frontend forwards the prefix unchanged. Health + openapi stay at
-	// root for K8s probes / WorkspaceToolProxy auto-discovery.
+	// CHAT-pbup / CHAT-8qiu0: read MOSES_BASE_PATH (canonical) with BASE_URL as
+	// the deprecated alias. API routes are registered ONCE under this prefix
+	// (see buildMux). basePath is "" (root) or "/foo/bar" (no trailing slash).
 	basePath := strings.TrimSuffix(os.Getenv("MOSES_BASE_PATH"), "/")
 	if basePath == "" {
 		alias := strings.TrimSuffix(os.Getenv("BASE_URL"), "/")
@@ -39,22 +38,7 @@ func main() {
 		}
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", handler.Health)
-	mux.HandleFunc("/api/openapi.json", handler.OpenAPI)
-
-	items := handler.NewItemsHandler()
-	registerAPI := func(prefix string) {
-		mux.HandleFunc(prefix+"/api/v1/status", handler.Status)
-		// CRUD example — in-memory items scoped by tenant.
-		// For database-backed CRUD patterns, see the fullstack-showcase template.
-		mux.HandleFunc(prefix+"/api/v1/items", items.Handle)
-		mux.HandleFunc(prefix+"/api/v1/items/", items.HandleWithID)
-	}
-	registerAPI("")
-	if basePath != "" {
-		registerAPI(basePath)
-	}
+	mux := buildMux(basePath)
 
 	// CORS middleware
 	var h http.Handler = mux
@@ -89,10 +73,50 @@ func main() {
 	log.Println("Server stopped")
 }
 
+// buildMux wires every route this server serves. Single source of truth
+// shared by main() and the cmd/server tests.
+//
+// MOSES ROUTING. Moses deploys apps at a sub-path; the pod receives that
+// path in MOSES_BASE_PATH and the ingress does NOT strip it. The platform's
+// workspace-tool proxy calls the app's API *under* MOSES_BASE_PATH, so the
+// API is registered ONCE there — basePath is "" for standalone/dev deploys
+// and "/apps/<tenant>/<slug>" for Moses sub-path deploys.
+//
+//   - API routes: single registration under basePath (its browser-facing home).
+//   - /health: registered at BOTH /health and {basePath}/health — the kubelet
+//     probe hits the canonical /health (it bypasses the ingress), while a
+//     sub-path caller reaching the pod still gets a 200.
+//   - /api/openapi.json: stays canonical — the platform's discovery hook
+//     fetches it at the bare path, never browser-facing.
+func buildMux(basePath string) *http.ServeMux {
+	mux := http.NewServeMux()
+
+	// Health check — canonical for the K8s probe, plus the base-path alias.
+	mux.HandleFunc("/health", handler.Health)
+	if basePath != "" {
+		mux.HandleFunc(basePath+"/health", handler.Health)
+	}
+
+	// OpenAPI spec — canonical only, the WorkspaceToolProxy auto-discovery hook.
+	mux.HandleFunc("/api/openapi.json", handler.OpenAPI)
+
+	// API endpoints — registered ONCE under MOSES_BASE_PATH.
+	items := handler.NewItemsHandler()
+	mux.HandleFunc(basePath+"/api/v1/status", handler.Status)
+	// CRUD example — in-memory items scoped by tenant.
+	// For database-backed CRUD patterns, see the fullstack-showcase template.
+	mux.HandleFunc(basePath+"/api/v1/items", items.Handle)
+	mux.HandleFunc(basePath+"/api/v1/items/", items.HandleWithID)
+
+	return mux
+}
+
 // SECURITY WARNING: This template uses permissive CORS (Allow-Origin: "*") for
 // development convenience. For production deployments, restrict this to your actual
 // domain(s). Example:
-//   w.Header().Set("Access-Control-Allow-Origin", "https://yourdomain.com")
+//
+//	w.Header().Set("Access-Control-Allow-Origin", "https://yourdomain.com")
+//
 // See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
