@@ -96,7 +96,7 @@ render_template() {
     # ${MOSES_SUBPATH_LOCATION_BLOCK} for an API and we use a per-template
     # assert below.
     subpath_block="location ^~ ${base_prefix}/api/ {
-    proxy_pass http://example-backend:8080/api/;
+    proxy_pass http://example-backend:8080;
     proxy_http_version 1.1;
     proxy_set_header Host \$host;
   }
@@ -314,6 +314,20 @@ for ep in frontend-template/entrypoint.sh fullstack-simple/frontend/entrypoint.s
   else
     echo "FAIL: ${ep} missing CHAT-pbup.16 chart-parity default (MOSES_DOMAIN + tauri://localhost)"
     FAIL=$((FAIL + 1))
+  fi
+done
+
+# CHAT-yfmwv: the sub-path API proxy MUST forward the prefix UNCHANGED. The
+# backend registers its API + the mosesproxy InvokePath under MOSES_BASE_PATH
+# (buildMux), so a `proxy_pass .../api/;` URI part — which makes nginx strip
+# the matched location prefix — would 404 every API call through the ingress.
+# Assert each real entrypoint carries the no-URI pass-through form.
+for ep in fullstack-simple/frontend/entrypoint.sh fullstack-showcase/frontend/entrypoint.sh fullstack-chat/frontend/entrypoint.sh; do
+  if grep -qF 'proxy_pass http://${BACKEND_SERVICE_HOST}:${BACKEND_SERVICE_PORT}/' "${REPO_ROOT}/${ep}"; then
+    echo "FAIL: ${ep} sub-path proxy_pass carries a URI part — it strips MOSES_BASE_PATH and the backend 404s (CHAT-yfmwv)"
+    FAIL=$((FAIL + 1))
+  else
+    PASS=$((PASS + 1))
   fi
 done
 

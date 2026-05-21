@@ -80,6 +80,19 @@ func TestRoutes_OpenAPICanonical(t *testing.T) {
 	}
 }
 
+// CHAT-yfmwv: /api/openapi.json ALSO answers at the base-path-prefixed path.
+// The frontend nginx forwards the prefix unchanged, so a probe through the
+// ingress (e.g. the platform's Phase-2 reachability gate) lands here.
+func TestRoutes_OpenAPIAtBasePath(t *testing.T) {
+	mux := buildMux("/apps/t/x")
+	req := httptest.NewRequest("GET", "/apps/t/x/api/openapi.json", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("GET /apps/t/x/api/openapi.json: expected 200, got %d", rec.Code)
+	}
+}
+
 // CHAT-8qiu0 acceptance check: the OpenAPI spec's servers[] (if present)
 // MUST stay base-path-free — the platform's openapi_parser folds
 // servers[0].url into endpoint.Path and the proxy prepends MOSES_BASE_PATH;

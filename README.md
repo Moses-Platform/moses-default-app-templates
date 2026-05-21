@@ -87,16 +87,21 @@ platform-side write-up lives in the deployment skill
 
 A Moses-aware app is deployed at `MOSES_BASE_PATH` (e.g.
 `/apps/{tenant}/{slug}/`). The ingress does **NOT** strip that prefix — the
-container receives the full prefixed path on browser traffic. Two classes of
-caller reach a deployed app, and the contract gives each surface exactly one
-correct address:
+frontend container receives the full prefixed path on browser traffic. In a
+multi-container template the frontend nginx then proxies `/api/` (and
+`/__moses/`) to the backend container, and it MUST forward the prefix
+**unchanged** — `proxy_pass` with no URI part — so the backend sees the same
+`MOSES_BASE_PATH`-prefixed path it registered its routes under. A `proxy_pass
+http://backend/api/;` URI part silently strips the prefix and every API call
+404s (CHAT-yfmwv). Two classes of caller reach a deployed app, and the contract
+gives each surface exactly one correct address:
 
 | Surface | Mount it at | Who calls it |
 |---------|-------------|--------------|
 | Static assets | `MOSES_BASE_PATH` | the browser |
 | **All API routes** | **`MOSES_BASE_PATH` — one registration** | the browser **and** the workspace-tool proxy |
-| `/health` | the **root** `/health` (templates also mount `{MOSES_BASE_PATH}/health` — cost-free) | K8s probes + platform health checks |
-| `/api/openapi.json` (your declared `specPath`) | the **root** | platform OpenAPI discovery — never browser-facing |
+| `/health` | the **root** `/health` **and** `{MOSES_BASE_PATH}/health` (cost-free) | K8s probes + platform health checks |
+| `/api/openapi.json` (your declared `specPath`) | the **root** `/api/openapi.json` **and** `{MOSES_BASE_PATH}/api/openapi.json` (cost-free) | platform OpenAPI discovery (canonical) + the Phase-2 reachability probe (prefixed) |
 
 ### Rules
 
@@ -110,14 +115,22 @@ correct address:
    pod IP directly, bypassing the ingress. Templates additionally mount
    `{MOSES_BASE_PATH}/health` (one trivial extra handler) so an app that
    accidentally serves everything under the base path still passes the probe.
-3. **`/api/openapi.json` at the root.** A platform discovery hook, never
-   browser-facing — it stays canonical.
+3. **`/api/openapi.json` at the root AND under `MOSES_BASE_PATH`.** The platform
+   discovery hook fetches it canonically; the base-path alias keeps it reachable
+   through the frontend nginx (e.g. for the Phase-2 reachability probe). Like
+   `/health`, this is a cost-free second handler for the same static spec.
 4. **Frontends use relative fetch paths** (`fetch('api/v1/...')`) so the browser
    resolves them against the prefixed page URL.
+5. **Multi-container templates: the frontend nginx forwards `/api/` (and
+   `/__moses/`) to the backend with `proxy_pass` carrying NO URI part** — that
+   preserves the `MOSES_BASE_PATH` prefix end-to-end. A URI part strips it and
+   the backend 404s; `tests/test_nginx_entrypoint.sh` guards the regression
+   (CHAT-yfmwv).
 
 This is the *current* reality, not a plan: the workspace-tool proxy calls the
-app API under `MOSES_BASE_PATH` (platform fix CHAT-uzu24), and all six templates
-register the API once under `MOSES_BASE_PATH` (CHAT-8qiu0).
+app API under `MOSES_BASE_PATH` (platform fix CHAT-uzu24), all six templates
+register the API once under `MOSES_BASE_PATH` (CHAT-8qiu0), and the frontend
+nginx forwards the prefix to the backend unchanged (CHAT-yfmwv).
 
 ### In-cluster callers
 

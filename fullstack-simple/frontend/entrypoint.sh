@@ -110,7 +110,11 @@ if [ -n "$MOSES_BASE_PATH_PREFIX" ]; then
   # try_files 404s on /usr/share/nginx/html/apps/<tenant>/<slug>/assets/...
   # The `last` rewrite re-enters location matching with the stripped URI.
   MOSES_SUBPATH_LOCATION_BLOCK="location ^~ ${MOSES_BASE_PATH_PREFIX}/api/ {
-    proxy_pass http://${BACKEND_SERVICE_HOST}:${BACKEND_SERVICE_PORT}/api/;
+    # CHAT-yfmwv: proxy_pass with NO URI part — forward the full prefixed path
+    # UNCHANGED so it reaches the backend's MOSES_BASE_PATH-mounted routes
+    # (buildMux registers the API under basePath). A '.../api/' URI part would
+    # strip the matched location prefix and the backend would 404.
+    proxy_pass http://${BACKEND_SERVICE_HOST}:${BACKEND_SERVICE_PORT};
     proxy_http_version 1.1;
     proxy_set_header Host \$host;
     proxy_set_header X-Real-IP \$remote_addr;
