@@ -84,6 +84,18 @@ func TestRoutes_OpenAPICanonical(t *testing.T) {
 	}
 }
 
+// CHAT-yfmwv: /api/openapi.json ALSO answers at the base-path-prefixed path.
+func TestRoutes_OpenAPIAtBasePath(t *testing.T) {
+	mux := http.NewServeMux()
+	registerAPIRoutes(mux, "/apps/t/x")
+	req := httptest.NewRequest("GET", "/apps/t/x/api/openapi.json", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("GET /apps/t/x/api/openapi.json: expected 200, got %d", rec.Code)
+	}
+}
+
 // CHAT-8qiu0 acceptance check: the OpenAPI spec's servers[] (if present)
 // MUST stay base-path-free — the platform's openapi_parser folds
 // servers[0].url into endpoint.Path and the proxy prepends MOSES_BASE_PATH;

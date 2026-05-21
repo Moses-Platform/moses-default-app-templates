@@ -121,8 +121,10 @@ func main() {
 //   - /health: registered at BOTH /health and {basePath}/health — the kubelet
 //     probe hits the canonical /health (it bypasses the ingress), while a
 //     browser/proxy reaching the pod via the sub-path still gets a 200.
-//   - /api/openapi.json: stays canonical — the platform's discovery hook
-//     fetches it at the bare path, never browser-facing.
+//   - /api/openapi.json: registered at BOTH the canonical path and
+//     {basePath}/api/openapi.json — discovery uses the canonical path; the
+//     base-path alias keeps it reachable when the app is mounted under
+//     MOSES_BASE_PATH (CHAT-yfmwv).
 func buildMux(basePath string, itemStore *model.ItemStore) *http.ServeMux {
 	mux := http.NewServeMux()
 
@@ -133,10 +135,15 @@ func buildMux(basePath string, itemStore *model.ItemStore) *http.ServeMux {
 		mux.HandleFunc("GET "+basePath+"/health", handler.HealthCheck)
 	}
 
-	// OpenAPI spec endpoints (both standard paths) — canonical only, this is
-	// the platform's WorkspaceToolProxy auto-discovery hook.
+	// OpenAPI spec endpoints — canonical for the WorkspaceToolProxy discovery
+	// hook, plus the base-path alias so they stay reachable when the app is
+	// mounted under MOSES_BASE_PATH (CHAT-yfmwv).
 	mux.HandleFunc("GET /api/openapi.json", handler.ServeOpenAPI)
 	mux.HandleFunc("GET /api/spec", handler.ServeOpenAPI)
+	if basePath != "" {
+		mux.HandleFunc("GET "+basePath+"/api/openapi.json", handler.ServeOpenAPI)
+		mux.HandleFunc("GET "+basePath+"/api/spec", handler.ServeOpenAPI)
+	}
 
 	// API endpoints — registered ONCE under MOSES_BASE_PATH.
 	itemHandler := handler.NewItemHandler(itemStore)
