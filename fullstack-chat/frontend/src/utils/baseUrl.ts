@@ -24,11 +24,13 @@ export function getAPIURL(path: string): string {
 }
 
 /**
- * CHAT-pbup: getBasePath returns the runtime BASE_PATH the app is mounted
- * under, read from <meta name="moses-base-path">. Used as the BrowserRouter
- * basename so internal <Link to="/foo"> resolves to /apps/<t>/<a>/foo when
- * deployed through Moses, instead of escaping the app and hitting the
- * platform router. Falls back to "/" for standalone deploys.
+ * CHAT-pbup: getBasePath returns the BASE_PATH the app is mounted under right
+ * now — used as the BrowserRouter basename so internal <Link to="/foo">
+ * resolves correctly. The <meta name="moses-base-path"> tag records the
+ * canonical Moses mount (/apps/<t>/<a>); the app is reachable both there AND —
+ * when an admin assigns a custom hostname — at that hostname's ROOT, so this
+ * checks the live URL: under the canonical mount -> the mount; otherwise -> "/".
+ * Falls back to "/" for standalone deploys.
  */
 let cachedBasePath: string | null = null;
 export function getBasePath(): string {
@@ -38,8 +40,13 @@ export function getBasePath(): string {
     const content = meta?.getAttribute('content') ?? '';
     if (content && content !== '__MOSES_BASE_PATH__') {
       const ensured = content.startsWith('/') ? content : `/${content}`;
-      const stripped = ensured.length > 1 && ensured.endsWith('/') ? ensured.slice(0, -1) : ensured;
-      cachedBasePath = stripped;
+      const mount = ensured.length > 1 && ensured.endsWith('/') ? ensured.slice(0, -1) : ensured;
+      if (typeof window !== 'undefined' && window.location) {
+        const p = window.location.pathname;
+        cachedBasePath = p === mount || p.startsWith(`${mount}/`) ? mount : '/';
+      } else {
+        cachedBasePath = mount;
+      }
       return cachedBasePath;
     }
   }

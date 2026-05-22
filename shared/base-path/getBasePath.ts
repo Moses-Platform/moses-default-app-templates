@@ -24,15 +24,37 @@ const PLACEHOLDER = '__MOSES_BASE_PATH__';
 
 let cached: string | null = null;
 
+// readCanonicalMount returns the app's canonical Moses mount path
+// (/apps/<tenant>/<slug>) from the deploy-time meta tag, or "" when standalone
+// or the placeholder is still unrendered.
+function readCanonicalMount(): string {
+  if (typeof document === 'undefined') return '';
+  const meta = document.querySelector(`meta[name="${META_NAME}"]`);
+  const content = meta?.getAttribute('content') ?? '';
+  if (!content || content === PLACEHOLDER) return '';
+  return ensureLeadingSlash(stripTrailingSlash(content));
+}
+
+// servedAtMount reports whether `path` is at, or under, `mount`.
+function servedAtMount(path: string, mount: string): boolean {
+  return path === mount || path.startsWith(`${mount}/`);
+}
+
 export function getBasePath(): string {
   if (cached !== null) return cached;
-  if (typeof document !== 'undefined') {
-    const meta = document.querySelector(`meta[name="${META_NAME}"]`);
-    const content = meta?.getAttribute('content') ?? '';
-    if (content && content !== PLACEHOLDER) {
-      cached = ensureLeadingSlash(stripTrailingSlash(content));
-      return cached;
+  // The deploy-time meta tag records the CANONICAL Moses mount
+  // (/apps/<tenant>/<slug>). The app is reachable both there AND — when an
+  // admin assigns a custom hostname — at the ROOT of that hostname. The router
+  // basename must reflect where the app is ACTUALLY served right now: under the
+  // canonical mount -> the mount; otherwise (a custom-hostname root) -> "/".
+  const mount = readCanonicalMount();
+  if (mount) {
+    if (typeof window !== 'undefined' && window.location) {
+      cached = servedAtMount(window.location.pathname, mount) ? mount : '/';
+    } else {
+      cached = mount;
     }
+    return cached;
   }
   cached = '/';
   return cached;

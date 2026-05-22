@@ -18,10 +18,15 @@ const META_NAME = 'moses-base-path';
 const PLACEHOLDER = '__MOSES_BASE_PATH__';
 
 /**
- * getBasePath returns the runtime BASE_PATH the app is mounted under.
+ * getBasePath returns the BASE_PATH the app is mounted under right now.
+ *
+ * The deploy-time meta tag records the app's canonical Moses mount
+ * (/apps/<t>/<a>). The app is reachable both there AND — when an admin assigns
+ * a custom hostname — at that hostname's ROOT, so getBasePath checks the live
+ * URL: under the canonical mount -> the mount; otherwise -> "/".
  * Returns "/" when standalone or when the placeholder hasn't been rendered.
  *
- * Cached after the first read because the meta tag is fixed at startup.
+ * Cached after the first read — the mount does not change within a page load.
  */
 let cached: string | null = null;
 export function getBasePath(): string {
@@ -30,7 +35,13 @@ export function getBasePath(): string {
     const meta = document.querySelector(`meta[name="${META_NAME}"]`);
     const content = meta?.getAttribute('content') ?? '';
     if (content && content !== PLACEHOLDER) {
-      cached = ensureLeadingSlash(stripTrailingSlash(content));
+      const mount = ensureLeadingSlash(stripTrailingSlash(content));
+      if (typeof window !== 'undefined' && window.location) {
+        const p = window.location.pathname;
+        cached = p === mount || p.startsWith(`${mount}/`) ? mount : '/';
+      } else {
+        cached = mount;
+      }
       return cached;
     }
   }
