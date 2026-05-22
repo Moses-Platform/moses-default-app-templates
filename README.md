@@ -35,6 +35,7 @@ Templates are automatically cloned into each Moses tenant via the built-in Moses
 - **Full app, Go serves static files (1 container)**: `fullstack-unified`
 - **Full app, separate frontend + backend (2 containers)**: `fullstack-simple`
 - **Educational demo with database**: `fullstack-showcase`
+- **App that authenticates real users via OIDC**: `fullstack-oidc`
 
 ## Adding Custom Templates
 

@@ -25,7 +25,10 @@ moses:
     audience: ""         # expected `aud` (defaults to clientId)
     # Path prefixes (space- or comma-separated) from the app's
     # access.oidc block. protectedPaths empty => protect-all.
-    protectedPaths: "/api/v1/me /api/v1/entries"
+    # /health and /api/openapi.json are ALWAYS public implicitly — the
+    # vendored oidcauth middleware adds them to its public set, so they
+    # are not listed here.
+    protectedPaths: "/api/v1/me /api/v1/entries /api/v1/admin-area"
     publicPaths: "/api/v1/public-info"
     # cookieSecret keys the session cookie HMAC. The platform injects a
     # per-deploy random value; empty => the middleware derives a

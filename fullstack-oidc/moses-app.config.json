@@ -11,14 +11,21 @@
   },
   "access": {
     "mode": "tenant",
+    "roles": [
+      "oidc-admin",
+      "oidc-member"
+    ],
     "oidc": {
       "mode": "moses-oidc",
       "protectedPaths": [
         "/api/v1/me",
-        "/api/v1/entries"
+        "/api/v1/entries",
+        "/api/v1/admin-area"
       ],
       "publicPaths": [
-        "/api/v1/public-info"
+        "/api/v1/public-info",
+        "/health",
+        "/api/openapi.json"
       ]
     }
   },
