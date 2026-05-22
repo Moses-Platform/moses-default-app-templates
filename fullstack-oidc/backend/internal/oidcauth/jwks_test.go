@@ -91,12 +91,49 @@ func TestParseJWKS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseJWKS: %v", err)
 	}
-	pub, ok := keys[s.kid]
+	k, ok := keys[s.kid]
 	if !ok {
 		t.Fatalf("kid %q not in parsed key set", s.kid)
 	}
-	if pub.N.Cmp(s.key.PublicKey.N) != 0 || pub.E != s.key.PublicKey.E {
+	if k.pub.N.Cmp(s.key.PublicKey.N) != 0 || k.pub.E != s.key.PublicKey.E {
 		t.Errorf("parsed RSA key does not match the source key")
+	}
+	if k.alg != "RS256" {
+		t.Errorf("parsed JWK alg = %q, want %q", k.alg, "RS256")
+	}
+}
+
+// TestParseJWKS_EmptyKidDuplicates verifies that two RSA keys with an
+// empty `kid` do not silently collapse — the first is kept, the rest
+// skipped (CHAT-t5d1u.28.20 N1).
+func TestParseJWKS_EmptyKidDuplicates(t *testing.T) {
+	a := newTestSigner(t)
+	b := newTestSigner(t)
+	jwkOf := func(s *testSigner) jwkRSA {
+		n := base64.RawURLEncoding.EncodeToString(s.key.PublicKey.N.Bytes())
+		eBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(eBytes, uint64(s.key.PublicKey.E))
+		i := 0
+		for i < len(eBytes)-1 && eBytes[i] == 0 {
+			i++
+		}
+		e := base64.RawURLEncoding.EncodeToString(eBytes[i:])
+		return jwkRSA{Kty: "RSA", Kid: "", Use: "sig", Alg: "RS256", N: n, E: e}
+	}
+	doc := jwksDoc{Keys: []jwkRSA{jwkOf(a), jwkOf(b)}}
+	body, _ := json.Marshal(doc)
+
+	keys, err := parseJWKS(body)
+	if err != nil {
+		t.Fatalf("parseJWKS: %v", err)
+	}
+	if len(keys) != 1 {
+		t.Fatalf("expected 1 key (empty-kid dedup), got %d", len(keys))
+	}
+	// The FIRST empty-kid key (signer a) must be the survivor.
+	k := keys[""]
+	if k.pub.N.Cmp(a.key.PublicKey.N) != 0 {
+		t.Errorf("empty-kid survivor is not the first key")
 	}
 }
 
@@ -187,6 +224,46 @@ func TestVerifyToken_RejectsWrongKey(t *testing.T) {
 	})
 	if _, err := verifyToken(context.Background(), tok, ks, verifyOptions{}); err == nil {
 		t.Errorf("verifyToken accepted a token signed by a non-JWKS key")
+	}
+}
+
+// TestVerifyToken_RejectsAlgJWKMismatch verifies the N1 hardening: when
+// the JWK declares an `alg`, a JWT whose header `alg` differs is
+// rejected before signature verification (CHAT-t5d1u.28.20 N1).
+func TestVerifyToken_RejectsAlgJWKMismatch(t *testing.T) {
+	s := newTestSigner(t) // jwksJSON declares alg=RS256
+	ks := keySetFor(t, s)
+	// Header claims RS384 (a valid, accepted alg) but the JWK is RS256.
+	// signWithAlg only sets the header — the body is RS256-signed.
+	tok := s.signWithAlg(t, "RS384", map[string]any{
+		"sub": "u", "exp": time.Now().Add(time.Hour).Unix(),
+	})
+	_, err := verifyToken(context.Background(), tok, ks, verifyOptions{})
+	if err == nil {
+		t.Fatalf("verifyToken accepted a token whose header alg != JWK alg")
+	}
+	if !strings.Contains(err.Error(), "does not match JWK alg") {
+		t.Errorf("expected JWK-alg-mismatch error, got: %v", err)
+	}
+}
+
+// TestVerifyToken_AlgMatchesJWK confirms a token whose header alg equals
+// the JWK alg still verifies (regression guard for the N1 cross-check).
+func TestVerifyToken_AlgMatchesJWK(t *testing.T) {
+	s := newTestSigner(t) // jwksJSON declares alg=RS256
+	ks := keySetFor(t, s)
+	now := time.Now()
+	tok := s.sign(t, map[string]any{ // sign() uses RS256
+		"sub": "u",
+		"iss": "https://iss",
+		"aud": "app-client",
+		"exp": now.Add(time.Hour).Unix(),
+		"iat": now.Unix(),
+	})
+	if _, err := verifyToken(context.Background(), tok, ks, verifyOptions{
+		expectedIssuer: "https://iss", expectedAudience: "app-client",
+	}); err != nil {
+		t.Fatalf("verifyToken rejected a token whose header alg matches the JWK alg: %v", err)
 	}
 }
 

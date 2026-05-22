@@ -15,6 +15,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,14 @@ type discoveryDoc struct {
 	EndSessionEndpoint    string `json:"end_session_endpoint"`
 }
 
+// jwkKey is a parsed JWKS entry: the RSA public key plus the JWK's own
+// declared `alg` (empty when the JWK omits it). The alg is retained so
+// verifyToken can cross-check it against the JWT header `alg`.
+type jwkKey struct {
+	pub *rsa.PublicKey
+	alg string // JWK "alg" header, "" when absent
+}
+
 // keySet caches parsed RSA public keys keyed by `kid`, fetched from the
 // INTERNAL issuer's JWKS endpoint. It refreshes on an unknown kid (key
 // rotation) but no more often than minRefreshInterval.
@@ -53,7 +62,7 @@ type keySet struct {
 	httpClient *http.Client
 
 	mu          sync.RWMutex
-	keys        map[string]*rsa.PublicKey
+	keys        map[string]jwkKey
 	lastRefresh time.Time
 }
 
@@ -63,13 +72,13 @@ func newKeySet(jwksURI string, hc *http.Client) *keySet {
 	return &keySet{
 		jwksURI:    jwksURI,
 		httpClient: hc,
-		keys:       map[string]*rsa.PublicKey{},
+		keys:       map[string]jwkKey{},
 	}
 }
 
-// keyForKID returns the cached RSA key for kid, refreshing once from
+// keyForKID returns the cached key entry for kid, refreshing once from
 // JWKS if the kid is unknown and the cache is older than the throttle.
-func (ks *keySet) keyForKID(ctx context.Context, kid string) (*rsa.PublicKey, error) {
+func (ks *keySet) keyForKID(ctx context.Context, kid string) (jwkKey, error) {
 	ks.mu.RLock()
 	k, ok := ks.keys[kid]
 	stale := time.Since(ks.lastRefresh) > minRefreshInterval
@@ -78,16 +87,16 @@ func (ks *keySet) keyForKID(ctx context.Context, kid string) (*rsa.PublicKey, er
 		return k, nil
 	}
 	if !stale && len(ks.keys) > 0 {
-		return nil, fmt.Errorf("oidcauth: no JWKS key for kid %q (refresh throttled)", kid)
+		return jwkKey{}, fmt.Errorf("oidcauth: no JWKS key for kid %q (refresh throttled)", kid)
 	}
 	if err := ks.refresh(ctx); err != nil {
-		return nil, err
+		return jwkKey{}, err
 	}
 	ks.mu.RLock()
 	k, ok = ks.keys[kid]
 	ks.mu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("oidcauth: no JWKS key for kid %q after refresh", kid)
+		return jwkKey{}, fmt.Errorf("oidcauth: no JWKS key for kid %q after refresh", kid)
 	}
 	return k, nil
 }
@@ -121,14 +130,21 @@ func (ks *keySet) refresh(ctx context.Context) error {
 	return nil
 }
 
-// parseJWKS decodes a JWKS document into RSA public keys. Exported logic
-// is split out so it is unit-testable without a live endpoint.
-func parseJWKS(body []byte) (map[string]*rsa.PublicKey, error) {
+// parseJWKS decodes a JWKS document into RSA public keys keyed by `kid`.
+// Split out so it is unit-testable without a live endpoint.
+//
+// Empty-kid handling: a JWKS may legally contain a key with no `kid`,
+// but two or more empty-kid keys would silently collapse onto the same
+// "" map slot — only the last would survive. To avoid a silent,
+// hard-to-diagnose key loss, the FIRST empty-kid key is kept and any
+// further empty-kid keys are skipped with a warning to stderr.
+func parseJWKS(body []byte) (map[string]jwkKey, error) {
 	var doc jwksDoc
 	if err := json.Unmarshal(body, &doc); err != nil {
 		return nil, fmt.Errorf("oidcauth: parse JWKS: %w", err)
 	}
-	out := map[string]*rsa.PublicKey{}
+	out := map[string]jwkKey{}
+	seenEmptyKid := false
 	for _, jwk := range doc.Keys {
 		if jwk.Kty != "RSA" {
 			continue
@@ -137,7 +153,14 @@ func parseJWKS(body []byte) (map[string]*rsa.PublicKey, error) {
 		if err != nil {
 			continue // skip malformed keys, keep the rest
 		}
-		out[jwk.Kid] = pub
+		if jwk.Kid == "" {
+			if seenEmptyKid {
+				fmt.Fprintln(os.Stderr, "oidcauth: warning: JWKS has multiple keys with an empty kid; keeping the first, skipping the rest")
+				continue
+			}
+			seenEmptyKid = true
+		}
+		out[jwk.Kid] = jwkKey{pub: pub, alg: jwk.Alg}
 	}
 	if len(out) == 0 {
 		return nil, errors.New("oidcauth: JWKS contained no usable RSA keys")
@@ -291,6 +314,15 @@ func verifyToken(ctx context.Context, raw string, ks *keySet, opts verifyOptions
 		return nil, err
 	}
 
+	// CHAT-t5d1u.28.20 (N1): when the JWK declares its own `alg`, the
+	// JWT header `alg` must match it. A signing key published as RS256
+	// must not be used to verify a token that claims a different alg.
+	// Cheap hardening — not exploitable today (RS-only key set), but it
+	// closes a key-substitution avenue if a key set ever mixes algs.
+	if key.alg != "" && key.alg != header.Alg {
+		return nil, fmt.Errorf("oidcauth: JWT alg %q does not match JWK alg %q for kid %q", header.Alg, key.alg, header.Kid)
+	}
+
 	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
 		return nil, fmt.Errorf("oidcauth: decode JWT signature: %w", err)
@@ -299,7 +331,7 @@ func verifyToken(ctx context.Context, raw string, ks *keySet, opts verifyOptions
 	h := hashID.New()
 	h.Write([]byte(signingInput))
 	digest := h.Sum(nil)
-	if err := rsa.VerifyPKCS1v15(key, hashID, digest, sig); err != nil {
+	if err := rsa.VerifyPKCS1v15(key.pub, hashID, digest, sig); err != nil {
 		return nil, fmt.Errorf("oidcauth: JWT signature invalid: %w", err)
 	}
 
