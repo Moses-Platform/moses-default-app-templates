@@ -10,42 +10,41 @@ moses:
     framing: ""           # empty -> appType default (hybrid: moses-only)
     allowedAncestors: []
     reportUri: ""
-  # CHAT-t5d1u.28.8 / .28.20 / .28.21: OIDC relying-party config.
+  # CHAT-t5d1u.28.8 / .28.20 / .28.21 / .28.22: OIDC relying-party config.
   #
-  # IMPORTANT — the five MOSES_OIDC_* values (issuer, internalIssuer,
-  # clientId, clientSecret, audience) are NOT chart values. The Moses
-  # platform (ticket 28.5) registers a confidential Keycloak client for
-  # the app and delivers those five values exactly one way: a Kubernetes
-  # Secret whose name it appends to `secrets.secretNames` (see the
-  # `secrets` block below). The chart mounts that Secret via `envFrom`,
-  # so MOSES_OIDC_ISSUER, MOSES_OIDC_INTERNAL_ISSUER, MOSES_OIDC_CLIENT_ID,
-  # MOSES_OIDC_AUDIENCE and MOSES_OIDC_CLIENT_SECRET reach the backend
-  # container as env vars.
+  # IMPORTANT — the seven MOSES_OIDC_* values (issuer, internalIssuer,
+  # clientId, clientSecret, audience, protectedPaths, publicPaths) are NOT
+  # chart values. The Moses platform (ticket 28.5 / 28.21-S2) registers a
+  # confidential Keycloak client for the app and delivers those values
+  # exactly one way: a Kubernetes Secret whose name it appends to
+  # `secrets.secretNames` (see the `secrets` block below). The chart
+  # mounts that Secret via `envFrom`, so MOSES_OIDC_ISSUER,
+  # MOSES_OIDC_INTERNAL_ISSUER, MOSES_OIDC_CLIENT_ID, MOSES_OIDC_AUDIENCE,
+  # MOSES_OIDC_CLIENT_SECRET, MOSES_OIDC_PROTECTED_PATHS and
+  # MOSES_OIDC_PUBLIC_PATHS reach the backend container as env vars.
   #
-  # CHAT-t5d1u.28.21 (C1): the deployment template MUST NOT also emit
-  # those five as explicit `env` entries — a Kubernetes explicit `env`
-  # overrides an `envFrom` value, so empty placeholders here would shadow
-  # the real Secret and silently disable OIDC. The vestigial
-  # issuer/internalIssuer/clientId/clientSecret/audience placeholder
-  # fields are therefore REMOVED from this block entirely.
+  # CHAT-t5d1u.28.21 (C1) / .28.22 (B1): the deployment template MUST NOT
+  # also emit those seven as explicit `env` entries — a Kubernetes explicit
+  # `env` overrides an `envFrom` value, so chart placeholders here would
+  # shadow the real Secret: empty issuer/clientId/etc. silently disable
+  # OIDC, and stale protectedPaths/publicPaths silently ignore the
+  # platform's per-app access.oidc path policy. The vestigial
+  # issuer/internalIssuer/clientId/clientSecret/audience/protectedPaths/
+  # publicPaths placeholder fields are therefore REMOVED from this block
+  # entirely.
   #
-  # Only protectedPaths / publicPaths / cookieSecret remain — these are
-  # genuinely chart-provided (NOT in the platform Secret) and the
-  # deployment template renders them into env (MOSES_OIDC_PROTECTED_PATHS,
-  # MOSES_OIDC_PUBLIC_PATHS, MOSES_OIDC_COOKIE_SECRET).
+  # Only cookieSecret remains — it is genuinely chart-provided (NOT in the
+  # platform Secret) and the deployment template renders it into env
+  # (MOSES_OIDC_COOKIE_SECRET). The `oidc` key itself is kept so the
+  # `{{- if ... $.Values.moses.oidc }}` guard in the deployment template
+  # stays truthy and the cookie-secret env is emitted.
   #
-  # Standalone `helm install` without the platform Secret leaves the five
-  # MOSES_OIDC_* env vars empty; the vendored oidcauth middleware then
-  # runs in pass-through mode (public routes + the X-Moses-* header path
-  # still work, browser requests are NOT redirected).
+  # Standalone `helm install` without the platform Secret leaves the
+  # MOSES_OIDC_* env vars (including PROTECTED_PATHS / PUBLIC_PATHS) empty;
+  # the vendored oidcauth middleware then runs in pass-through mode (public
+  # routes + the X-Moses-* header path still work, browser requests are NOT
+  # redirected).
   oidc:
-    # Path prefixes (space- or comma-separated) from the app's
-    # access.oidc block. protectedPaths empty => protect-all.
-    # /health and /api/openapi.json are ALWAYS public implicitly — the
-    # vendored oidcauth middleware adds them to its public set, so they
-    # are not listed here. These ARE chart-provided (not in the Secret).
-    protectedPaths: "/api/v1/me /api/v1/entries /api/v1/admin-area"
-    publicPaths: "/api/v1/public-info"
     # cookieSecret keys the session cookie HMAC. Chart-provided (NOT in
     # the platform Secret); the platform may inject a per-deploy random
     # value via --set, empty => the chart's oidc Secret supplies a value

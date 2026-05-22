@@ -138,32 +138,34 @@ spec:
                   key: postgresql-password
             {{- end }}
             {{- end }}
-            {{- /* CHAT-t5d1u.28.21 (C1): OIDC relying-party env for the
-                   backend container. The vendored oidcauth middleware reads
-                   these. Only injected for non-frontend services (the Go
+            {{- /* CHAT-t5d1u.28.21 (C1) / .28.22 (B1): OIDC relying-party env
+                   for the backend container. The vendored oidcauth middleware
+                   reads these. Only injected for non-frontend services (the Go
                    backend); the frontend nginx never speaks OIDC.
 
-                   The FIVE platform-delivered OIDC values (MOSES_OIDC_ISSUER,
+                   The SEVEN platform-delivered OIDC values (MOSES_OIDC_ISSUER,
                    MOSES_OIDC_INTERNAL_ISSUER, MOSES_OIDC_CLIENT_ID,
-                   MOSES_OIDC_AUDIENCE, MOSES_OIDC_CLIENT_SECRET) are
+                   MOSES_OIDC_AUDIENCE, MOSES_OIDC_CLIENT_SECRET,
+                   MOSES_OIDC_PROTECTED_PATHS, MOSES_OIDC_PUBLIC_PATHS) are
                    DELIBERATELY NOT rendered here. The Moses platform never
-                   sets .Values.moses.oidc.* — it delivers those five vars
+                   sets .Values.moses.oidc.* — it delivers those vars
                    exclusively through a Kubernetes Secret whose name it
                    appends to secrets.secretNames[], mounted above via
                    `envFrom` (the 28.20 B2 mechanism). A Kubernetes explicit
                    `env` entry OVERRIDES an `envFrom` value, so emitting them
                    here with empty .Values.moses.oidc.* placeholders would
-                   shadow the real Secret and silently disable OIDC
-                   (oidcauth would run unauthenticated pass-through).
+                   shadow the real Secret and silently disable OIDC, or — for
+                   protectedPaths / publicPaths (added to the platform Secret
+                   by ticket 28.5 / 28.21-S2) — silently ignore the per-app
+                   access.oidc path policy (the 28.22 B1 shadowing bug).
 
-                   Only the genuinely chart-provided OIDC values are rendered:
-                   the path policy (protectedPaths / publicPaths) and the
-                   cookie HMAC key — none of which are in the platform Secret. */}}
+                   Only the genuinely chart-only OIDC value is rendered here:
+                   the cookie HMAC key, which is NOT in the platform Secret.
+                   Standalone `helm install` without the platform leaves
+                   MOSES_OIDC_PROTECTED_PATHS / PUBLIC_PATHS unset; oidcauth
+                   then runs in pass-through mode, the correct standalone
+                   behaviour. */}}
             {{- if and (not (has .name (list "frontend" "web" "ui"))) $.Values.moses.oidc }}
-            - name: MOSES_OIDC_PROTECTED_PATHS
-              value: {{ $.Values.moses.oidc.protectedPaths | quote }}
-            - name: MOSES_OIDC_PUBLIC_PATHS
-              value: {{ $.Values.moses.oidc.publicPaths | quote }}
             - name: MOSES_OIDC_COOKIE_SECRET
               valueFrom:
                 secretKeyRef:
