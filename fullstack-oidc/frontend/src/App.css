@@ -1,0 +1,100 @@
+:root {
+  --bg: #0f1117;
+  --panel: #1a1d27;
+  --text: #e6e8ee;
+  --muted: #9aa0b0;
+  --accent: #6c8cff;
+  --border: #2a2e3c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+.oidc-app {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+.oidc-app h1 {
+  font-size: 1.6rem;
+  margin-bottom: 4px;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin-top: 0;
+}
+
+.info-line,
+.note {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.9rem;
+}
+
+.note {
+  color: var(--accent);
+}
+
+code {
+  background: var(--panel);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.85em;
+}
+
+.identity {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-top: 16px;
+}
+
+.identity h2 {
+  margin-top: 0;
+  font-size: 1.1rem;
+}
+
+.identity dl {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 6px 16px;
+  margin: 16px 0;
+}
+
+.identity dt {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.identity dd {
+  margin: 0;
+  word-break: break-all;
+}
+
+button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 18px;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+button:hover {
+  filter: brightness(1.1);
+}

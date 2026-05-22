@@ -1,0 +1,101 @@
+{
+  "name": "fullstack-oidc",
+  "version": "1.0.0",
+  "displayName": "Moses OIDC Relying-Party Template",
+  "description": "Reference full-stack app that acts as an OIDC relying party fronted by Moses (BFF pattern) using the vendored oidcauth middleware. React frontend + Go backend + PostgreSQL.",
+  "appType": "hybrid",
+  "entrypoint": "index.html",
+  "templateApiVersion": "moses.ai/v1",
+  "embedding": {
+    "framing": "moses-only"
+  },
+  "access": {
+    "mode": "tenant",
+    "oidc": {
+      "mode": "moses-oidc",
+      "protectedPaths": [
+        "/api/v1/me",
+        "/api/v1/entries"
+      ],
+      "publicPaths": [
+        "/api/v1/public-info"
+      ]
+    }
+  },
+  "skills": [
+    "skills/oidc-overview.md",
+    "skills/oidcauth-middleware.md"
+  ],
+  "displayLocations": [
+    "apps"
+  ],
+  "permissions": [],
+  "apiEndpoints": {
+    "basePath": "/api/v1",
+    "healthPath": "/health",
+    "specPath": "/api/openapi.json"
+  },
+  "autoRegisterTool": true,
+  "helm": {
+    "chartPath": "helm"
+  },
+  "docker": {
+    "files": [
+      {
+        "name": "frontend",
+        "dockerfile": "frontend/Dockerfile",
+        "context": "frontend"
+      },
+      {
+        "name": "backend",
+        "dockerfile": "backend/Dockerfile",
+        "context": "backend"
+      }
+    ]
+  },
+  "services": {
+    "frontend": {
+      "port": 8080,
+      "healthCheck": { "enabled": true, "path": "/health" },
+      "ingress": { "enabled": true },
+      "resources": {
+        "cpu": { "request": "100m", "limit": "200m" },
+        "memory": { "request": "128Mi", "limit": "256Mi" }
+      }
+    },
+    "backend": {
+      "port": 8080,
+      "healthCheck": { "enabled": true, "path": "/health" },
+      "resources": {
+        "cpu": { "request": "100m", "limit": "500m" },
+        "memory": { "request": "128Mi", "limit": "512Mi" }
+      }
+    }
+  },
+  "dependencies": {
+    "services": ["postgresql"]
+  },
+  "validation": {
+    "enabled": true,
+    "commands": [
+      { "name": "frontend-lint", "run": "cd frontend && npm install --include=dev --ignore-scripts && npm run lint", "required": true },
+      { "name": "frontend-test", "run": "cd frontend && NODE_ENV=test npm test", "required": true },
+      { "name": "backend-vet", "run": "cd backend && go vet ./...", "required": true },
+      { "name": "backend-test", "run": "cd backend && go test ./...", "required": true }
+    ]
+  },
+  "maintenance": {
+    "renovate": {
+      "enabled": true,
+      "schedule": "0 4 * * 1",
+      "configPath": "renovate.json",
+      "context": "OIDC relying-party app with React frontend, Go backend, and PostgreSQL. Update npm packages, Go modules, Docker images, and Helm chart dependencies."
+    },
+    "logMonitor": {
+      "enabled": true,
+      "lookbackMinutes": 15,
+      "minErrorCount": 5,
+      "context": "Full-stack OIDC relying party. Common errors: OIDC discovery/JWKS fetch failures, token-exchange errors, session cookie issues, and PostgreSQL connection failures."
+    }
+  }
+}

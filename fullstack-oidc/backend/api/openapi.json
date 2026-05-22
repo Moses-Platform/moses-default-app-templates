@@ -1,0 +1,127 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Moses Fullstack OIDC Template API",
+    "version": "1.0.0",
+    "description": "Reference app demonstrating the vendored OIDCAuth middleware: a Moses-deployed app acting as an OIDC relying party (BFF pattern)."
+  },
+  "servers": [
+    { "url": "/api/v1" }
+  ],
+  "paths": {
+    "/me": {
+      "get": {
+        "operationId": "getMe",
+        "summary": "Return the authenticated identity",
+        "description": "Returns the principal resolved by the OIDCAuth middleware — either from a validated session cookie or from trusted X-Moses-* pod-to-pod headers. A protected route.",
+        "responses": {
+          "200": {
+            "description": "The authenticated identity",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Identity" }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (no session, no trusted headers)"
+          }
+        }
+      }
+    },
+    "/public-info": {
+      "get": {
+        "operationId": "getPublicInfo",
+        "summary": "Public, unauthenticated app metadata",
+        "description": "Always reachable without a session — listed in the app's access.oidc publicPaths.",
+        "responses": {
+          "200": {
+            "description": "App metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "app": { "type": "string" },
+                    "oidc_enabled": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/entries": {
+      "get": {
+        "operationId": "listEntries",
+        "summary": "List the authenticated user's entries",
+        "description": "Returns entries owned by the caller's OIDC subject within the deploy-pinned tenant. Protected route.",
+        "responses": {
+          "200": {
+            "description": "Entry list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Entry" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createEntry",
+        "summary": "Create an entry owned by the authenticated user",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["body"],
+                "properties": { "body": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created entry",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Entry" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Identity": {
+        "type": "object",
+        "properties": {
+          "authenticated": { "type": "boolean" },
+          "source": { "type": "string", "enum": ["session", "moses-headers"] },
+          "subject": { "type": "string" },
+          "email": { "type": "string" },
+          "name": { "type": "string" },
+          "username": { "type": "string" },
+          "roles": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "Entry": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "owner_sub": { "type": "string" },
+          "body": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}
