@@ -41,16 +41,31 @@ spec:
             - name: http
               containerPort: {{ .port }}
               protocol: TCP
+          {{- /* CHAT-t5d1u.28.20 (B2): the Moses platform delivers the
+                 app's OIDC config (MOSES_OIDC_ISSUER, MOSES_OIDC_INTERNAL_ISSUER,
+                 MOSES_OIDC_CLIENT_ID, MOSES_OIDC_AUDIENCE, MOSES_OIDC_CLIENT_SECRET)
+                 exactly one way: it creates a Kubernetes Secret and writes its
+                 name into the indexed list secrets.secretNames[0], [1], ...
+                 (provisionPlatformAPISecretIntoValues / provisionAppOIDCIntoValues).
+                 Each entry must be mounted as a secretRef so the Secret's keys
+                 become container env vars. The singular secrets.secretName /
+                 secrets.configMapName are kept for backward compatibility. */}}
           {{- if $.Values.secrets }}
+          {{- if or $.Values.secrets.secretName $.Values.secrets.secretNames $.Values.secrets.configMapName }}
           envFrom:
             {{- if $.Values.secrets.secretName }}
             - secretRef:
                 name: {{ $.Values.secrets.secretName }}
             {{- end }}
+            {{- range $.Values.secrets.secretNames }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
             {{- if $.Values.secrets.configMapName }}
             - configMapRef:
                 name: {{ $.Values.secrets.configMapName }}
             {{- end }}
+          {{- end }}
           {{- end }}
           env:
             {{- /* CHAT-pbup Bug 6: derive MOSES_* env from moses.* values when
