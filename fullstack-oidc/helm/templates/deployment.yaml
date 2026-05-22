@@ -138,30 +138,32 @@ spec:
                   key: postgresql-password
             {{- end }}
             {{- end }}
-            {{- /* CHAT-t5d1u.28.8: OIDC relying-party env for the backend
-                   container. The vendored oidcauth middleware reads these.
-                   Only injected for non-frontend services (the Go backend);
-                   the frontend nginx never speaks OIDC. The two secret
-                   values (client secret, cookie HMAC key) come from the
-                   oidc Secret so they are not plaintext in the manifest. */}}
+            {{- /* CHAT-t5d1u.28.21 (C1): OIDC relying-party env for the
+                   backend container. The vendored oidcauth middleware reads
+                   these. Only injected for non-frontend services (the Go
+                   backend); the frontend nginx never speaks OIDC.
+
+                   The FIVE platform-delivered OIDC values (MOSES_OIDC_ISSUER,
+                   MOSES_OIDC_INTERNAL_ISSUER, MOSES_OIDC_CLIENT_ID,
+                   MOSES_OIDC_AUDIENCE, MOSES_OIDC_CLIENT_SECRET) are
+                   DELIBERATELY NOT rendered here. The Moses platform never
+                   sets .Values.moses.oidc.* — it delivers those five vars
+                   exclusively through a Kubernetes Secret whose name it
+                   appends to secrets.secretNames[], mounted above via
+                   `envFrom` (the 28.20 B2 mechanism). A Kubernetes explicit
+                   `env` entry OVERRIDES an `envFrom` value, so emitting them
+                   here with empty .Values.moses.oidc.* placeholders would
+                   shadow the real Secret and silently disable OIDC
+                   (oidcauth would run unauthenticated pass-through).
+
+                   Only the genuinely chart-provided OIDC values are rendered:
+                   the path policy (protectedPaths / publicPaths) and the
+                   cookie HMAC key — none of which are in the platform Secret. */}}
             {{- if and (not (has .name (list "frontend" "web" "ui"))) $.Values.moses.oidc }}
-            - name: MOSES_OIDC_ISSUER
-              value: {{ $.Values.moses.oidc.issuer | quote }}
-            - name: MOSES_OIDC_INTERNAL_ISSUER
-              value: {{ $.Values.moses.oidc.internalIssuer | quote }}
-            - name: MOSES_OIDC_CLIENT_ID
-              value: {{ $.Values.moses.oidc.clientId | quote }}
-            - name: MOSES_OIDC_AUDIENCE
-              value: {{ $.Values.moses.oidc.audience | quote }}
             - name: MOSES_OIDC_PROTECTED_PATHS
               value: {{ $.Values.moses.oidc.protectedPaths | quote }}
             - name: MOSES_OIDC_PUBLIC_PATHS
               value: {{ $.Values.moses.oidc.publicPaths | quote }}
-            - name: MOSES_OIDC_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "agent-deployed-app.fullname" $ }}-oidc
-                  key: client-secret
             - name: MOSES_OIDC_COOKIE_SECRET
               valueFrom:
                 secretKeyRef:
