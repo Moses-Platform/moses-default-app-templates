@@ -1,100 +1,130 @@
+/* Moses design tokens — shared by the fullstack-oidc reference app.
+   Mirrors fullstack-showcase so the OIDC template matches the fleet. */
 :root {
-  --bg: #0f1117;
-  --panel: #1a1d27;
-  --text: #e6e8ee;
-  --muted: #9aa0b0;
-  --accent: #6c8cff;
-  --border: #2a2e3c;
+  /* Colors */
+  --color-primary: #4F46E5;
+  --color-primary-hover: #4338CA;
+  --color-primary-light: #EEF2FF;
+  --color-bg: #F9FAFB;
+  --color-surface: #FFFFFF;
+  --color-text: #111827;
+  --color-text-secondary: #6B7280;
+  --color-border: #E5E7EB;
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+
+  /* Typography */
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-base: 16px;
+  --font-size-lg: 18px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+  --font-size-3xl: 30px;
+  --font-size-4xl: 36px;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Spacing (4px grid) */
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-10: 40px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
 }
 
 * {
+  margin: 0;
+  padding: 0;
   box-sizing: border-box;
 }
 
 body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
   line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-.oidc-app {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 48px 24px;
+h1, h2, h3, h4, h5, h6 {
+  font-weight: var(--font-weight-bold);
+  line-height: 1.25;
 }
 
-.oidc-app h1 {
-  font-size: 1.6rem;
-  margin-bottom: 4px;
+p {
+  margin-bottom: var(--spacing-4);
 }
 
-.subtitle {
-  color: var(--muted);
-  margin-top: 0;
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+  transition: color 0.2s;
 }
 
-.info-line,
-.note {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 14px;
-  font-size: 0.9rem;
-}
-
-.note {
-  color: var(--accent);
+a:hover {
+  color: var(--color-primary-hover);
 }
 
 code {
-  background: var(--panel);
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-size: 0.85em;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', monospace;
+  font-size: 0.88em;
+  background: var(--color-bg);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
 }
 
-.identity {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 20px 24px;
-  margin-top: 16px;
+.hero code,
+.banner code {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: transparent;
 }
 
-.identity h2 {
-  margin-top: 0;
-  font-size: 1.1rem;
+.banner code {
+  background: rgba(0, 0, 0, 0.06);
 }
 
-.identity dl {
-  display: grid;
-  grid-template-columns: 120px 1fr;
-  gap: 6px 16px;
-  margin: 16px 0;
+ul {
+  margin-bottom: var(--spacing-4);
+  padding-left: var(--spacing-6);
 }
 
-.identity dt {
-  color: var(--muted);
-  font-size: 0.85rem;
+.error-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  text-align: center;
 }
 
-.identity dd {
-  margin: 0;
-  word-break: break-all;
-}
-
-button {
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 9px 18px;
-  font-size: 0.95rem;
-  cursor: pointer;
-}
-
-button:hover {
-  filter: brightness(1.1);
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }

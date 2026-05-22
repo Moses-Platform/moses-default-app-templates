@@ -1,0 +1,280 @@
+/* Shared styling for the fullstack-oidc demo pages. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-6);
+}
+
+.page > h2 {
+  font-size: var(--font-size-2xl);
+  margin: 0;
+}
+
+.page-intro {
+  color: var(--color-text-secondary);
+  margin: 0;
+  max-width: 70ch;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-6);
+  box-shadow: var(--shadow-sm);
+}
+
+.card h3 {
+  font-size: var(--font-size-lg);
+  margin: 0 0 var(--spacing-4) 0;
+}
+
+.card h4 {
+  font-size: var(--font-size-base);
+  margin: 0 0 var(--spacing-2) 0;
+}
+
+.card p:last-child {
+  margin-bottom: 0;
+}
+
+/* Route badges — PUBLIC vs PROTECTED vs ROLE-GATED. */
+.badge {
+  display: inline-block;
+  padding: 2px var(--spacing-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.badge-public {
+  background: #D1FAE5;
+  color: #065F46;
+}
+
+.badge-protected {
+  background: #DBEAFE;
+  color: #1E40AF;
+}
+
+.badge-role {
+  background: #EDE9FE;
+  color: #5B21B6;
+}
+
+/* Definition-list identity display. */
+.kv {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: var(--spacing-2) var(--spacing-4);
+  margin: 0;
+}
+
+.kv dt {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.kv dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+/* Role chips. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
+.chip {
+  display: inline-block;
+  padding: var(--spacing-1) var(--spacing-3);
+  border-radius: 999px;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.chip-empty {
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  border: 1px dashed var(--color-border);
+}
+
+/* Status banners. */
+.banner {
+  border-radius: var(--radius-md);
+  padding: var(--spacing-3) var(--spacing-4);
+  font-size: var(--font-size-sm);
+}
+
+.banner-info {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.banner-ok {
+  background: #D1FAE5;
+  color: #065F46;
+}
+
+.banner-warn {
+  background: #FEF3C7;
+  color: #92400E;
+}
+
+.banner-error {
+  background: #FEE2E2;
+  color: #991B1B;
+}
+
+/* Route table. */
+.route-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.route-table th,
+.route-table td {
+  text-align: left;
+  padding: var(--spacing-3);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.route-table th {
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.route-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Numbered step list for the walkthrough. */
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  counter-reset: step;
+}
+
+.steps li {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: var(--spacing-4);
+  align-items: start;
+}
+
+.steps li::before {
+  counter-increment: step;
+  content: counter(step);
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-sm);
+}
+
+.steps li strong {
+  display: block;
+  margin-bottom: var(--spacing-1);
+}
+
+.steps li p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+/* Inline form. */
+.entry-form {
+  display: flex;
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-4);
+}
+
+.entry-form input {
+  flex: 1;
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+}
+
+.entry-form input:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
+}
+
+.entry-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.entry-list li {
+  padding: var(--spacing-3);
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-4);
+}
+
+.entry-list li time {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.hero {
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
+  color: #fff;
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-10) var(--spacing-8);
+}
+
+.hero h2 {
+  color: #fff;
+  font-size: var(--font-size-3xl);
+  margin: 0 0 var(--spacing-3) 0;
+}
+
+.hero p {
+  margin: 0;
+  max-width: 60ch;
+  opacity: 0.92;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--spacing-4);
+}
+
+.empty-note {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-style: italic;
+}

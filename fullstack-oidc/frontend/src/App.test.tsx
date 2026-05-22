@@ -5,10 +5,15 @@ import App from './App';
 // hit the network or open a real iframe. jsdom rejects relative-URL
 // fetches (window.location is about:blank) and never fires iframe
 // `load`, so the unmocked path would hang. The smoke test only verifies
-// the component tree renders for each phase.
+// the component tree renders.
 vi.mock('./auth/api', () => ({
   fetchMe: vi.fn().mockResolvedValue(null),
-  fetchPublicInfo: vi.fn().mockResolvedValue({ app: 'fullstack-oidc', oidc_enabled: true }),
+  fetchPublicInfo: vi
+    .fn()
+    .mockResolvedValue({ app: 'fullstack-oidc', oidc_enabled: true, known_roles: ['oidc-admin'] }),
+  listEntries: vi.fn().mockResolvedValue([]),
+  createEntry: vi.fn(),
+  probeAdminArea: vi.fn().mockResolvedValue({ kind: 'unauthenticated' }),
 }));
 vi.mock('./auth/silentSSO', () => ({
   attemptSilentSSO: vi.fn().mockResolvedValue({ authenticated: false, reason: 'login_required' }),
@@ -17,13 +22,16 @@ vi.mock('./auth/silentSSO', () => ({
 }));
 
 describe('App', () => {
-  it('renders the anonymous state without crashing', async () => {
+  it('renders the overview page in the anonymous state without crashing', async () => {
     let container: HTMLElement;
     await act(async () => {
       ({ container } = render(<App />));
     });
-    expect(container!.textContent).toContain('Moses Fullstack OIDC Template');
+    // The Layout header is always present.
+    expect(container!.textContent).toContain('Moses OIDC Relying-Party Template');
     // After the mocked bootstrap settles, the anonymous CTA is shown.
     expect(container!.textContent).toContain('Sign in with Moses');
+    // The Overview page hero renders.
+    expect(container!.textContent).toContain('App-owned OIDC');
   });
 });
