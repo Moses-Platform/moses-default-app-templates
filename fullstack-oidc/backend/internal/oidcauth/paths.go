@@ -1,6 +1,7 @@
 package oidcauth
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"strings"
 )
@@ -89,21 +90,42 @@ func (m *Middleware) alwaysPublic() []string {
 	}
 }
 
-// isHeaderTrusted reports whether the request carries the platform's
-// trusted pod-to-pod header marker. The platform's authenticated proxy
-// sets X-Moses-User-ID on the in-cluster hop; a browser request through
-// the user-facing ingress does NOT carry it. Preserving this path keeps
-// the OpenAPI workspace-tool surface working without an OIDC session.
+// headerTrustEnabled reports whether the header-trust path is armed for
+// this middleware. CHAT-t5d1u.28.21 (S3): the path is gated behind a
+// shared-secret marker; when GatewayAuthSecret is unset the path is
+// disabled entirely (fail-safe — requests fall through to OIDC).
+func (m *Middleware) headerTrustEnabled() bool {
+	return m.cfg.GatewayAuthSecret != ""
+}
+
+// isHeaderTrusted reports whether the request may use the platform's
+// trusted pod-to-pod header path. CHAT-t5d1u.28.21 (S3): two conditions
+// must BOTH hold:
 //
-// NOTE on trust: this header is only trustworthy because the app pod is
-// not directly internet-reachable — all browser traffic arrives via the
-// platform ingress, which strips client-supplied X-Moses-* headers. The
-// same assumption underpins fullstack-showcase's existing
-// MosesHeaders middleware. If an app is exposed on a raw custom
-// hostname with no platform ingress in front, set protectedPaths to
-// cover the API and rely on the session path instead.
-func isHeaderTrusted(r *http.Request) bool {
-	return strings.TrimSpace(r.Header.Get("X-Moses-User-ID")) != ""
+//  1. The request carries a non-blank X-Moses-User-ID (the principal
+//     the platform's authenticated proxy stamped on the in-cluster hop).
+//  2. The request carries header HeaderGatewayAuth whose value equals
+//     the configured GatewayAuthSecret (constant-time compare).
+//
+// Condition 2 is the security fix: relying only on condition 1 made the
+// header-trust path depend entirely on the ingress stripping inbound
+// X-Moses-* headers — a strip that is brittle on hardened clusters
+// (the nginx snippet fails admission). The shared-secret marker means a
+// forged X-Moses-* header without the marker is rejected even if it
+// reaches the pod.
+//
+// When GatewayAuthSecret is unset the header-trust path is DISABLED:
+// isHeaderTrusted always returns false and the request falls through to
+// the OIDC session path (fail-safe).
+func (m *Middleware) isHeaderTrusted(r *http.Request) bool {
+	if !m.headerTrustEnabled() {
+		return false
+	}
+	if strings.TrimSpace(r.Header.Get("X-Moses-User-ID")) == "" {
+		return false
+	}
+	marker := r.Header.Get(HeaderGatewayAuth)
+	return subtle.ConstantTimeCompare([]byte(marker), []byte(m.cfg.GatewayAuthSecret)) == 1
 }
 
 // classify decides how to handle a request. It is pure given the
@@ -124,9 +146,11 @@ func (m *Middleware) classify(r *http.Request, sess *Session, sessionValid bool)
 		return decisionPublic
 	}
 
-	// Dual mode: trusted pod-to-pod header bypasses OIDC entirely so
-	// MCP / workspace-tool calls keep working.
-	if isHeaderTrusted(r) {
+	// Dual mode: a marker-gated, trusted pod-to-pod header bypasses OIDC
+	// entirely so MCP / workspace-tool calls keep working. CHAT-t5d1u.28.21
+	// (S3): isHeaderTrusted now also requires the X-Moses-Gateway-Auth
+	// shared-secret marker, and is disabled when no secret is configured.
+	if m.isHeaderTrusted(r) {
 		return decisionHeaderTrust
 	}
 

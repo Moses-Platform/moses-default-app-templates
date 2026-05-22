@@ -8,17 +8,22 @@ import (
 	"time"
 )
 
+// testGatewaySecret is the shared-secret marker used across middleware
+// tests to exercise the CHAT-t5d1u.28.21 (S3) header-trust path.
+const testGatewaySecret = "test-gateway-auth-secret"
+
 func enabledCfg() Config {
 	return Config{
-		Issuer:         "https://kc.example.com/realms/moses",
-		InternalIssuer: "http://keycloak.moses.svc:8080/realms/moses",
-		ClientID:       "app-client",
-		ClientSecret:   "secret",
-		BasePath:       "/apps/t/s",
-		ProtectedPaths: []string{"/api/private"},
-		SpecPath:       "/api/openapi.json",
-		CookieSecret:   testSecret,
-		SecureCookie:   true,
+		Issuer:            "https://kc.example.com/realms/moses",
+		InternalIssuer:    "http://keycloak.moses.svc:8080/realms/moses",
+		ClientID:          "app-client",
+		ClientSecret:      "secret",
+		BasePath:          "/apps/t/s",
+		ProtectedPaths:    []string{"/api/private"},
+		SpecPath:          "/api/openapi.json",
+		CookieSecret:      testSecret,
+		SecureCookie:      true,
+		GatewayAuthSecret: testGatewaySecret,
 	}
 }
 
@@ -54,6 +59,7 @@ func TestHandler_HeaderTrustBypassesOIDC(t *testing.T) {
 
 	r := httptest.NewRequest("GET", "/apps/t/s/api/private/data", nil)
 	r.Header.Set("X-Moses-User-ID", "svc-user-9")
+	r.Header.Set(HeaderGatewayAuth, testGatewaySecret)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, r)
 
@@ -65,6 +71,47 @@ func TestHandler_HeaderTrustBypassesOIDC(t *testing.T) {
 	}
 	if got.Subject != "svc-user-9" {
 		t.Errorf("Subject = %q, want svc-user-9", got.Subject)
+	}
+}
+
+// TestHandler_HeaderTrustRejectedWithoutMarker confirms the CHAT-t5d1u.28.21
+// (S3) gate: an X-Moses-* header without the X-Moses-Gateway-Auth marker
+// is NOT trusted — a protected-path navigation is redirected to login.
+func TestHandler_HeaderTrustRejectedWithoutMarker(t *testing.T) {
+	m := New(enabledCfg())
+	h := m.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("next handler must not run — header-trust must be rejected without the marker")
+	}))
+
+	r := httptest.NewRequest("GET", "/apps/t/s/api/private/data", nil)
+	r.Header.Set("X-Moses-User-ID", "forged-user")
+	r.Header.Set("Sec-Fetch-Mode", "navigate")
+	// No X-Moses-Gateway-Auth header.
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusFound {
+		t.Errorf("forged X-Moses-* without marker status = %d, want 302 (challenge)", rec.Code)
+	}
+}
+
+// TestHandler_HeaderTrustRejectedWithWrongMarker confirms a wrong marker
+// value is rejected (constant-time compare miss).
+func TestHandler_HeaderTrustRejectedWithWrongMarker(t *testing.T) {
+	m := New(enabledCfg())
+	h := m.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("next handler must not run — a wrong marker must be rejected")
+	}))
+
+	r := httptest.NewRequest("GET", "/apps/t/s/api/private/data", nil)
+	r.Header.Set("X-Moses-User-ID", "forged-user")
+	r.Header.Set(HeaderGatewayAuth, "wrong-secret-value")
+	r.Header.Set("Sec-Fetch-Mode", "navigate")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusFound {
+		t.Errorf("X-Moses-* with wrong marker status = %d, want 302 (challenge)", rec.Code)
 	}
 }
 
@@ -153,18 +200,45 @@ func TestHandler_PassThroughModeWhenDisabled(t *testing.T) {
 	}
 }
 
+// TestHandler_PassThroughStillHonoursHeaderTrust confirms that in
+// pass-through mode (OIDC not configured) the marker-gated header-trust
+// path still works — provided a GatewayAuthSecret is set and the
+// X-Moses-Gateway-Auth marker matches (CHAT-t5d1u.28.21 S3).
 func TestHandler_PassThroughStillHonoursHeaderTrust(t *testing.T) {
-	m := New(Config{BasePath: "", CookieSecret: testSecret})
+	m := New(Config{BasePath: "", CookieSecret: testSecret, GatewayAuthSecret: testGatewaySecret})
 	var got Identity
 	h := m.Handler(recordingHandler(&got))
 
 	r := httptest.NewRequest("GET", "/api/private/data", nil)
 	r.Header.Set("X-Moses-User-ID", "svc-7")
+	r.Header.Set(HeaderGatewayAuth, testGatewaySecret)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, r)
 
 	if !got.Authenticated || got.Subject != "svc-7" {
-		t.Errorf("pass-through mode should still honour header-trust: %+v", got)
+		t.Errorf("pass-through mode should still honour marker-gated header-trust: %+v", got)
+	}
+}
+
+// TestHandler_PassThroughHeaderTrustDisabledWithoutSecret confirms the
+// fail-safe in pass-through mode: with no GatewayAuthSecret configured,
+// an X-Moses-* header (even with a marker) is NOT trusted.
+func TestHandler_PassThroughHeaderTrustDisabledWithoutSecret(t *testing.T) {
+	m := New(Config{BasePath: "", CookieSecret: testSecret}) // no GatewayAuthSecret
+	var got Identity
+	h := m.Handler(recordingHandler(&got))
+
+	r := httptest.NewRequest("GET", "/api/private/data", nil)
+	r.Header.Set("X-Moses-User-ID", "svc-7")
+	r.Header.Set(HeaderGatewayAuth, "any-marker")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+
+	if got.Authenticated {
+		t.Errorf("pass-through with no GatewayAuthSecret must NOT honour header-trust: %+v", got)
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("pass-through status = %d, want 200 (still served un-gated)", rec.Code)
 	}
 }
 

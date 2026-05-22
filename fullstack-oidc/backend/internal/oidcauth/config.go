@@ -28,12 +28,22 @@
 //
 // # Dual mode
 //
-// The package preserves the existing `X-Moses-*` trusted-header path for
+// The package preserves the `X-Moses-*` trusted-header path for
 // pod-to-pod MCP / workspace-tool calls: a request carrying
 // `X-Moses-User-ID` (set by the platform's authenticated proxy on the
 // in-cluster hop) is treated as already-authenticated and bypasses the
 // OIDC redirect, so the OpenAPI tool surface keeps working. Browser
 // requests with no session are redirected to the OIDC login.
+//
+// CHAT-t5d1u.28.21 (S3): the header-trust path is gated behind a
+// shared-secret MARKER. The trusted-header decision is honoured ONLY
+// when the request also carries header `X-Moses-Gateway-Auth` whose
+// value equals the env var `MOSES_GATEWAY_AUTH_SECRET` (constant-time
+// compare). When that env var is unset/empty the header-trust path is
+// DISABLED entirely and the request falls through to the OIDC session
+// path — a fail-safe default. This removes the previous reliance on the
+// ingress stripping inbound `X-Moses-*` headers, which is brittle on
+// hardened clusters.
 //
 // `/health` and the OpenAPI spec path are always public.
 package oidcauth
@@ -73,7 +83,23 @@ const (
 	// attribute. Local-dev / plain-HTTP escape hatch ONLY; never set
 	// it on a real deploy. Default is Secure.
 	EnvInsecureCookie = "MOSES_OIDC_INSECURE_COOKIE"
+
+	// EnvGatewayAuthSecret (CHAT-t5d1u.28.21 S3) is the shared-secret
+	// marker that gates the X-Moses-* header-trust path. The platform's
+	// authenticated proxy (WorkspaceToolProxy) sends header
+	// HeaderGatewayAuth carrying this exact value on the in-cluster hop;
+	// the middleware honours the X-Moses-* header-trust decision ONLY
+	// when that header is present and matches (constant-time). When this
+	// env var is unset/empty the header-trust path is DISABLED entirely
+	// (fail-safe — requests fall through to the OIDC session path).
+	EnvGatewayAuthSecret = "MOSES_GATEWAY_AUTH_SECRET"
 )
+
+// HeaderGatewayAuth (CHAT-t5d1u.28.21 S3) is the request header whose
+// value the platform's in-cluster proxy sets to the shared
+// MOSES_GATEWAY_AUTH_SECRET. It is the marker that authorises the
+// X-Moses-* header-trust path.
+const HeaderGatewayAuth = "X-Moses-Gateway-Auth"
 
 // Config is the fully-resolved middleware configuration. Build it from
 // the environment with ConfigFromEnv, or assemble one directly in tests.
@@ -122,6 +148,15 @@ type Config struct {
 	// SpecPath is the OpenAPI spec path treated as always-public
 	// (default "/api/openapi.json").
 	SpecPath string
+
+	// GatewayAuthSecret (CHAT-t5d1u.28.21 S3) is the shared-secret
+	// marker that authorises the X-Moses-* header-trust path. The
+	// middleware honours a request's X-Moses-* trusted headers ONLY when
+	// the request also carries header HeaderGatewayAuth whose value
+	// equals this secret (compared in constant time). When empty the
+	// header-trust path is disabled entirely — a fail-safe default that
+	// falls through to the OIDC session path.
+	GatewayAuthSecret string
 }
 
 // ConfigFromEnv builds a Config from the platform-injected environment.
@@ -139,10 +174,11 @@ func ConfigFromEnv() Config {
 		ClientSecret:   strings.TrimSpace(os.Getenv(EnvClientSecret)),
 		Audience:       strings.TrimSpace(os.Getenv(EnvAudience)),
 		BasePath:       strings.TrimRight(strings.TrimSpace(os.Getenv(EnvBasePath)), "/"),
-		ProtectedPaths: splitPaths(os.Getenv(EnvProtectedPaths)),
-		PublicPaths:    splitPaths(os.Getenv(EnvPublicPaths)),
-		SpecPath:       "/api/openapi.json",
-		SecureCookie:   !isTruthy(os.Getenv(EnvInsecureCookie)),
+		ProtectedPaths:    splitPaths(os.Getenv(EnvProtectedPaths)),
+		PublicPaths:       splitPaths(os.Getenv(EnvPublicPaths)),
+		SpecPath:          "/api/openapi.json",
+		SecureCookie:      !isTruthy(os.Getenv(EnvInsecureCookie)),
+		GatewayAuthSecret: strings.TrimSpace(os.Getenv(EnvGatewayAuthSecret)),
 	}
 
 	if cfg.InternalIssuer == "" {

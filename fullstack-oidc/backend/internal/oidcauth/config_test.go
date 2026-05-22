@@ -87,6 +87,24 @@ func TestConfigFromEnv(t *testing.T) {
 	}
 }
 
+func TestConfigFromEnv_GatewayAuthSecret(t *testing.T) {
+	// Set -> read (and trimmed) into Config.GatewayAuthSecret.
+	t.Setenv(EnvGatewayAuthSecret, "  shared-gateway-secret  ")
+	cfg := ConfigFromEnv()
+	if cfg.GatewayAuthSecret != "shared-gateway-secret" {
+		t.Errorf("GatewayAuthSecret = %q, want trimmed %q", cfg.GatewayAuthSecret, "shared-gateway-secret")
+	}
+}
+
+func TestConfigFromEnv_GatewayAuthSecretUnsetIsEmpty(t *testing.T) {
+	// Unset -> empty -> header-trust path disabled (fail-safe).
+	t.Setenv(EnvGatewayAuthSecret, "")
+	cfg := ConfigFromEnv()
+	if cfg.GatewayAuthSecret != "" {
+		t.Errorf("GatewayAuthSecret = %q, want empty when env unset", cfg.GatewayAuthSecret)
+	}
+}
+
 func TestConfigFromEnv_InternalIssuerFallsBackToIssuer(t *testing.T) {
 	t.Setenv(EnvIssuer, "https://kc.example.com/realms/moses")
 	t.Setenv(EnvInternalIssuer, "")

@@ -122,10 +122,12 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		}
 
 		// Pass-through mode: OIDC not configured. Still honour the
-		// header-trust path; everything else is served un-gated.
+		// header-trust path — but only when it is marker-gated and the
+		// marker matches (CHAT-t5d1u.28.21 S3). Everything else is
+		// served un-gated.
 		if !m.cfg.Enabled() {
 			id := Identity{}
-			if isHeaderTrusted(r) {
+			if m.isHeaderTrusted(r) {
 				id = identityFromHeaders(r)
 			}
 			next.ServeHTTP(w, r.WithContext(withIdentity(r.Context(), id)))
