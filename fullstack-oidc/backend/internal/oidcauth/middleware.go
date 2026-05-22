@@ -65,6 +65,14 @@ func IdentityFrom(ctx context.Context) Identity {
 	return Identity{}
 }
 
+// ContextWithIdentity returns a copy of ctx carrying id. The middleware
+// uses this internally; it is also exported so handler tests can build a
+// request as if the middleware had already authenticated the caller —
+// without standing up a live OIDC provider.
+func ContextWithIdentity(ctx context.Context, id Identity) context.Context {
+	return withIdentity(ctx, id)
+}
+
 // Middleware is the OIDC relying-party HTTP middleware. Build it with
 // New, then wrap your mux with Middleware.Handler. The auth handshake
 // routes (/auth/login, /auth/callback, /auth/logout, /auth/silent-check)

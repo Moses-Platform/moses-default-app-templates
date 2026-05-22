@@ -4,8 +4,11 @@
 // Keycloak login while preserving the X-Moses-* trusted-header path for
 // pod-to-pod MCP / workspace-tool calls.
 //
-// This is the 28.8 skeleton — a working, compiling reference. The full
-// demo-page polish lands in ticket 28.14.
+// The route surface is the demo: one PUBLIC route (/api/v1/public-info),
+// two PROTECTED routes (/api/v1/me, /api/v1/entries), and one PROTECTED
+// + ROLE-GATED route (/api/v1/admin-area) that enforces an app role
+// projected from the validated token. /health and the OpenAPI spec are
+// always public.
 package main
 
 import (
@@ -141,12 +144,19 @@ func buildMux(basePath string, oidcEnabled bool, entriesHandler *handler.Entries
 	}
 
 	// API endpoints — registered ONCE under MOSES_BASE_PATH.
-	//   /api/v1/public-info  — public (declared in access.oidc.publicPaths)
-	//   /api/v1/me           — protected (OIDCAuth gates it)
-	//   /api/v1/entries      — protected
+	//   /api/v1/public-info  — PUBLIC  (declared in access.oidc.publicPaths)
+	//   /api/v1/me           — PROTECTED (OIDCAuth gates it on a session)
+	//   /api/v1/entries      — PROTECTED (per-user data)
+	//   /api/v1/admin-area   — PROTECTED + ROLE-GATED (oidc-admin role)
+	//
+	// The contrast between public-info and the rest is the whole demo:
+	// one route any visitor can read, the others gated by the vendored
+	// oidcauth middleware. admin-area goes one step further and enforces
+	// an app role projected from the token (see handler.AdminArea).
 	mux.HandleFunc(basePath+"/api/v1/public-info", handler.PublicInfo(oidcEnabled))
 	mux.HandleFunc(basePath+"/api/v1/me", handler.Me)
 	mux.HandleFunc(basePath+"/api/v1/entries", entriesHandler.Entries)
+	mux.HandleFunc(basePath+"/api/v1/admin-area", handler.AdminArea)
 
 	return mux
 }

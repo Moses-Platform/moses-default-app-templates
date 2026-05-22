@@ -3,17 +3,34 @@
   "info": {
     "title": "Moses Fullstack OIDC Template API",
     "version": "1.0.0",
-    "description": "Reference app demonstrating the vendored OIDCAuth middleware: a Moses-deployed app acting as an OIDC relying party (BFF pattern)."
+    "description": "Reference app demonstrating the vendored OIDCAuth middleware: a Moses-deployed app acting as an OIDC relying party (BFF pattern). Routes are deliberately split into PUBLIC, PROTECTED, and PROTECTED+ROLE-GATED so the OIDC integration is visible end-to-end."
   },
   "servers": [
     { "url": "/api/v1" }
   ],
   "paths": {
+    "/public-info": {
+      "get": {
+        "operationId": "getPublicInfo",
+        "summary": "Public, unauthenticated app metadata",
+        "description": "Always reachable without a session — listed in the app's access.oidc publicPaths. Reports whether OIDC enforcement is active and the app's declared role vocabulary.",
+        "responses": {
+          "200": {
+            "description": "App metadata",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PublicInfo" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/me": {
       "get": {
         "operationId": "getMe",
         "summary": "Return the authenticated identity",
-        "description": "Returns the principal resolved by the OIDCAuth middleware — either from a validated session cookie or from trusted X-Moses-* pod-to-pod headers. A protected route.",
+        "description": "Protected route. Returns the principal resolved by the OIDCAuth middleware — either from a validated session cookie or from trusted X-Moses-* pod-to-pod headers. Includes the roles projected from resource_access.<client>.roles and a server-computed is_app_admin flag.",
         "responses": {
           "200": {
             "description": "The authenticated identity",
@@ -29,23 +46,28 @@
         }
       }
     },
-    "/public-info": {
+    "/admin-area": {
       "get": {
-        "operationId": "getPublicInfo",
-        "summary": "Public, unauthenticated app metadata",
-        "description": "Always reachable without a session — listed in the app's access.oidc publicPaths.",
+        "operationId": "getAdminArea",
+        "summary": "Role-gated protected resource",
+        "description": "Protected AND role-gated. The OIDCAuth middleware proves the caller is authenticated; the handler additionally requires the app's oidc-admin role (projected from the token). A signed-in user without the role gets 403.",
         "responses": {
           "200": {
-            "description": "App metadata",
+            "description": "Admin area payload — caller holds the oidc-admin role",
             "content": {
               "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "app": { "type": "string" },
-                    "oidc_enabled": { "type": "boolean" }
-                  }
-                }
+                "schema": { "$ref": "#/components/schemas/AdminArea" }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Authenticated but missing the oidc-admin app role",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Forbidden" }
               }
             }
           }
@@ -56,7 +78,7 @@
       "get": {
         "operationId": "listEntries",
         "summary": "List the authenticated user's entries",
-        "description": "Returns entries owned by the caller's OIDC subject within the deploy-pinned tenant. Protected route.",
+        "description": "Protected route. Returns entries owned by the caller's OIDC subject within the deploy-pinned tenant.",
         "responses": {
           "200": {
             "description": "Entry list",
@@ -68,6 +90,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Not authenticated"
           }
         }
       },
@@ -94,6 +119,12 @@
                 "schema": { "$ref": "#/components/schemas/Entry" }
               }
             }
+          },
+          "400": {
+            "description": "Missing or empty body"
+          },
+          "401": {
+            "description": "Not authenticated"
           }
         }
       }
@@ -101,16 +132,55 @@
   },
   "components": {
     "schemas": {
+      "PublicInfo": {
+        "type": "object",
+        "properties": {
+          "app": { "type": "string" },
+          "oidc_enabled": { "type": "boolean" },
+          "known_roles": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "The role vocabulary declared in moses-app.config.json access.roles."
+          }
+        }
+      },
       "Identity": {
         "type": "object",
         "properties": {
           "authenticated": { "type": "boolean" },
-          "source": { "type": "string", "enum": ["session", "moses-headers"] },
+          "source": { "type": "string", "enum": ["session", "moses-headers", ""] },
           "subject": { "type": "string" },
           "email": { "type": "string" },
           "name": { "type": "string" },
           "username": { "type": "string" },
-          "roles": { "type": "array", "items": { "type": "string" } }
+          "roles": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "resource_access.<client>.roles projected by Moses onto the ID token."
+          },
+          "is_app_admin": {
+            "type": "boolean",
+            "description": "Server-computed: true when roles includes oidc-admin."
+          }
+        }
+      },
+      "AdminArea": {
+        "type": "object",
+        "properties": {
+          "ok": { "type": "boolean" },
+          "message": { "type": "string" },
+          "subject": { "type": "string" },
+          "granted_role": { "type": "string" },
+          "current_roles": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "Forbidden": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "required_role": { "type": "string" },
+          "your_roles": { "type": "array", "items": { "type": "string" } },
+          "detail": { "type": "string" }
         }
       },
       "Entry": {
