@@ -13,6 +13,7 @@ go 1.25.10
 use (
 	./backend-template
 	./fullstack-chat/backend
+	./fullstack-oidc/backend
 	./fullstack-showcase/backend
 	./fullstack-simple/backend
 	./fullstack-unified

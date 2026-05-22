@@ -12,6 +12,7 @@ Self-contained, fully runnable application templates for the [Moses Platform](ht
 | **fullstack-unified** | hybrid | Single Go binary serving static frontend via `go:embed` + API endpoints. Simplest fullstack pattern. |
 | **fullstack-showcase** | hybrid | Feature-rich Go + React demo with PostgreSQL, multiple API endpoints, and 6 UI pages. |
 | **fullstack-chat** | hybrid | Go + React reference app exercising every Moses Manager integration surface (app actions, workspace-tool callbacks, completion webhooks). |
+| **fullstack-oidc** | hybrid | Go + React reference app that acts as an OIDC relying party fronted by Moses (BFF pattern), via the vendored `oidcauth` middleware. |
 
 ## How Templates Work
 
