@@ -77,63 +77,6 @@
       "availableIn": ["app-standalone"],
       "requiredUserPermission": "tickets:create",
       "rateLimit": { "perMinute": 5, "perHour": 60 }
-    },
-    {
-      "id": "emit-showcase-event",
-      "label": "Emit showcase event",
-      "icon": "lucide:radio",
-      "description": "Publishes an event to the showcase-events channel. Default trigger rule below fans out an in-app notification.",
-      "type": "fire_trigger_event",
-      "fireTriggerEvent": {
-        "channelId": "showcase-events",
-        "payloadTemplate": {
-          "kind": "{{kind}}",
-          "note": "{{note}}"
-        }
-      },
-      "variables": [
-        { "name": "kind", "type": "string", "required": true, "description": "Event kind tag" },
-        { "name": "note", "type": "string", "required": false }
-      ],
-      "placement": ["chat-quick-action"],
-      "availableIn": ["app-standalone"]
-    }
-  ],
-  "platformEvents": [
-    {
-      "id": "showcase-events",
-      "name": "Showcase events",
-      "description": "Events published by the showcase actions. Consumed by default trigger rules.",
-      "eventSchema": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": "object",
-        "properties": {
-          "kind": { "type": "string" },
-          "note": { "type": "string" }
-        },
-        "required": ["kind"]
-      },
-      "retentionDays": 7,
-      "sensitivity": "normal"
-    }
-  ],
-  "defaultTriggerRules": [
-    {
-      "id": "showcase-event-notify",
-      "name": "Notify on showcase event",
-      "description": "Fires an in-app notification to the grant approver for every showcase-events event.",
-      "source": {
-        "type": "app_event_channel",
-        "channelId": "showcase-events"
-      },
-      "action": {
-        "type": "notify",
-        "notify": {
-          "recipients": ["grant-approver"],
-          "template": "A showcase event was published on the showcase-events channel."
-        }
-      },
-      "cooldownSeconds": 30
     }
   ],
   "apiEndpoints": {

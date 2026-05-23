@@ -10,6 +10,7 @@
     "framing": "moses-only"
   },
   "skills": [
+    "skills/usage.md",
     "skills/secrets-tutorial.md"
   ],
   "quickActions": [
