@@ -1,18 +1,69 @@
 :root {
+  color-scheme: light dark;
+
   --color-primary: #4f46e5;
   --color-primary-hover: #4338ca;
   --color-bg: #f8fafc;
   --color-surface: #ffffff;
   --color-text: #0f172a;
-  --color-muted: #64748b;
+  --color-text-secondary: #64748b;
   --color-border: #e2e8f0;
   --color-error: #b91c1c;
   --color-success: #059669;
   --color-warning: #b45309;
 
+  /* Status-pill palettes — light defaults. Dark siblings live in
+     the prefers-color-scheme: dark block below. */
+  --status-invoking-bg: #eef2ff;
+  --status-invoking-text: #3730a3;
+  --status-awaiting-bg: #fef9c3;
+  --status-awaiting-text: var(--color-warning);
+  --status-complete-bg: #dcfce7;
+  --status-complete-text: var(--color-success);
+  --status-error-bg: #fee2e2;
+  --status-error-text: var(--color-error);
+
+  --source-manager-bg: #ede9fe;
+  --source-manager-text: #5b21b6;
+  --source-agent-bg: #dcfce7;
+  --source-agent-text: #065f46;
+
+  --code-inline-bg: rgba(0, 0, 0, 0.05);
+
   --radius: 8px;
   --gap: 12px;
   --gap-lg: 24px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-primary: #6366f1;
+    --color-primary-hover: #818cf8;
+    --color-bg: #0f1117;
+    --color-surface: #1a1d27;
+    --color-text: #e1e4ed;
+    --color-text-secondary: #94a3b8;
+    --color-border: #2a2d3a;
+    --color-error: #f87171;
+    --color-success: #34d399;
+    --color-warning: #fbbf24;
+
+    --status-invoking-bg: #1e1b4b;
+    --status-invoking-text: #c7d2fe;
+    --status-awaiting-bg: #422006;
+    --status-awaiting-text: #fbbf24;
+    --status-complete-bg: #064e3b;
+    --status-complete-text: #6ee7b7;
+    --status-error-bg: #450a0a;
+    --status-error-text: #fca5a5;
+
+    --source-manager-bg: #2e1065;
+    --source-manager-text: #c4b5fd;
+    --source-agent-bg: #064e3b;
+    --source-agent-text: #a7f3d0;
+
+    --code-inline-bg: rgba(255, 255, 255, 0.08);
+  }
 }
 
 * { box-sizing: border-box; }
@@ -41,7 +92,7 @@ header h1 {
 }
 header .lede {
   margin: 0;
-  color: var(--color-muted);
+  color: var(--color-text-secondary);
 }
 header code {
   background: var(--color-border);
@@ -87,7 +138,7 @@ header code {
   background: var(--color-primary-hover);
 }
 .trigger button:disabled {
-  background: var(--color-muted);
+  background: var(--color-text-secondary);
   cursor: not-allowed;
 }
 
@@ -98,23 +149,23 @@ header code {
   font-size: 0.95rem;
 }
 .status-invoking {
-  background: #eef2ff;
-  color: #3730a3;
+  background: var(--status-invoking-bg);
+  color: var(--status-invoking-text);
 }
 .status-awaiting {
-  background: #fef9c3;
-  color: var(--color-warning);
+  background: var(--status-awaiting-bg);
+  color: var(--status-awaiting-text);
 }
 .status-complete {
-  background: #dcfce7;
-  color: var(--color-success);
+  background: var(--status-complete-bg);
+  color: var(--status-complete-text);
 }
 .status-error {
-  background: #fee2e2;
-  color: var(--color-error);
+  background: var(--status-error-bg);
+  color: var(--status-error-text);
 }
 .status code {
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--code-inline-bg);
   padding: 0 4px;
   border-radius: 4px;
 }
@@ -131,7 +182,7 @@ header code {
 }
 .feed .empty {
   margin: 0;
-  color: var(--color-muted);
+  color: var(--color-text-secondary);
 }
 .feed ul {
   list-style: none;
@@ -164,7 +215,7 @@ header code {
   gap: var(--gap);
   align-items: center;
   font-size: 0.8rem;
-  color: var(--color-muted);
+  color: var(--color-text-secondary);
 }
 .feed .source {
   background: var(--color-border);
@@ -174,10 +225,26 @@ header code {
   font-size: 0.75rem;
 }
 .feed .source-moses_manager {
-  background: #ede9fe;
-  color: #5b21b6;
+  background: var(--source-manager-bg);
+  color: var(--source-manager-text);
 }
 .feed .source-agent {
-  background: #dcfce7;
-  color: #065f46;
+  background: var(--source-agent-bg);
+  color: var(--source-agent-text);
+}
+
+/* Mobile tap targets — bump interactive controls to ≥44px on phones. */
+@media (max-width: 640px) {
+  .trigger button,
+  .trigger input {
+    min-height: 44px;
+  }
+  .app {
+    padding: 16px;
+    gap: 16px;
+  }
+  .trigger,
+  .feed {
+    padding: 16px;
+  }
 }

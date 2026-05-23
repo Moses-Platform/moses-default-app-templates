@@ -139,13 +139,24 @@
 }
 
 .pill-anon {
-  background: #FEF3C7;
-  color: #92400E;
+  background: var(--pill-anon-bg);
+  color: var(--pill-anon-text);
 }
 
 .pill-auth {
-  background: #D1FAE5;
-  color: #065F46;
+  background: var(--pill-auth-bg);
+  color: var(--pill-auth-text);
+}
+
+/* External hamburger trigger — visible only on narrow viewports so the
+   off-canvas sidebar can be re-opened after it slides out (otherwise the
+   only toggle lives inside the sidebar and disappears with it). */
+.mobile-menu-toggle {
+  display: none;
+}
+
+.sidebar-overlay {
+  display: none;
 }
 
 .btn {
@@ -211,6 +222,7 @@
     top: 0;
     left: 0;
     height: 100vh;
+    width: 240px;
     z-index: 1000;
     transform: translateX(-100%);
   }
@@ -221,7 +233,41 @@
   }
 
   .sidebar.closed {
-    width: 0;
+    /* Keep the same width — the off-canvas transform hides it.
+       Width 0 here would race the transform and clip the toggle target. */
+    transform: translateX(-100%);
+  }
+
+  /* External hamburger button in the app-header — only path to re-open
+     the off-canvas sidebar once it has slid out. */
+  .mobile-menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: var(--spacing-2);
+    margin-right: var(--spacing-2);
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text);
+    font-size: var(--font-size-lg);
+    cursor: pointer;
+  }
+
+  .mobile-menu-toggle:hover {
+    background: var(--color-bg);
+    color: var(--color-primary);
+  }
+
+  /* Dismiss-on-tap scrim behind the open sidebar. */
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 999;
   }
 
   .content-area {

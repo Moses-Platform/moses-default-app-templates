@@ -51,18 +51,18 @@
 }
 
 .badge-public {
-  background: #D1FAE5;
-  color: #065F46;
+  background: var(--badge-public-bg);
+  color: var(--badge-public-text);
 }
 
 .badge-protected {
-  background: #DBEAFE;
-  color: #1E40AF;
+  background: var(--badge-protected-bg);
+  color: var(--badge-protected-text);
 }
 
 .badge-role {
-  background: #EDE9FE;
-  color: #5B21B6;
+  background: var(--badge-role-bg);
+  color: var(--badge-role-text);
 }
 
 /* Definition-list identity display. */
@@ -120,18 +120,18 @@
 }
 
 .banner-ok {
-  background: #D1FAE5;
-  color: #065F46;
+  background: var(--banner-ok-bg);
+  color: var(--banner-ok-text);
 }
 
 .banner-warn {
-  background: #FEF3C7;
-  color: #92400E;
+  background: var(--banner-warn-bg);
+  color: var(--banner-warn-text);
 }
 
 .banner-error {
-  background: #FEE2E2;
-  color: #991B1B;
+  background: var(--banner-error-bg);
+  color: var(--banner-error-text);
 }
 
 /* Route table. */

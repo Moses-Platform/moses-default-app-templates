@@ -1,5 +1,7 @@
 :root {
-  /* Moses Design Tokens */
+  color-scheme: light dark;
+
+  /* Moses Design Tokens — light defaults. */
   --color-primary: #4F46E5;
   --color-primary-hover: #4338CA;
   --color-bg: #F9FAFB;
@@ -7,6 +9,13 @@
   --color-text: #111827;
   --color-text-secondary: #6B7280;
   --color-border: #E5E7EB;
+
+  /* Inline-code background — mode-aware (dark wash on dark mode). */
+  --code-inline-bg: rgba(0, 0, 0, 0.05);
+  /* Elevation — shadows need more opacity on dark surfaces. */
+  --card-hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --header-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+
   --radius: 8px;
 
   /* 4px spacing grid */
@@ -19,6 +28,22 @@
   --spacing-8: 32px;
   --spacing-10: 40px;
   --spacing-12: 48px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-primary: #6366F1;
+    --color-primary-hover: #818CF8;
+    --color-bg: #0F1117;
+    --color-surface: #1A1D27;
+    --color-text: #E1E4ED;
+    --color-text-secondary: #94A3B8;
+    --color-border: #2A2D3A;
+
+    --code-inline-bg: rgba(255, 255, 255, 0.08);
+    --card-hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    --header-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+  }
 }
 
 * {
@@ -39,7 +64,7 @@ body {
 
 code {
   font-family: 'Fira Code', 'Courier New', monospace;
-  background-color: rgba(0, 0, 0, 0.05);
+  background-color: var(--code-inline-bg);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.9em;
@@ -80,4 +105,14 @@ a:hover {
 button {
   font-family: inherit;
   cursor: pointer;
+}
+
+/* Mobile tap targets — bump interactive controls to ≥44px on phones. */
+@media (max-width: 640px) {
+  button,
+  input,
+  select,
+  textarea {
+    min-height: 44px;
+  }
 }

@@ -33,12 +33,12 @@ export default function UserList() {
   return (
     <div className="feature-card">
       <h3>Tenant Users (Platform API)</h3>
-      {message && <p style={{ color: '#888', fontSize: '0.85em' }}>{message}</p>}
+      {message && <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.85em' }}>{message}</p>}
       {users.length === 0 && !message && <p>No users found.</p>}
       {users.length > 0 && (
         <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}>
           <thead>
-            <tr style={{ borderBottom: '1px solid #333' }}>
+            <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
               <th style={{ textAlign: 'left', padding: '0.5rem' }}>Name</th>
               <th style={{ textAlign: 'left', padding: '0.5rem' }}>Email</th>
               <th style={{ textAlign: 'left', padding: '0.5rem' }}>Role</th>
@@ -46,7 +46,7 @@ export default function UserList() {
           </thead>
           <tbody>
             {users.map(u => (
-              <tr key={u.id} style={{ borderBottom: '1px solid #222' }}>
+              <tr key={u.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
                 <td style={{ padding: '0.5rem' }}>{u.displayName}</td>
                 <td style={{ padding: '0.5rem' }}>{u.email}</td>
                 <td style={{ padding: '0.5rem' }}>{u.role}</td>

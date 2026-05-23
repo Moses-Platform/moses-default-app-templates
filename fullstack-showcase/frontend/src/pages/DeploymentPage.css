@@ -37,8 +37,8 @@
 }
 
 pre {
-  background: #1e1e1e;
-  color: #d4d4d4;
+  background: var(--code-block-bg);
+  color: var(--code-block-text);
   padding: var(--spacing-6);
   border-radius: var(--radius-md);
   overflow-x: auto;

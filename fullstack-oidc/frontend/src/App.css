@@ -1,6 +1,8 @@
 /* Moses design tokens — shared by the fullstack-oidc reference app.
    Mirrors fullstack-showcase so the OIDC template matches the fleet. */
 :root {
+  color-scheme: light dark;
+
   /* Colors */
   --color-primary: #4F46E5;
   --color-primary-hover: #4338CA;
@@ -13,6 +15,30 @@
   --color-success: #10B981;
   --color-warning: #F59E0B;
   --color-error: #EF4444;
+
+  /* Semantic pill / banner palettes — light defaults. Dark siblings live
+     in the prefers-color-scheme: dark block below. */
+  --pill-anon-bg: #FEF3C7;
+  --pill-anon-text: #92400E;
+  --pill-auth-bg: #D1FAE5;
+  --pill-auth-text: #065F46;
+
+  --badge-public-bg: #D1FAE5;
+  --badge-public-text: #065F46;
+  --badge-protected-bg: #DBEAFE;
+  --badge-protected-text: #1E40AF;
+  --badge-role-bg: #EDE9FE;
+  --badge-role-text: #5B21B6;
+
+  --banner-ok-bg: #D1FAE5;
+  --banner-ok-text: #065F46;
+  --banner-warn-bg: #FEF3C7;
+  --banner-warn-text: #92400E;
+  --banner-error-bg: #FEE2E2;
+  --banner-error-text: #991B1B;
+
+  --hero-code-bg: rgba(255, 255, 255, 0.18);
+  --banner-code-bg: rgba(0, 0, 0, 0.06);
 
   /* Typography */
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -53,6 +79,49 @@
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-primary: #6366F1;
+    --color-primary-hover: #818CF8;
+    --color-primary-light: #1E1B4B;
+    --color-bg: #0F1117;
+    --color-surface: #1A1D27;
+    --color-text: #E1E4ED;
+    --color-text-secondary: #94A3B8;
+    --color-border: #2A2D3A;
+    --color-success: #34D399;
+    --color-warning: #FBBF24;
+    --color-error: #F87171;
+
+    --pill-anon-bg: #78350F;
+    --pill-anon-text: #FEF3C7;
+    --pill-auth-bg: #064E3B;
+    --pill-auth-text: #D1FAE5;
+
+    --badge-public-bg: #064E3B;
+    --badge-public-text: #A7F3D0;
+    --badge-protected-bg: #1E3A8A;
+    --badge-protected-text: #BFDBFE;
+    --badge-role-bg: #2E1065;
+    --badge-role-text: #DDD6FE;
+
+    --banner-ok-bg: #064E3B;
+    --banner-ok-text: #A7F3D0;
+    --banner-warn-bg: #78350F;
+    --banner-warn-text: #FEF3C7;
+    --banner-error-bg: #450A0A;
+    --banner-error-text: #FCA5A5;
+
+    --hero-code-bg: rgba(255, 255, 255, 0.18);
+    --banner-code-bg: rgba(255, 255, 255, 0.08);
+
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
+  }
 }
 
 * {
@@ -101,12 +170,12 @@ code {
 
 .hero code,
 .banner code {
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--hero-code-bg);
   border-color: transparent;
 }
 
 .banner code {
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--banner-code-bg);
 }
 
 ul {
@@ -127,4 +196,14 @@ a:focus-visible,
 input:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
+}
+
+/* Mobile tap targets — bump interactive controls to ≥44px on phones. */
+@media (max-width: 640px) {
+  button,
+  input,
+  select,
+  textarea {
+    min-height: 44px;
+  }
 }

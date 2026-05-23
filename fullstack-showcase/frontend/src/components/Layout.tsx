@@ -34,6 +34,13 @@ export default function Layout() {
               to={item.path}
               end={item.path === '/'}
               className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+              onClick={() => {
+                /* Tap-to-dismiss on mobile: closing on nav avoids leaving
+                   the off-canvas sheet hovering over the destination page. */
+                if (window.matchMedia('(max-width: 768px)').matches) {
+                  setSidebarOpen(false);
+                }
+              }}
             >
               <span className="nav-icon">{item.icon}</span>
               {sidebarOpen && <span className="nav-label">{item.label}</span>}
@@ -42,8 +49,26 @@ export default function Layout() {
         </nav>
       </aside>
 
+      {/* Mobile-only scrim — dismiss the off-canvas sheet on outside tap. */}
+      {sidebarOpen && (
+        <div
+          className="sidebar-overlay"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       <div className="main-content">
         <header className="app-header">
+          <button
+            className="mobile-menu-toggle"
+            type="button"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={sidebarOpen}
+          >
+            {sidebarOpen ? '✕' : '☰'}
+          </button>
           <h1>Moses Platform Showcase</h1>
           <p className="header-subtitle">Interactive demonstration of platform capabilities</p>
         </header>
