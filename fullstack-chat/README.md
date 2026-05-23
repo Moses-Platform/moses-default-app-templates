@@ -198,6 +198,8 @@ All four `validation.commands` in `moses-app.config.json` are required and run b
 | `appData.enabled` | When true, Moses provisions `{tenantID}/app-data/fullstack-chat/` git repo. MM reads via `moses_read_file`. |
 | `appData.manager.access` | `read` (default for this template) / `none`. Whether MM sees the repo in `moses_get_repositories`. |
 
+Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tutorial.md).
+
 ## Webhook secret rotation
 
 The platform supports a 24h overlap window for `app_webhook_secrets` rotation (schema migration `882_app_webhook_secret_rotation.sql`, `secret_previous` + `secret_previous_expires_at`). The platform-side _sender_ is single-slot — once you rotate, every outbound signature uses the new secret immediately. **No-cutover rotation is therefore a contract on the recipient**: during the overlap the recipient must accept signatures from EITHER the active or the previous secret.

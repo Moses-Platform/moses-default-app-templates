@@ -9,6 +9,9 @@
   "embedding": {
     "framing": "moses-only"
   },
+  "skills": [
+    "skills/secrets-tutorial.md"
+  ],
   "quickActions": [
     {
       "id": "launch",

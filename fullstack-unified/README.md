@@ -99,6 +99,8 @@ helm install fullstack-unified-test . \
 - Frontend lives in `static/`. Edit any of the existing files or add new ones — they get re-embedded on build.
 - Need a database? Switch to `fullstack-showcase` — adding Postgres support to a single-binary template doubles the deployment complexity and defeats the purpose.
 
+Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tutorial.md).
+
 ## Validation + maintenance hooks
 
 `moses-app.config.json` declares `go vet ./...` and `go test ./...` as required validation, plus weekly Renovate sweeps and a 15-minute log-error monitor.

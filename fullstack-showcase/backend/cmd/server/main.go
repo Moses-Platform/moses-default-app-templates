@@ -24,6 +24,10 @@ func main() {
 	// internal/config.SelfTenantID().
 	config.Validate()
 
+	// CHAT-0lu74: external runtime secrets (e.g. EXAMPLE_API_KEY) belong in
+	// `moses-app.config.json` → `secrets.external[]`. See
+	// `skills/secrets-tutorial.md` for the read+validate pattern.
+
 	// Connect to database
 	dbConfig := database.NewConfigFromEnv()
 	log.Printf("Connecting to database at %s:%s...", dbConfig.Host, dbConfig.Port)

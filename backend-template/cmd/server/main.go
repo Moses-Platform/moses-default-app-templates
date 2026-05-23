@@ -23,6 +23,11 @@ func main() {
 	// there is no startup data migration to run — restarts wipe state.
 	config.Validate()
 
+	// CHAT-0lu74: external runtime secrets (e.g. EXAMPLE_API_KEY) belong in
+	// `moses-app.config.json` → `secrets.external[]`. See
+	// `skills/secrets-tutorial.md` for the read+validate pattern and
+	// `moses-app.config.with-secrets.example.json` for a working config diff.
+
 	// Read configuration from environment
 	port := os.Getenv("PORT")
 	if port == "" {

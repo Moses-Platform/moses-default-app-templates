@@ -263,6 +263,8 @@ services:
 2. **Frontend**: Add to env and update `entrypoint.sh` envsubst
 3. **Access**: `os.Getenv("VAR_NAME")` (Go) or `import.meta.env` (Vite)
 
+Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tutorial.md).
+
 ## Moses Integration Patterns
 
 ### Moses Headers Middleware

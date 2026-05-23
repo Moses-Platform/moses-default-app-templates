@@ -92,6 +92,8 @@ helm install fullstack-simple-test . \
 - Frontend pages: standard Vite/React. Use the `useApi()` hook for the relative-path convention.
 - Database: copy the `helm/templates/postgresql.yaml` pattern from `fullstack-showcase` and add `dependencies.services: ["postgresql"]` in `moses-app.config.json`.
 
+Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tutorial.md).
+
 ## Validation + maintenance hooks
 
 The `moses-app.config.json` declares:

@@ -21,6 +21,10 @@ func main() {
 	// scoping starts clean under the deploy-pinned env value.
 	config.Validate()
 
+	// CHAT-0lu74: external runtime secrets (e.g. EXAMPLE_API_KEY) belong in
+	// `moses-app.config.json` → `secrets.external[]`. See
+	// `skills/secrets-tutorial.md` for the read+validate pattern.
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"

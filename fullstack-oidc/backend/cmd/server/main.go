@@ -34,6 +34,11 @@ func main() {
 	// Fail-fast when MOSES_TENANT_ID is unset on a deployed pod.
 	config.Validate()
 
+	// CHAT-0lu74: app-owned external secrets (e.g. JWT_SIGNING_KEY for
+	// tokens this app mints downstream) belong in `moses-app.config.json`
+	// → `secrets.external[]`. The OIDC client secret is platform-managed,
+	// NOT declared here. See `skills/secrets-tutorial.md`.
+
 	// Connect to the database.
 	dbConfig := database.NewConfigFromEnv()
 	log.Printf("Connecting to database at %s:%s...", dbConfig.Host, dbConfig.Port)

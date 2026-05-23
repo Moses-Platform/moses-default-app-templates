@@ -87,6 +87,8 @@ helm install my-app ./helm \
 
 ## Customization Guide
 
+Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tutorial.md) (frontends cannot read raw secrets — fork a fullstack template).
+
 ### Update App Metadata
 
 Edit `moses-app.config.json`:

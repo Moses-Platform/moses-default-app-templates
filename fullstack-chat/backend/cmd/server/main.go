@@ -32,6 +32,10 @@ func main() {
 	// CHAT-0b6g (DEPS-B1): validate the platform-injected env contract
 	// before any work begins. In prod mode (MOSES_DEPLOYED=1) missing
 	// required vars are fatal; in standalone/dev they only warn.
+	//
+	// CHAT-0lu74: app-declared external secrets (e.g. LLM_API_KEY) belong
+	// in `moses-app.config.json` → `secrets.external[]` + a new row in
+	// `requiredPlatformEnv`. See `skills/secrets-tutorial.md`.
 	validatePlatformEnv(os.Exit)
 
 	// CHAT-pxeo.12: hard fail-fast when MOSES_TENANT_ID is unset on a

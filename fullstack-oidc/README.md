@@ -137,6 +137,8 @@ Moses projects the mapping into `resource_access.<client>.roles` on the
 token. The Helm chart's `moses.oidc.protectedPaths` /
 `moses.oidc.publicPaths` mirror the `access.oidc` lists.
 
+Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tutorial.md).
+
 ## Build & test
 
 ```bash

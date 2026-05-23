@@ -279,6 +279,8 @@ func AuthMiddleware(next http.Handler) http.Handler {
 | `BASE_URL` | Public base URL | `http://localhost:8080` |
 | `NODE_ENV` | Environment (for compatibility) | `production` |
 
+Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tutorial.md).
+
 ### Helm Values
 
 See `helm/values.yaml` for all configuration options:
