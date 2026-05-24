@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -100,6 +101,7 @@ func (p *provider) discover(ctx context.Context) error {
 		p.endSessionURL = extDoc.EndSessionEndpoint
 	} else {
 		issuer := strings.TrimRight(p.cfg.Issuer, "/")
+		log.Printf("oidcauth: external discovery unreachable (%v), synthesising browser URLs from Issuer=%s via standard Keycloak paths", err, issuer)
 		p.authorizeURL = issuer + keycloakAuthorizePath
 		p.endSessionURL = issuer + keycloakEndSessionPath
 	}
