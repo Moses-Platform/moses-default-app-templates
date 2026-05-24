@@ -46,8 +46,8 @@ func TestIsTruthy(t *testing.T) {
 }
 
 func TestConfigFromEnv(t *testing.T) {
-	t.Setenv(EnvIssuer, "https://kc.example.com/realms/moses/")
-	t.Setenv(EnvInternalIssuer, "http://keycloak.moses.svc:8080/realms/moses")
+	t.Setenv(EnvIssuer, "https://kc.example.com/auth/realms/moses/")
+	t.Setenv(EnvInternalIssuer, "http://keycloak.moses.svc:8080/auth/realms/moses")
 	t.Setenv(EnvClientID, "app-client")
 	t.Setenv(EnvClientSecret, "s3cr3t")
 	t.Setenv(EnvAudience, "app-audience")
@@ -58,10 +58,10 @@ func TestConfigFromEnv(t *testing.T) {
 
 	cfg := ConfigFromEnv()
 
-	if cfg.Issuer != "https://kc.example.com/realms/moses" {
+	if cfg.Issuer != "https://kc.example.com/auth/realms/moses" {
 		t.Errorf("Issuer trailing slash not trimmed: %q", cfg.Issuer)
 	}
-	if cfg.InternalIssuer != "http://keycloak.moses.svc:8080/realms/moses" {
+	if cfg.InternalIssuer != "http://keycloak.moses.svc:8080/auth/realms/moses" {
 		t.Errorf("InternalIssuer = %q", cfg.InternalIssuer)
 	}
 	if cfg.BasePath != "/apps/tenant/slug" {
@@ -106,7 +106,7 @@ func TestConfigFromEnv_GatewayAuthSecretUnsetIsEmpty(t *testing.T) {
 }
 
 func TestConfigFromEnv_InternalIssuerFallsBackToIssuer(t *testing.T) {
-	t.Setenv(EnvIssuer, "https://kc.example.com/realms/moses")
+	t.Setenv(EnvIssuer, "https://kc.example.com/auth/realms/moses")
 	t.Setenv(EnvInternalIssuer, "")
 	t.Setenv(EnvClientID, "c")
 	t.Setenv(EnvClientSecret, "s")

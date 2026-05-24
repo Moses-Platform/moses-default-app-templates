@@ -14,8 +14,8 @@ const testGatewaySecret = "test-gateway-auth-secret"
 
 func enabledCfg() Config {
 	return Config{
-		Issuer:            "https://kc.example.com/realms/moses",
-		InternalIssuer:    "http://keycloak.moses.svc:8080/realms/moses",
+		Issuer:            "https://kc.example.com/auth/realms/moses",
+		InternalIssuer:    "http://keycloak.moses.svc:8080/auth/realms/moses",
 		ClientID:          "app-client",
 		ClientSecret:      "secret",
 		BasePath:          "/apps/t/s",

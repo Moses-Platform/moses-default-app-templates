@@ -159,7 +159,7 @@ func TestVerifyToken_ValidRS256(t *testing.T) {
 	now := time.Now()
 	tok := s.sign(t, map[string]any{
 		"sub": "user-1",
-		"iss": "https://kc.example.com/realms/moses",
+		"iss": "https://kc.example.com/auth/realms/moses",
 		"aud": "app-client",
 		"exp": now.Add(time.Hour).Unix(),
 		"iat": now.Unix(),
@@ -169,7 +169,7 @@ func TestVerifyToken_ValidRS256(t *testing.T) {
 	})
 
 	claims, err := verifyToken(context.Background(), tok, ks, verifyOptions{
-		expectedIssuer:   "https://kc.example.com/realms/moses",
+		expectedIssuer:   "https://kc.example.com/auth/realms/moses",
 		expectedAudience: "app-client",
 	})
 	if err != nil {

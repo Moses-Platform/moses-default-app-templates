@@ -14,7 +14,7 @@ import (
 func TestAuthorizeRedirectURL(t *testing.T) {
 	p := &provider{
 		cfg:          Config{ClientID: "app-client"},
-		authorizeURL: "https://kc.example.com/realms/moses/protocol/openid-connect/auth",
+		authorizeURL: "https://kc.example.com/auth/realms/moses/protocol/openid-connect/auth",
 	}
 	got := p.authorizeRedirectURL(
 		"https://app.example.com/apps/t/s/auth/callback",
@@ -59,7 +59,7 @@ func TestAuthorizeRedirectURL_SilentPromptNone(t *testing.T) {
 func TestEndSessionRedirectURL(t *testing.T) {
 	p := &provider{
 		cfg:           Config{ClientID: "app-client"},
-		endSessionURL: "https://kc.example.com/realms/moses/protocol/openid-connect/logout",
+		endSessionURL: "https://kc.example.com/auth/realms/moses/protocol/openid-connect/logout",
 	}
 	got := p.endSessionRedirectURL("https://app.example.com/apps/t/s/", "")
 	u, err := url.Parse(got)
@@ -150,7 +150,7 @@ func TestDiscover_InternalOnly_ExternalUnreachable(t *testing.T) {
 	// "External" issuer points at a deliberately-closed port — any
 	// HTTP dial against it MUST fail. This emulates the in-cluster pod
 	// that cannot reach the external ingress.
-	const extIssuer = "http://127.0.0.1:1/realms/moses"
+	const extIssuer = "http://127.0.0.1:1/auth/realms/moses"
 
 	// Internal discovery server — reachable, returns the in-cluster URLs.
 	var intIssuer string
@@ -167,7 +167,7 @@ func TestDiscover_InternalOnly_ExternalUnreachable(t *testing.T) {
 		_, _ = w.Write(b)
 	}))
 	defer intSrv.Close()
-	intIssuer = intSrv.URL + "/realms/moses"
+	intIssuer = intSrv.URL + "/auth/realms/moses"
 
 	p := newProvider(Config{
 		Issuer:         extIssuer,
@@ -210,13 +210,13 @@ func TestDiscover_InternalOnly_ExternalUnreachable(t *testing.T) {
 // resolve in-cluster DNS, so the synthesised authorize URL must keep the
 // external host even when discovery itself ran against the internal one.
 func TestAuthorizeRedirectURL_UsesExternalHost(t *testing.T) {
-	const extIssuer = "https://kc.example.com/realms/moses"
+	const extIssuer = "https://kc.example.com/auth/realms/moses"
 
 	// Stand up an "internal" discovery server — its body returns
 	// internal-host URLs that we DO NOT want to see in the browser
 	// redirect.
 	intSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		const intIssuer = "http://keycloak.moses.svc:8080/realms/moses"
+		const intIssuer = "http://keycloak.moses.svc:8080/auth/realms/moses"
 		doc := discoveryDoc{
 			Issuer:                intIssuer,
 			AuthorizationEndpoint: intIssuer + "/protocol/openid-connect/auth",
@@ -264,8 +264,8 @@ func TestAuthorizeRedirectURL_UsesExternalHost(t *testing.T) {
 func TestVerifyIDToken_UsesExternalIssuer(t *testing.T) {
 	p := &provider{
 		cfg: Config{
-			Issuer:         "https://kc.example.com/realms/moses",
-			InternalIssuer: "http://keycloak.moses.svc:8080/realms/moses",
+			Issuer:         "https://kc.example.com/auth/realms/moses",
+			InternalIssuer: "http://keycloak.moses.svc:8080/auth/realms/moses",
 			ClientID:       "app-client",
 		},
 		// keys deliberately nil: we want the early "not discovered"
