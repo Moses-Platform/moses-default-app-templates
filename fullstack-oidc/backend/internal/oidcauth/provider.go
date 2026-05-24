@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -17,7 +18,9 @@ import (
 // session); the INTERNAL issuer drives server-to-server endpoints (JWKS,
 // token). Keycloak returns absolute URLs in discovery that embed the
 // issuer host, so we discover against each and use the right one per
-// hop.
+// hop. When external discovery is unreachable from inside the pod (Bug A,
+// CHAT-t5d1u.28.23) the browser-facing URLs are synthesised from the
+// external Issuer + Keycloak's well-known paths.
 type provider struct {
 	cfg Config
 
@@ -49,9 +52,28 @@ func newProvider(cfg Config) *provider {
 // wellKnown is the standard OIDC discovery path suffix.
 const wellKnown = "/.well-known/openid-configuration"
 
+// Keycloak's standard relative endpoint paths under an issuer realm URL.
+// Synthesised when external discovery is unreachable (e.g. an in-cluster
+// pod cannot dial the external ingress host); Keycloak ships these paths
+// at stable, well-known locations.
+const (
+	keycloakAuthorizePath  = "/protocol/openid-connect/auth"
+	keycloakEndSessionPath = "/protocol/openid-connect/logout"
+)
+
 // discover resolves both the external and internal endpoint sets. It is
 // idempotent and safe to call repeatedly — only the first successful
 // call does work.
+//
+// CHAT-t5d1u.28.23 (Bug A): internal discovery is REQUIRED (server-side
+// JWKS + token exchange cannot work without it). External discovery is
+// BEST-EFFORT — when the pod cannot reach the external issuer host (a
+// common case behind in-cluster ingress) the browser-facing
+// authorize/end-session URLs are synthesised from p.cfg.Issuer plus
+// Keycloak's standard relative paths. The external Issuer remains the
+// source of truth for browser URLs (the browser cannot resolve in-cluster
+// DNS) and for token `iss` validation (Keycloak self-declares the
+// external issuer in tokens it mints for the browser).
 func (p *provider) discover(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -59,21 +81,30 @@ func (p *provider) discover(ctx context.Context) error {
 		return nil
 	}
 
-	// External discovery: browser-facing authorize + end-session.
-	extDoc, err := p.fetchDiscovery(ctx, p.cfg.Issuer)
-	if err != nil {
-		return fmt.Errorf("oidcauth: external discovery (%s): %w", p.cfg.Issuer, err)
-	}
-	p.authorizeURL = extDoc.AuthorizationEndpoint
-	p.endSessionURL = extDoc.EndSessionEndpoint
-
-	// Internal discovery: server-to-server token + JWKS.
+	// Internal discovery is required: JWKS + token endpoints MUST be
+	// reachable for the BFF to function. This is the call that runs from
+	// inside the pod, so it MUST target InternalIssuer (Bug A fix).
 	intDoc, err := p.fetchDiscovery(ctx, p.cfg.InternalIssuer)
 	if err != nil {
 		return fmt.Errorf("oidcauth: internal discovery (%s): %w", p.cfg.InternalIssuer, err)
 	}
 	p.tokenURL = intDoc.TokenEndpoint
 	p.keys = newKeySet(intDoc.JWKSURI, p.httpClient)
+
+	// External discovery is best-effort: when it succeeds it gives us
+	// the canonical browser-facing endpoints; when it fails (in-cluster
+	// pod cannot reach the external ingress) we synthesise them from
+	// p.cfg.Issuer + Keycloak's standard paths. Either way the browser
+	// sees an EXTERNAL host — never the in-cluster one.
+	if extDoc, err := p.fetchDiscovery(ctx, p.cfg.Issuer); err == nil {
+		p.authorizeURL = extDoc.AuthorizationEndpoint
+		p.endSessionURL = extDoc.EndSessionEndpoint
+	} else {
+		issuer := strings.TrimRight(p.cfg.Issuer, "/")
+		log.Printf("oidcauth: external discovery unreachable (%v), synthesising browser URLs from Issuer=%s via standard Keycloak paths", err, issuer)
+		p.authorizeURL = issuer + keycloakAuthorizePath
+		p.endSessionURL = issuer + keycloakEndSessionPath
+	}
 
 	p.ready = true
 	return nil

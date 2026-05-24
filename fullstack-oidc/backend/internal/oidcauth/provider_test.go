@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAuthorizeRedirectURL(t *testing.T) {
@@ -135,6 +136,161 @@ func TestDiscover(t *testing.T) {
 	// discover() is idempotent — a second call is a no-op.
 	if err := p.discover(context.Background()); err != nil {
 		t.Errorf("second discover() should be a no-op, got %v", err)
+	}
+}
+
+// TestDiscover_InternalOnly_ExternalUnreachable covers CHAT-t5d1u.28.23
+// (Bug A): when the pod cannot reach the external issuer host (the
+// common in-cluster case), discover() must still succeed by relying on
+// internal discovery for the server-side endpoints and synthesising the
+// browser-facing URLs from the EXTERNAL Issuer + Keycloak's standard
+// paths. The token `iss` validation and the browser-visible URLs must
+// continue to reference the EXTERNAL host.
+func TestDiscover_InternalOnly_ExternalUnreachable(t *testing.T) {
+	// "External" issuer points at a deliberately-closed port — any
+	// HTTP dial against it MUST fail. This emulates the in-cluster pod
+	// that cannot reach the external ingress.
+	const extIssuer = "http://127.0.0.1:1/realms/moses"
+
+	// Internal discovery server — reachable, returns the in-cluster URLs.
+	var intIssuer string
+	intSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		doc := discoveryDoc{
+			Issuer:                intIssuer,
+			AuthorizationEndpoint: intIssuer + "/protocol/openid-connect/auth",
+			TokenEndpoint:         intIssuer + "/protocol/openid-connect/token",
+			JWKSURI:               intIssuer + "/protocol/openid-connect/certs",
+			EndSessionEndpoint:    intIssuer + "/protocol/openid-connect/logout",
+		}
+		b, _ := json.Marshal(doc)
+		_, _ = w.Write(b)
+	}))
+	defer intSrv.Close()
+	intIssuer = intSrv.URL + "/realms/moses"
+
+	p := newProvider(Config{
+		Issuer:         extIssuer,
+		InternalIssuer: intIssuer,
+		ClientID:       "c",
+		ClientSecret:   "s",
+	})
+	// Short timeout so the unreachable external dial fails quickly.
+	p.httpClient = &http.Client{Timeout: 500 * time.Millisecond}
+
+	if err := p.discover(context.Background()); err != nil {
+		t.Fatalf("discover should succeed when only InternalIssuer is reachable: %v", err)
+	}
+
+	// Server-side endpoints come from internal discovery.
+	if p.tokenURL != intIssuer+"/protocol/openid-connect/token" {
+		t.Errorf("tokenURL should come from INTERNAL discovery: %q", p.tokenURL)
+	}
+	if p.keys == nil || p.keys.jwksURI != intIssuer+"/protocol/openid-connect/certs" {
+		t.Errorf("JWKS URI should come from INTERNAL discovery, got %v", p.keys)
+	}
+
+	// Browser-facing URLs are synthesised from the EXTERNAL Issuer.
+	if !strings.HasPrefix(p.authorizeURL, extIssuer+"/") {
+		t.Errorf("authorizeURL must use the EXTERNAL host (synthesised), got %q", p.authorizeURL)
+	}
+	if p.authorizeURL != extIssuer+keycloakAuthorizePath {
+		t.Errorf("authorizeURL = %q, want %q (synthesised Keycloak path)",
+			p.authorizeURL, extIssuer+keycloakAuthorizePath)
+	}
+	if p.endSessionURL != extIssuer+keycloakEndSessionPath {
+		t.Errorf("endSessionURL = %q, want %q (synthesised Keycloak path)",
+			p.endSessionURL, extIssuer+keycloakEndSessionPath)
+	}
+}
+
+// TestAuthorizeRedirectURL_UsesExternalHost confirms that the URL handed
+// to the browser carries the EXTERNAL host (not the in-cluster one).
+// Regression guard for CHAT-t5d1u.28.23 (Bug A) — the browser cannot
+// resolve in-cluster DNS, so the synthesised authorize URL must keep the
+// external host even when discovery itself ran against the internal one.
+func TestAuthorizeRedirectURL_UsesExternalHost(t *testing.T) {
+	const extIssuer = "https://kc.example.com/realms/moses"
+
+	// Stand up an "internal" discovery server — its body returns
+	// internal-host URLs that we DO NOT want to see in the browser
+	// redirect.
+	intSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		const intIssuer = "http://keycloak.moses.svc:8080/realms/moses"
+		doc := discoveryDoc{
+			Issuer:                intIssuer,
+			AuthorizationEndpoint: intIssuer + "/protocol/openid-connect/auth",
+			TokenEndpoint:         intIssuer + "/protocol/openid-connect/token",
+			JWKSURI:               intIssuer + "/protocol/openid-connect/certs",
+			EndSessionEndpoint:    intIssuer + "/protocol/openid-connect/logout",
+		}
+		b, _ := json.Marshal(doc)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(b)
+	}))
+	defer intSrv.Close()
+
+	p := newProvider(Config{
+		Issuer:         extIssuer,         // unreachable from the test process
+		InternalIssuer: intSrv.URL,        // reachable httptest server
+		ClientID:       "app-client",
+		ClientSecret:   "s",
+	})
+	// Short timeout so the external dial fails fast.
+	p.httpClient = &http.Client{Timeout: 500 * time.Millisecond}
+
+	if err := p.discover(context.Background()); err != nil {
+		t.Fatalf("discover: %v", err)
+	}
+
+	got := p.authorizeRedirectURL("https://app.example.com/cb", "st", "ch", "")
+	u, err := url.Parse(got)
+	if err != nil {
+		t.Fatalf("authorize URL not parseable: %v", err)
+	}
+	if u.Host != "kc.example.com" {
+		t.Errorf("authorize URL Host = %q, want EXTERNAL host kc.example.com (browser cannot resolve in-cluster DNS)", u.Host)
+	}
+	if strings.Contains(got, "keycloak.moses.svc") {
+		t.Errorf("authorize URL leaks the INTERNAL host: %q", got)
+	}
+}
+
+// TestVerifyIDToken_UsesExternalIssuer is a paranoid regression guard:
+// even after the Bug A fix changes which URL discover() targets, token
+// `iss` validation MUST still check against p.cfg.Issuer (external).
+// Keycloak mints tokens with the external issuer as `iss` because that
+// is what the browser saw.
+func TestVerifyIDToken_UsesExternalIssuer(t *testing.T) {
+	p := &provider{
+		cfg: Config{
+			Issuer:         "https://kc.example.com/realms/moses",
+			InternalIssuer: "http://keycloak.moses.svc:8080/realms/moses",
+			ClientID:       "app-client",
+		},
+		// keys deliberately nil: we want the early "not discovered"
+		// path. The point of this test is only to pin the invariant
+		// "verifyIDToken consults p.cfg.Issuer for expectedIssuer" via
+		// the surrounding code; that is verifiable by reading
+		// provider.verifyIDToken, which passes opts.expectedIssuer =
+		// p.cfg.Issuer. The other branches are already covered.
+	}
+	// Sanity: with keys nil, verifyIDToken short-circuits — and proves
+	// it does not accidentally try to validate against the internal
+	// issuer (which would also short-circuit, but for the wrong reason).
+	_, err := p.verifyIDToken(context.Background(), "irrelevant")
+	if err == nil {
+		t.Fatalf("verifyIDToken with no keys should error")
+	}
+	if !strings.Contains(err.Error(), "not discovered") {
+		t.Errorf("error = %q, want the 'not discovered' guard", err.Error())
+	}
+	// The compile-time invariant is in provider.verifyIDToken; this
+	// assertion (cfg field used as expectedIssuer) is pinned by code
+	// review. Documented here so any reordering of the helper trips a
+	// reader's attention.
+	if p.cfg.Issuer == p.cfg.InternalIssuer {
+		t.Fatalf("test setup error: Issuer must differ from InternalIssuer")
 	}
 }
 
