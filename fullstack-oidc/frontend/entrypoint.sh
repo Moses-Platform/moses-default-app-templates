@@ -113,6 +113,15 @@ if [ -n "$MOSES_BASE_PATH_PREFIX" ]; then
     # the backend builds a redirect_uri / cookie Path that match the
     # browser-visible sub-path. A URI part would strip the prefix and
     # the OIDC redirect_uri would not match Keycloak's registration.
+    #
+    # CHAT-yops9: the OIDC callback response carries a large Set-Cookie
+    # header (Keycloak session + id-token cookies) plus the auth handshake
+    # headers — together they overflow nginx's default proxy_buffer_size
+    # (4k) and the upstream connection 502s. Match the values used in the
+    # root /auth/ block in nginx.conf so the subpath flow doesn't differ.
+    proxy_buffer_size 16k;
+    proxy_buffers 4 16k;
+    proxy_busy_buffers_size 32k;
     proxy_pass http://${BACKEND_SERVICE_HOST}:${BACKEND_SERVICE_PORT};
     proxy_http_version 1.1;
     proxy_set_header Host \$host;
