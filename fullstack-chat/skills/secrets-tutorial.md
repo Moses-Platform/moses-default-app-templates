@@ -54,11 +54,15 @@ diffable example. The relevant block:
 `required: true` (the default) blocks the deploy until a value is supplied.
 `generate` lets the platform produce the value itself — the gate treats those
 as satisfied on first deploy and `required` is irrelevant for them. The
-platform-generated value **persists across all subsequent deploys**; only an
-admin Regenerate button in the shield modal rotates it (running pods keep the
-old value until the next deploy). Use `generate` for crypto material the app
-uses internally; supply external-system credentials (third-party APIs,
-database passwords) by hand instead.
+platform-generated value **persists across all subsequent deploys of the same
+track**: dev and stable each get their own independent value by default
+(security-first — a dev-env compromise does NOT expose the stable-env value).
+Set `generate.sharedAcrossTracks: true` only for app-issued tokens that must
+validate across a dev→stable promotion (rare). Only an admin Regenerate
+button in the shield modal rotates a value (running pods keep the old value
+until the next deploy). Use `generate` for crypto material the app uses
+internally; supply external-system credentials (third-party APIs, database
+passwords) by hand instead.
 
 ## How to enable
 
