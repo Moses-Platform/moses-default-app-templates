@@ -53,7 +53,12 @@ diffable example. The relevant block:
 
 `required: true` (the default) blocks the deploy until a value is supplied.
 `generate` lets the platform produce the value itself — the gate treats those
-as satisfied on first deploy and `required` is irrelevant for them.
+as satisfied on first deploy and `required` is irrelevant for them. The
+platform-generated value **persists across all subsequent deploys**; only an
+admin Regenerate button in the shield modal rotates it (running pods keep the
+old value until the next deploy). Use `generate` for crypto material the app
+uses internally; supply external-system credentials (third-party APIs,
+database passwords) by hand instead.
 
 ## How to enable
 
