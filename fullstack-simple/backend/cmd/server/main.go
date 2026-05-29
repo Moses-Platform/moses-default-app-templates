@@ -12,6 +12,7 @@ import (
 
 	"github.com/moses-platform/fullstack-simple/internal/config"
 	"github.com/moses-platform/fullstack-simple/internal/handler"
+	"github.com/moses-platform/fullstack-simple/internal/middleware"
 )
 
 func main() {
@@ -46,6 +47,11 @@ func main() {
 
 	// CORS middleware
 	var h http.Handler = mux
+	// RejectCrossSiteCSRF blocks cross-site state-changing requests (the app
+	// must not rely on the platform edge alone — the access_token cookie is
+	// SameSite=None). Kept inside CORS so blocked requests still get CORS
+	// headers and so OPTIONS preflight is handled by the outer layer.
+	h = middleware.RejectCrossSiteCSRF(h)
 	h = corsMiddleware(h)
 
 	srv := &http.Server{

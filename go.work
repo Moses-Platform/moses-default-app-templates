@@ -17,5 +17,6 @@ use (
 	./fullstack-showcase/backend
 	./fullstack-simple/backend
 	./fullstack-unified
+	./shared/csrf-go
 	./shared/mosesproxy-go
 )

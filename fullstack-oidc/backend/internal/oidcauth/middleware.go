@@ -212,6 +212,31 @@ func (m *Middleware) handleSilentCheck(w http.ResponseWriter, r *http.Request) {
 	m.startAuth(w, r, "none", r.URL.Query().Get("return_to"))
 }
 
+// isLocalRedirect reports whether returnTo is a safe same-origin relative
+// target: a path beginning with a single "/" and carrying no scheme or
+// authority. It rejects "", absolute URLs ("https://evil.com"), and the
+// protocol-relative forms ("//evil.com", "/\evil.com") that browsers
+// normalise to a foreign origin — all open-redirect vectors. The value
+// is validated here once before being stored in the handshake cookie, so
+// every later redirect that reuses hs.ReturnTo (callback success, silent
+// failure) inherits the guarantee.
+func isLocalRedirect(returnTo string) bool {
+	if returnTo == "" || returnTo[0] != '/' {
+		return false
+	}
+	// "//host" and the backslash variant "/\host" (which browsers treat
+	// as "//host") both escape the current origin.
+	if len(returnTo) > 1 && (returnTo[1] == '/' || returnTo[1] == '\\') {
+		return false
+	}
+	// Defence in depth: anything that parses with a scheme or host is
+	// not a bare local path.
+	if u, err := url.Parse(returnTo); err != nil || u.Scheme != "" || u.Host != "" {
+		return false
+	}
+	return true
+}
+
 // startAuth is the shared authorization-request kickoff for both the
 // interactive and silent flows.
 func (m *Middleware) startAuth(w http.ResponseWriter, r *http.Request, prompt, returnTo string) {
@@ -225,9 +250,10 @@ func (m *Middleware) startAuth(w http.ResponseWriter, r *http.Request, prompt, r
 	verifier := newCodeVerifier()
 	challenge := codeChallengeS256(verifier)
 
-	if returnTo == "" || !strings.HasPrefix(returnTo, "/") {
+	if !isLocalRedirect(returnTo) {
 		// Only same-origin relative return targets are honoured —
-		// an absolute URL here would be an open-redirect vector.
+		// an absolute or protocol-relative URL here would be an
+		// open-redirect vector.
 		returnTo = m.cfg.BasePath + "/"
 	}
 
