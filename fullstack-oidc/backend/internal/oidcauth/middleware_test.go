@@ -445,3 +445,40 @@ func TestAppendQuery(t *testing.T) {
 		t.Errorf("appendQuery with existing query = %q", got)
 	}
 }
+
+func TestIsLocalRedirect(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		// Safe same-origin relative targets — no authority component, so a
+		// browser resolves them against the current origin.
+		{"/", true},
+		{"/apps/t/s/", true},
+		{"/dashboard?tab=1", true},
+		{"/path#frag", true},
+		{"/%2f%2fevil.com", true}, // percent-encoded, NOT decoded before origin resolution
+		{"/ /evil.com", true},     // space after slash — still a path on this origin
+		{"/.evil.com", true},      // leading dot in a path segment
+		{"/@evil.com", true},      // '@' in a path, no authority
+		// Open-redirect vectors that must be rejected.
+		{"", false},
+		{"//evil.com", false},          // protocol-relative
+		{"//evil.com/path", false},     // protocol-relative with path
+		{`/\evil.com`, false},          // backslash variant browsers treat as //
+		{"/\t/evil.com", false},        // control char — url.Parse rejects
+		{"/\nhttps://evil.com", false}, // newline injection
+		{"/\rhttp://evil.com", false},  // CR injection
+		{"https://evil.com", false},    // absolute URL
+		{"http://evil.com", false},     // absolute URL
+		{"https:/evil.com", false},     // scheme with single slash
+		{"javascript:alert(1)", false}, // scheme, no leading slash
+		{"evil.com", false},            // bare host, no leading slash
+		{"\\\\evil.com", false},        // does not start with /
+	}
+	for _, c := range cases {
+		if got := isLocalRedirect(c.in); got != c.want {
+			t.Errorf("isLocalRedirect(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
