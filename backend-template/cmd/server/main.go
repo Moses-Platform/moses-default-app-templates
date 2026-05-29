@@ -69,6 +69,10 @@ func main() {
 	// templates default to "denied" since they're never iframed. CHAT-pbup
 	// Bug 3 — previously this template emitted neither header.
 	var h http.Handler = mux
+	// RejectCrossSiteCSRF blocks cross-site state-changing requests (the app
+	// must not rely on the platform edge alone — the access_token cookie is
+	// SameSite=None). Kept inside Logging so blocked requests are still logged.
+	h = middleware.RejectCrossSiteCSRF(h)
 	h = middleware.MosesHeaders(h)
 	h = middleware.WithEmbeddingHeaders(h)
 	h = middleware.Logging(h)

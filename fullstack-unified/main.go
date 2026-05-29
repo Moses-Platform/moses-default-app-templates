@@ -145,7 +145,12 @@ func main() {
 		// CHAT-pbup: WithEmbeddingHeaders emits Content-Security-Policy:
 		// frame-ancestors per the MOSES_EMBEDDING_FRAMING env var on every
 		// HTML response. JSON / OpenAPI responses skip the header.
-		Handler:      withMosesHeaders(withEmbeddingHeaders(mux)),
+		// RejectCrossSiteCSRF blocks cross-site state-changing requests (the app
+		// must not rely on the platform edge alone — the access_token cookie is
+		// SameSite=None). Wrapped innermost so it guards the API + static routes
+		// while the outer middleware still runs on blocked (403) requests; only
+		// unsafe methods are blocked, so static-asset / SPA GETs pass through.
+		Handler:      withMosesHeaders(withEmbeddingHeaders(RejectCrossSiteCSRF(mux))),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
