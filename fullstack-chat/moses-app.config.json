@@ -5,7 +5,7 @@
   "description": "Reference template that exercises the full app↔Moses-Manager roundtrip: button-fired chat_prompt actions, MM call-back into the app's REST API via the workspace-tools wedge, completion webhooks, postMessage signalling, and the app-data git repo handover.",
   "appType": "hybrid",
   "entrypoint": "index.html",
-  "templateApiVersion": "moses.ai/v1",
+  "templateApiVersion": "moses-manager.eu/v1",
   "embedding": {
     "framing": "moses-only"
   },

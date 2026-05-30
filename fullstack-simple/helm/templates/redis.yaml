@@ -18,9 +18,9 @@ spec:
       labels:
         {{- include "agent-deployed-app.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: redis
-        moses.ai/tenant-id: {{ .Values.moses.tenantId | quote }}
-        moses.ai/execution-id: {{ .Values.moses.executionId | quote }}
-        moses.ai/managed-by: moses
+        moses-manager.eu/tenant-id: {{ .Values.moses.tenantId | quote }}
+        moses-manager.eu/execution-id: {{ .Values.moses.executionId | quote }}
+        moses-manager.eu/managed-by: moses
     spec:
       containers:
         - name: redis

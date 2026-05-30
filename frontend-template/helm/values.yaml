@@ -9,7 +9,7 @@ moses:
   appSlug: ""
   # CHAT-pbup: Moses-aware template values. Set by the platform deploy
   # pipeline at deploy time when the moses-app.config.json declares
-  # templateApiVersion: "moses.ai/v1". When unset (legacy / standalone) the
+  # templateApiVersion: "moses-manager.eu/v1". When unset (legacy / standalone) the
   # template falls back to "/" basePath and the appType-default framing
   # policy. See ../README.md and DEPRECATIONS.md for the migration window.
   basePath: "/"

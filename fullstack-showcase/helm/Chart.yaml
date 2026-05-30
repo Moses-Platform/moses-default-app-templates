@@ -4,5 +4,5 @@ description: Application deployed by Moses agent
 version: 1.0.0
 appVersion: "1.0.0"
 annotations:
-  moses.ai/template-version: "3"
-  moses.ai/scaffold-type: "multi"
+  moses-manager.eu/template-version: "3"
+  moses-manager.eu/scaffold-type: "multi"

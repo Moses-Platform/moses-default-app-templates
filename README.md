@@ -52,7 +52,7 @@ Required fields in `moses-app.config.json`:
 ## Moses-aware vs legacy templates
 
 All 6 default templates ship as **Moses-aware** — they declare
-`templateApiVersion: "moses.ai/v1"` in `moses-app.config.json` and serve
+`templateApiVersion: "moses-manager.eu/v1"` in `moses-app.config.json` and serve
 under the runtime `MOSES_BASE_PATH` natively, emitting
 `Content-Security-Policy: frame-ancestors` themselves per the `embedding`
 block. The platform deploys them WITHOUT the URL-rewrite + X-Frame-Options
@@ -64,7 +64,7 @@ When authoring a custom template, you have two options:
   URL-rewrites the `/apps/<tenant>/<slug>/` prefix to `/` before forwarding
   and strips the upstream `X-Frame-Options` header so the iframe renders.
   Your code can stay completely unaware of the public path.
-- **Moses-aware**: declare `templateApiVersion: "moses.ai/v1"` and the
+- **Moses-aware**: declare `templateApiVersion: "moses-manager.eu/v1"` and the
   `embedding` block (see schema in
   `moses-platform-prep/backend/internal/types/app_config_types.go`). Your
   runtime must (a) read `MOSES_BASE_PATH` and mount routes there, (b) emit

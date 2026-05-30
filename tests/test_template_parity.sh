@@ -241,17 +241,17 @@ for nc in $(find . -maxdepth 5 -name nginx.conf -not -path './node_modules/*' 2>
 done
 
 # ---------------------------------------------------------------------------
-# 10. moses-app.config.json declares `templateApiVersion: "moses.ai/v1"` —
+# 10. moses-app.config.json declares `templateApiVersion: "moses-manager.eu/v1"` —
 #     all 5 templates must be Moses-aware so the platform's Helm value
 #     injection (basePath / embedding.*) takes effect.
 # ---------------------------------------------------------------------------
 for t in $TEMPLATES; do
   cfg="$t/moses-app.config.json"
   [ -f "$cfg" ] || continue
-  if grep -q '"templateApiVersion": *"moses.ai/v1"' "$cfg"; then
-    pass "templateApiVersion: $cfg → moses.ai/v1"
+  if grep -q '"templateApiVersion": *"moses-manager.eu/v1"' "$cfg"; then
+    pass "templateApiVersion: $cfg → moses-manager.eu/v1"
   else
-    fail "templateApiVersion: $cfg is missing or not moses.ai/v1"
+    fail "templateApiVersion: $cfg is missing or not moses-manager.eu/v1"
   fi
 done
 

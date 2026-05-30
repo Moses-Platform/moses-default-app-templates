@@ -20,15 +20,15 @@ Common labels
 helm.sh/chart: {{ include "agent-deployed-app.name" . }}
 {{ include "agent-deployed-app.selectorLabels" . }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
-moses.ai/tenant-id: {{ .Values.moses.tenantId | quote }}
-moses.ai/execution-id: {{ .Values.moses.executionId | quote }}
+moses-manager.eu/tenant-id: {{ .Values.moses.tenantId | quote }}
+moses-manager.eu/execution-id: {{ .Values.moses.executionId | quote }}
 {{- if .Values.moses.chartId }}
-moses.ai/chart-id: {{ .Values.moses.chartId | quote }}
+moses-manager.eu/chart-id: {{ .Values.moses.chartId | quote }}
 {{- end }}
 {{- if .Values.moses.appSlug }}
-moses.ai/app-slug: {{ .Values.moses.appSlug | quote }}
+moses-manager.eu/app-slug: {{ .Values.moses.appSlug | quote }}
 {{- end }}
-moses.ai/managed-by: moses
+moses-manager.eu/managed-by: moses
 {{- end }}
 
 {{/*
