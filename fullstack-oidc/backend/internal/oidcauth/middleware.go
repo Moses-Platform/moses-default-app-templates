@@ -403,6 +403,17 @@ func (m *Middleware) route(suffix string) string {
 // Scheme + host are derived from forwarded headers when present (the app
 // sits behind the platform ingress / nginx).
 func (m *Middleware) absoluteURL(r *http.Request, suffix string) string {
+	if m.cfg.PublicURL != "" {
+		// Platform-injected public URL is the truthier source: envoy
+		// Gateway strips :port from the Host header (Gateway API
+		// hostname matching is port-agnostic by spec), so deriving from
+		// r.Host loses the port and produces an OIDC redirect_uri the
+		// IdP rejects. MOSES_PUBLIC_URL carries the full external
+		// scheme+host+port from spec.domain.
+		return strings.TrimRight(m.cfg.PublicURL, "/") + m.route(suffix)
+	}
+	// Legacy fallback: derive from request (preserves behavior for
+	// non-platform deployments where MOSES_PUBLIC_URL is unset).
 	scheme := "https"
 	if xf := r.Header.Get("X-Forwarded-Proto"); xf != "" {
 		scheme = xf

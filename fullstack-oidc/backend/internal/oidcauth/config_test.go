@@ -105,6 +105,27 @@ func TestConfigFromEnv_GatewayAuthSecretUnsetIsEmpty(t *testing.T) {
 	}
 }
 
+func TestConfigFromEnv_PublicURL(t *testing.T) {
+	// Set -> read (and trimmed) into Config.PublicURL. The middleware
+	// prefers this over r.Host when building OIDC redirect_uri values
+	// (envoy strips :port from Host on the in-cluster hop).
+	t.Setenv(EnvPublicURL, "  http://localhost:9877  ")
+	cfg := ConfigFromEnv()
+	if cfg.PublicURL != "http://localhost:9877" {
+		t.Errorf("PublicURL = %q, want trimmed %q", cfg.PublicURL, "http://localhost:9877")
+	}
+}
+
+func TestConfigFromEnv_PublicURLUnsetIsEmpty(t *testing.T) {
+	// Unset -> empty -> absoluteURL falls back to r.Host derivation
+	// (preserves behaviour for non-platform deployments).
+	t.Setenv(EnvPublicURL, "")
+	cfg := ConfigFromEnv()
+	if cfg.PublicURL != "" {
+		t.Errorf("PublicURL = %q, want empty when env unset", cfg.PublicURL)
+	}
+}
+
 func TestConfigFromEnv_InternalIssuerFallsBackToIssuer(t *testing.T) {
 	t.Setenv(EnvIssuer, "https://kc.example.com/auth/realms/moses")
 	t.Setenv(EnvInternalIssuer, "")

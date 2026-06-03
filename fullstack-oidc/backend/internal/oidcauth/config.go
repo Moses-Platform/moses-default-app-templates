@@ -93,6 +93,19 @@ const (
 	// env var is unset/empty the header-trust path is DISABLED entirely
 	// (fail-safe — requests fall through to the OIDC session path).
 	EnvGatewayAuthSecret = "MOSES_GATEWAY_AUTH_SECRET"
+
+	// EnvPublicURL is the external scheme+host+port the browser uses to
+	// reach the app (e.g. "http://localhost:9877" on desktop,
+	// "https://moses.example.com" in prod). The platform injects it from
+	// spec.domain so the middleware can build OIDC redirect_uri /
+	// post_logout_redirect_uri values that match what is registered with
+	// the IdP. Envoy Gateway strips :port from the Host header (Gateway
+	// API hostname matching is port-agnostic by spec), so deriving the
+	// host from r.Host loses the port and produces a redirect_uri the IdP
+	// rejects ("Invalid parameter: redirect_uri"). When unset the
+	// middleware falls back to the legacy r.Host-based derivation —
+	// preserves behaviour for non-platform deployments and existing tests.
+	EnvPublicURL = "MOSES_PUBLIC_URL"
 )
 
 // HeaderGatewayAuth (CHAT-t5d1u.28.21 S3) is the request header whose
@@ -157,6 +170,15 @@ type Config struct {
 	// header-trust path is disabled entirely — a fail-safe default that
 	// falls through to the OIDC session path.
 	GatewayAuthSecret string
+
+	// PublicURL is the external scheme+host+port the browser uses to
+	// reach the app (e.g. "http://localhost:9877" on desktop). When set,
+	// absoluteURL prefers it over the r.Host-based derivation — envoy
+	// Gateway strips :port from Host, so r.Host alone produces an OIDC
+	// redirect_uri the IdP rejects. When empty (non-platform deployments)
+	// the middleware falls back to the legacy header/Host derivation.
+	// Trailing slash is trimmed at use site.
+	PublicURL string
 }
 
 // ConfigFromEnv builds a Config from the platform-injected environment.
@@ -179,6 +201,7 @@ func ConfigFromEnv() Config {
 		SpecPath:          "/api/openapi.json",
 		SecureCookie:      !isTruthy(os.Getenv(EnvInsecureCookie)),
 		GatewayAuthSecret: strings.TrimSpace(os.Getenv(EnvGatewayAuthSecret)),
+		PublicURL:         strings.TrimSpace(os.Getenv(EnvPublicURL)),
 	}
 
 	if cfg.InternalIssuer == "" {

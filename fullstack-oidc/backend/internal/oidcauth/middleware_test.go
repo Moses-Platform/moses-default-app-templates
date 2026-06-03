@@ -482,3 +482,83 @@ func TestIsLocalRedirect(t *testing.T) {
 		}
 	}
 }
+
+// TestAbsoluteURL_PublicURLPreferred verifies that when Config.PublicURL
+// is set (platform-injected MOSES_PUBLIC_URL), absoluteURL uses it as the
+// scheme+host+port source — ignoring r.Host. This is the fix for the
+// envoy port-stripping bug: r.Host = "localhost" (no port) on the
+// in-cluster hop, but Keycloak has "http://localhost:9877/..." registered.
+func TestAbsoluteURL_PublicURLPreferred(t *testing.T) {
+	cfg := enabledCfg()
+	cfg.PublicURL = "http://localhost:9877"
+	m := New(cfg)
+
+	// r.Host is the envoy-stripped value ("localhost", no port) — proves
+	// PublicURL is the source and r.Host is ignored.
+	r := httptest.NewRequest("GET", "/apps/t/s/auth/callback", nil)
+	r.Host = "localhost"
+
+	got := m.absoluteURL(r, routeCallback)
+	want := "http://localhost:9877/apps/t/s/auth/callback"
+	if got != want {
+		t.Errorf("absoluteURL = %q, want %q", got, want)
+	}
+}
+
+// TestAbsoluteURL_FallbackWhenPublicURLEmpty pins the legacy behaviour:
+// when PublicURL is unset, absoluteURL derives scheme+host from the
+// request as it always has. This preserves behaviour for non-platform
+// deployments and for the existing test/proxy flows.
+func TestAbsoluteURL_FallbackWhenPublicURLEmpty(t *testing.T) {
+	cfg := enabledCfg()
+	cfg.PublicURL = ""
+	m := New(cfg)
+
+	r := httptest.NewRequest("GET", "/apps/t/s/auth/callback", nil)
+	r.Host = "app.example.com"
+	r.Header.Set("X-Forwarded-Proto", "https")
+
+	got := m.absoluteURL(r, routeCallback)
+	want := "https://app.example.com/apps/t/s/auth/callback"
+	if got != want {
+		t.Errorf("absoluteURL fallback = %q, want %q", got, want)
+	}
+}
+
+// TestAbsoluteURL_FallbackHonoursForwardedHost confirms the legacy
+// X-Forwarded-Host override still wins over r.Host when PublicURL is
+// empty (no behaviour change for ingress-fronted deploys).
+func TestAbsoluteURL_FallbackHonoursForwardedHost(t *testing.T) {
+	cfg := enabledCfg()
+	cfg.PublicURL = ""
+	m := New(cfg)
+
+	r := httptest.NewRequest("GET", "/apps/t/s/auth/callback", nil)
+	r.Host = "internal.svc.cluster.local"
+	r.Header.Set("X-Forwarded-Proto", "https")
+	r.Header.Set("X-Forwarded-Host", "public.example.com")
+
+	got := m.absoluteURL(r, routeCallback)
+	want := "https://public.example.com/apps/t/s/auth/callback"
+	if got != want {
+		t.Errorf("absoluteURL with X-Forwarded-Host = %q, want %q", got, want)
+	}
+}
+
+// TestAbsoluteURL_PublicURLWithTrailingSlash verifies a trailing slash
+// on MOSES_PUBLIC_URL is trimmed so the joined route does not produce a
+// double slash (e.g. "http://localhost:9877//apps/...").
+func TestAbsoluteURL_PublicURLWithTrailingSlash(t *testing.T) {
+	cfg := enabledCfg()
+	cfg.PublicURL = "http://localhost:9877/"
+	m := New(cfg)
+
+	r := httptest.NewRequest("GET", "/apps/t/s/auth/callback", nil)
+	r.Host = "localhost"
+
+	got := m.absoluteURL(r, routeCallback)
+	want := "http://localhost:9877/apps/t/s/auth/callback"
+	if got != want {
+		t.Errorf("absoluteURL trailing-slash = %q, want %q", got, want)
+	}
+}
