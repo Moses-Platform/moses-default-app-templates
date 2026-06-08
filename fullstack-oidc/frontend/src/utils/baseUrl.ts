@@ -1,9 +1,17 @@
 /**
- * MOSES ROUTING: All URLs must be relative (no leading slash).
- * Moses serves each app under a sub-path (e.g. /apps/<app-name>/).
- * A leading slash creates an absolute path that bypasses the sub-path,
- * breaking routing in production. Relative paths let the browser resolve
- * against the current <base href>, which Moses sets per app.
+ * MOSES ROUTING — two cases, do NOT conflate them:
+ *
+ * 1. API-fetch URLs (getAPIURL): built WITHOUT the base prefix and kept
+ *    RELATIVE (no leading slash). Moses serves each app under a sub-path
+ *    (e.g. /apps/<t>/<a>/); a relative path lets the browser resolve it
+ *    against the mounted page, adding the sub-path exactly ONCE. A leading
+ *    slash here would bypass the sub-path and break routing.
+ *
+ * 2. URLs that EXPLICITLY include the base prefix (getBasePath — e.g. the
+ *    /auth/* navigations in auth/silentSSO.ts) MUST be ABSOLUTE (leading
+ *    slash). A path-relative URL that already carries the base gets the
+ *    base prepended a SECOND time by relative resolution from a sub-route,
+ *    producing the doubled /apps/<t>/<a>/apps/<t>/<a>/auth/... bug.
  */
 
 /**
