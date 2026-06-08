@@ -40,7 +40,7 @@ export interface SilentSSOOptions {
  */
 function silentCheckURL(): string {
   const base = getBasePath();
-  const prefix = base === '/' ? '' : base.replace(/^\//, '') + '/';
+  const prefix = base === '/' ? '/' : base + '/';
   // return_to is the post-probe landing inside the iframe; it must be a
   // same-origin relative path. We reuse the SPA index — the marker
   // query param is what we read, not the page content.
@@ -124,7 +124,7 @@ export function attemptSilentSSO(
  */
 export function startInteractiveLogin(returnTo?: string): void {
   const base = getBasePath();
-  const prefix = base === '/' ? '' : base.replace(/^\//, '') + '/';
+  const prefix = base === '/' ? '/' : base + '/';
   const rt = returnTo
     ? `?return_to=${encodeURIComponent(returnTo)}`
     : '';
@@ -138,6 +138,6 @@ export function startInteractiveLogin(returnTo?: string): void {
  */
 export function logout(): void {
   const base = getBasePath();
-  const prefix = base === '/' ? '' : base.replace(/^\//, '') + '/';
+  const prefix = base === '/' ? '/' : base + '/';
   window.location.assign(`${prefix}auth/logout`);
 }
