@@ -15,8 +15,13 @@
  * the visible page never navigates. This module drives that iframe and
  * resolves a boolean: did silent SSO establish a session?
  *
- * All URLs are RELATIVE (no leading slash) so they resolve against the
- * app's MOSES_BASE_PATH-prefixed page URL — see ../utils/baseUrl.ts.
+ * The `/auth/*` URLs built here are ABSOLUTE (leading slash + the single
+ * MOSES_BASE_PATH prefix from getBasePath). They MUST be absolute: a
+ * top-level window.location.assign() or iframe `src` of a PATH-RELATIVE
+ * URL re-resolves against the current page's directory, so from a
+ * sub-route like /apps/<t>/<a>/admin the base would be prepended twice
+ * (the doubled-/auth/login bug). The base-relative API-fetch pattern in
+ * ../utils/baseUrl.ts is the opposite case (no base prefix added).
  */
 
 import { getBasePath } from '../utils/baseUrl';
