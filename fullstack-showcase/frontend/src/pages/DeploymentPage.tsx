@@ -20,14 +20,14 @@ export default function DeploymentPage() {
         <h3>Agent Execution Pipeline</h3>
         <p>
           Triggered when an agent completes work via <code>moses_agent_submit_completed</code>.
-          Builds Docker images with Kaniko and deploys using Helm charts from the workspace repo.
+          Builds Docker images in-cluster and deploys using Helm charts from the workspace repo.
         </p>
         <FlowDiagram
           title="Execution Flow"
           steps={[
             { label: 'Agent Work', icon: '🤖', description: 'Complete task' },
             { label: 'Submit Completed', icon: '✅', description: 'moses_agent_submit_completed' },
-            { label: 'Kaniko Build', icon: '📦', description: 'In-cluster build' },
+            { label: 'Image Build', icon: '📦', description: 'In-cluster build' },
             { label: 'Helm Deploy', icon: '🚢', description: 'K8s deployment' },
             { label: 'Ingress Route', icon: '🌐', description: 'Path-based routing' },
             { label: 'Live App', icon: '🎉', description: 'Accessible via URL' },
@@ -47,7 +47,7 @@ export default function DeploymentPage() {
             { label: 'Marketplace', icon: '🏪', description: 'Tool registry' },
             { label: 'Clone Repo', icon: '📥', description: 'Git shallow clone' },
             { label: 'Config Parse', icon: '📄', description: 'moses-app.config.json' },
-            { label: 'Kaniko Build', icon: '📦', description: 'Multi-image build' },
+            { label: 'Image Build', icon: '📦', description: 'Multi-image build' },
             { label: 'Helm Deploy', icon: '🚢', description: 'Multi-service chart' },
             { label: 'OpenAPI Discovery', icon: '🔍', description: '11 probe paths' },
             { label: 'MCP Tools', icon: '🔧', description: 'Dynamic proxy' },
@@ -105,11 +105,11 @@ services:
       </section>
 
       <section className="section">
-        <h3>Kaniko Builds</h3>
+        <h3>In-Cluster Image Builds</h3>
         <div className="info-box">
           <h4>In-Cluster Docker Builds</h4>
           <p>
-            Kaniko builds Docker images inside Kubernetes without requiring a Docker daemon.
+            Moses builds Docker images inside Kubernetes without requiring a Docker daemon.
             This enables secure, unprivileged container builds in the cluster.
           </p>
           <ul>

@@ -22,7 +22,7 @@ The call is fire-and-forget — it returns a `Promise<void>` you can ignore.
 ## Build-time configuration
 
 The snippet expects three Vite env vars, baked in at build time by Moses's
-`KanikoBuildService`:
+in-cluster image build service:
 
 | Var                          | Source                                     | Required |
 | ---------------------------- | ------------------------------------------ | -------- |

@@ -57,7 +57,7 @@ curl http://localhost:8080/health
 
 3. **Automatic Deployment**:
    - Moses clones the repository
-   - Kaniko builds the Docker image
+   - The in-cluster image builder builds the Docker image
    - Helm deploys to Kubernetes
    - OpenAPI spec is discovered at `/api/openapi.json`
    - MCP tools are generated from operationIds

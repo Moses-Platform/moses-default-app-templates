@@ -156,7 +156,7 @@ func Health(w http.ResponseWriter, r *http.Request) {
 ```
 
 Moses deployment automation:
-1. Kaniko builds and pushes images
+1. The in-cluster image builder builds and pushes images
 2. Helm deploys with health probes
 3. Waits for readinessProbe to pass
 4. OpenAPI discovery (if API service)

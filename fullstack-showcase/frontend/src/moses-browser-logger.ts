@@ -8,7 +8,7 @@
 //     import { installBrowserLogger } from "@moses/browser-logger";
 //     installBrowserLogger();
 //
-// At build time, the Moses platform's KanikoBuildService bakes three Vite
+// At build time, the Moses platform's in-cluster image builder bakes three Vite
 // env vars into the bundle:
 //
 //   - VITE_MOSES_CHART_ID       — the chart this build belongs to (UUID)

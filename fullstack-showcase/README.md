@@ -8,7 +8,7 @@ A fullstack application showcasing Moses platform features including MCP tools, 
 
 ### Platform Features
 - **MCP Tools**: 56+ tools across 5 profiles with unified CRUD and workspace tool proxy
-- **Deployment Pipelines**: Agent execution and workspace tools with Kaniko builds
+- **Deployment Pipelines**: Agent execution and workspace tools with in-cluster image builds
 - **Authentication**: OIDC/JWT, API keys, OAuth tokens, and forward auth
 - **Multi-Tenancy**: Complete isolation with 4-tier RBAC
 - **OpenAPI Discovery**: Automatic endpoint discovery and MCP tool generation
@@ -132,7 +132,7 @@ npm run dev
 When an agent completes work via `moses_agent_submit_completed`:
 
 1. **Config Detection**: `moses-app.config.json` parsed
-2. **Kaniko Builds**:
+2. **Image Builds** (in-cluster):
    - `fullstack-showcase-frontend:latest`
    - `fullstack-showcase-backend:latest`
 3. **Helm Deploy**: Multi-service chart with:
@@ -153,7 +153,7 @@ If registered in marketplace:
 
 1. **Git Clone**: Shallow clone from registry URL
 2. **Config Validation**: `moses-app.config.json` required
-3. **Multi-Image Build**: Kaniko builds all images in parallel
+3. **Multi-Image Build**: The in-cluster image builder builds all images in parallel
 4. **Helm Deploy**: Services deployed to tenant namespace
 5. **OpenAPI Discovery**: 11 standard paths probed
 6. **Dynamic MCP Tools**: WorkspaceToolProxy routes calls

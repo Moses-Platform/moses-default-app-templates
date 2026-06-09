@@ -204,7 +204,7 @@ curl http://localhost:8080/health
 2. Register as a workspace tool in Moses UI
 3. Moses will:
    - Clone the repository
-   - Build Docker image with Kaniko
+   - Build Docker image in-cluster
    - Deploy using Helm chart
    - Discover OpenAPI spec at `/api/openapi.json`
    - Generate MCP tools from operationIds

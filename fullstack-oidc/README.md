@@ -172,7 +172,7 @@ The session cookie is `SameSite=Lax` — see the rationale in the
 
 An agent runs `moses_init_repo(template="fullstack-oidc")` to scaffold a
 new project from this template. On agent completion the platform builds
-both images (Kaniko), deploys the multi-service Helm chart, registers a
+both images in-cluster, deploys the multi-service Helm chart, registers a
 confidential Keycloak client (because `access.oidc` is declared), and
 injects the `MOSES_OIDC_*` env. The app then enforces OIDC with zero
 further configuration.

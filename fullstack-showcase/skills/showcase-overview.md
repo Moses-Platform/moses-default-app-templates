@@ -4,7 +4,7 @@
 
 This showcase application demonstrates Moses platform capabilities:
 - **MCP Tools**: 56+ tools across 5 profiles (external-minimal, moses-manager-full, agent-execution, build-callback, autonomous)
-- **Deployment Pipelines**: Agent execution and workspace tools with Kaniko + Helm
+- **Deployment Pipelines**: Agent execution and workspace tools with in-cluster image builds + Helm
 - **Authentication**: OIDC/JWT, API keys, OAuth tokens, forward auth
 - **Multi-Tenancy**: Complete isolation with 4-tier RBAC (GlobalAdmin, TenantAdmin, Editor, Viewer)
 - **OpenAPI Discovery**: Auto-probe endpoints and generate dynamic MCP tools
@@ -41,7 +41,7 @@ The app demonstrates Moses header integration:
 Each page explains a Moses platform component:
 1. **Overview**: Hero, context display, feature cards
 2. **MCP Tools**: CRUD tools, workspace tools, profiles, protocol flow
-3. **Deployment**: Agent execution pipeline, workspace tools, Kaniko builds
+3. **Deployment**: Agent execution pipeline, workspace tools, in-cluster image builds
 4. **Auth Flow**: Authentication methods, headers table, live context
 5. **Multi-Tenancy**: Isolation layers, role hierarchy, namespace security
 6. **API Examples**: Interactive endpoint testing, OpenAPI → MCP explanation

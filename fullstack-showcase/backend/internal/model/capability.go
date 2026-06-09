@@ -32,9 +32,9 @@ var capabilities = []Capability{
 		Category:    "infrastructure",
 		Icon:        "rocket",
 		Details: []string{
-			"Agent Execution Pipeline: moses_agent_submit_completed → Kaniko → Helm → Ingress",
+			"Agent Execution Pipeline: moses_agent_submit_completed → Image Build → Helm → Ingress",
 			"Workspace Tools Pipeline: Git clone → Config parse → Build → Deploy → OpenAPI discovery",
-			"Kaniko builds: In-cluster Docker builds without Docker daemon",
+			"In-cluster image builds: Docker images built inside Kubernetes without a Docker daemon",
 			"Helm deployments: Multi-service charts with auto-generated values",
 			"Health verification: Automatic probes and readiness checks",
 			"Ingress routing: Path-based routing with TLS support",
@@ -108,7 +108,7 @@ var capabilities = []Capability{
 		Icon:        "puzzle",
 		Details: []string{
 			"Tool Marketplace: Register, deploy, and manage tools per workspace",
-			"Kaniko Builds: In-cluster Docker image builds from git repos",
+			"In-cluster Image Builds: Docker images built inside Kubernetes from git repos",
 			"Dynamic MCP Proxy: Auto-generated MCP tools from OpenAPI specs",
 			"Per-chart Deployment: Tools deployed to specific project namespaces",
 			"GitLab Integration: Link tools to GitLab repos for CI/CD",

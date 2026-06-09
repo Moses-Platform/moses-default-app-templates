@@ -65,7 +65,7 @@ docker run -p 8080:80 frontend-template:latest
 4. Provide Git URL
 5. Moses will automatically:
    - Clone repository
-   - Build Docker image with Kaniko
+   - Build Docker image in-cluster
    - Deploy with Helm to Kubernetes
    - Make app available at `/apps/{tenant}/{slug}/`
 

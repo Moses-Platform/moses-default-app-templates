@@ -176,7 +176,7 @@ done
 
 # ---------------------------------------------------------------------------
 # 7. Reproducibility: backend Dockerfiles must NOT run `go mod tidy` at
-#    build time. Tidy mutates go.sum; running it inside a Kaniko build
+#    build time. Tidy mutates go.sum; running it inside an in-cluster build
 #    means each build can produce a different binary even with no source
 #    change, and breaks air-gap registry mirrors that don't trust the
 #    upstream module proxy. Use `go mod verify` instead.
