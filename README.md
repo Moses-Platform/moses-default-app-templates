@@ -189,6 +189,41 @@ get blocked. When the platform deploys the template it supplies a concrete
 `MOSES_EMBEDDING_ALLOWED_ANCESTORS` (resolver output), and the explicit
 override wins verbatim — no auto-merge with the standalone default.
 
+### Request body / upload size ceiling
+
+Moses-managed proxies allow request bodies up to **50 MB** to reach a deployed
+app (nginx `proxy-body-size: 50m`; Envoy Gateway `ClientTrafficPolicy`
+`bufferLimit: 50Mi`). Your app's own body parser is the authoritative limiter
+**below** that ceiling — the platform will not raise a 413 under 50 MB.
+
+These templates are Go `net/http` services and impose **no** default body
+limit, so nothing here 413s today. But if you add an upload endpoint (images,
+archives, multipart forms), cap the body explicitly at or below 50 MB and
+return a structured JSON error on overflow:
+
+```go
+const (
+    MaxUploadBytes = 50 << 20 // 50 MB — total body cap (the Moses proxy ceiling)
+    multipartMem   = 10 << 20 // in-RAM threshold; larger parts spill to tmp files
+)
+
+// MaxBytesReader enforces the actual size limit — a body over MaxUploadBytes
+// makes the next Read fail, so ParseMultipartForm returns an error.
+r.Body = http.MaxBytesReader(w, r.Body, MaxUploadBytes)
+// ParseMultipartForm's argument is maxMemory (how much to keep in RAM before
+// spilling to disk), NOT the size cap — keep it well below MaxUploadBytes.
+if err := r.ParseMultipartForm(multipartMem); err != nil {
+    http.Error(w, `{"error":"file too large (max 50MB)"}`, http.StatusRequestEntityTooLarge)
+    return
+}
+```
+
+Do **not** set a parser limit larger than 50 MB expecting larger uploads to
+succeed — the proxy ceiling would 413 first. To raise both, the platform's
+proxy limits must change in lock-step (nginx `proxy-body-size` in
+`moses-platform-prep` `buildIngressAnnotations`, and the chart's
+`ClientTrafficPolicy bufferLimit`).
+
 ## Test surface
 
 The repo ships a smoke test for the nginx entrypoint logic:
