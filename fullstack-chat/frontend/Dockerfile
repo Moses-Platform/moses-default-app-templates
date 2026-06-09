@@ -1,39 +1,19 @@
-# Single-stage builder doing npm install + Vite/TS build in ONE RUN, then
+# Single-stage builder running npm install then the Vite/TS build, then
 # a slim nginx runtime.
 #
-# Why everything in one RUN:
-# Kaniko has a long-standing bug (kaniko#1743, upstream archived UNFIXED
-# 2025-06-03) where its tar serialization writes npm-deduped hardlinks
-# with an absolute-path target. This bug bites at EVERY tar round-trip:
-#   1. registry cache push/pull (addressed by CHAT-1mp04: --cache=false)
-#   2. inter-stage tar handoff (addressed by collapsing to one stage)
-#   3. per-RUN intermediate snapshot — even within a single stage, with
-#      cache disabled, Kaniko tars the layer after each RUN/COPY and
-#      re-applies it before the next step, which re-creates the
-#      corrupted 0-byte launcher shim under node_modules/.bin/tsc and
-#      node_modules/esbuild/bin/esbuild, producing EACCES / ENOEXEC.
-#
-# Putting `npm install` and the Vite build in ONE RUN means no Kaniko
-# snapshot happens between node_modules being created and tsc/vite
-# being invoked. The launcher shims stay intact for the duration of
-# the build. After the build completes, Kaniko's final snapshot may
-# still corrupt node_modules but by then /app/dist is produced and
-# the runtime stage only consumes that.
-#
-# Trade-off: --no-cache friendly (matches CHAT-1mp04 cache=false), but
-# any source change re-runs npm install too (no layer-level reuse).
-# Acceptable as the steady state until either Kaniko-fork bump or
-# BuildKit migration eliminates the underlying bug.
+# Standard two-step build (Kaniko hardlink workaround removed
+# post-CHAT-h0v8t.13). The build engine is now Buildah, which handles
+# npm-deduped hardlinks correctly, so install and build can be in
+# separate RUN layers for proper layer caching on source-only changes.
 
-# --- Builder (install + Vite/TS build, all in ONE RUN) ------------------
+# --- Builder ------------------------------------------------------------
 FROM node:24-alpine AS builder
 WORKDIR /app
 
 COPY . .
 
-# Moses BLF-B build args. Declared HERE (not in a prior stage) so they
-# don't influence npm install via env-var leakage — the ARG values are
-# only resolved when the single RUN below executes them as shell vars.
+# Moses BLF-B build args. Kept scoped to the build RUN below so they
+# don't influence npm install via env-var leakage.
 ARG VITE_MOSES_CHART_ID=""
 ARG VITE_MOSES_DEPLOYMENT_ID=""
 ARG VITE_MOSES_API_BASE=""
@@ -41,11 +21,15 @@ ARG VITE_MOSES_API_BASE=""
 # CHAT-s6qf3: optional Moses in-cluster package cache (Nexus). Empty = upstream default.
 ARG NPM_REGISTRY=""
 
-RUN NPM_REGISTRY="$NPM_REGISTRY" \
-    VITE_MOSES_CHART_ID="$VITE_MOSES_CHART_ID" \
+# Install deps (registry-aware) in its own layer.
+RUN if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi \
+    && npm install
+
+# Build with BLF-B vars in scope.
+RUN VITE_MOSES_CHART_ID="$VITE_MOSES_CHART_ID" \
     VITE_MOSES_DEPLOYMENT_ID="$VITE_MOSES_DEPLOYMENT_ID" \
     VITE_MOSES_API_BASE="$VITE_MOSES_API_BASE" \
-    sh -c 'if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi && npm install && npx tsc -p tsconfig.build.json && npx vite build'
+    sh -c 'npx tsc -p tsconfig.build.json && npx vite build'
 
 # --- Runtime ------------------------------------------------------------
 FROM nginx:1.28-alpine
