@@ -312,3 +312,85 @@ func TestEmbeddingHeadersMiddleware(t *testing.T) {
 		})
 	}
 }
+
+// CHAT-il3y6: TestBrowserLoggerSyncCrashCapture is a STRUCTURAL guard on the
+// embedded vanilla-JS browser-logger. The bug it locks down: the window
+// 'error' / 'unhandledrejection' listeners used to be attached only INSIDE the
+// bootstrap `.then(boot => …)` callback, so a render-time crash that fired
+// window.onerror before the async bootstrap fetch resolved was lost. The fix
+// moves the listener registration ABOVE the bootstrap `.then(` (so it runs
+// synchronously when install() is called) and buffers events into a bounded
+// pre-bootstrap queue that is drained (enabled) or dropped (disabled/error)
+// once bootstrap resolves.
+//
+// We cannot execute the JS from Go, so this asserts the source ordering and
+// the presence of the bounded-buffer / drop machinery — a cheap regression
+// gate that fails loudly if someone re-introduces the late-attach bug.
+func TestBrowserLoggerSyncCrashCapture(t *testing.T) {
+	data, err := staticFiles.ReadFile("static/moses-browser-logger.js")
+	if err != nil {
+		t.Fatalf("read embedded static/moses-browser-logger.js: %v", err)
+	}
+	src := string(data)
+
+	// 1. The window 'error' listener must be registered BEFORE the bootstrap
+	//    promise .then() — that ordering is the whole fix. We locate the first
+	//    addEventListener("error" and the bootstrap .then( and assert the
+	//    listener comes first.
+	errListenerIdx := strings.Index(src, `addEventListener("error"`)
+	if errListenerIdx < 0 {
+		t.Fatal(`expected window.addEventListener("error", …) in the snippet`)
+	}
+	rejListenerIdx := strings.Index(src, `addEventListener("unhandledrejection"`)
+	if rejListenerIdx < 0 {
+		t.Fatal(`expected window.addEventListener("unhandledrejection", …) in the snippet`)
+	}
+	thenIdx := strings.Index(src, `bootstrapPromise.then(`)
+	if thenIdx < 0 {
+		t.Fatal("expected bootstrapPromise.then( in the snippet")
+	}
+	if errListenerIdx > thenIdx {
+		t.Errorf(`window 'error' listener (index %d) is attached AFTER bootstrapPromise.then( (index %d) — `+
+			`it must be attached SYNCHRONOUSLY before the bootstrap await or pre-bootstrap crashes are lost`,
+			errListenerIdx, thenIdx)
+	}
+	if rejListenerIdx > thenIdx {
+		t.Errorf(`window 'unhandledrejection' listener (index %d) is attached AFTER bootstrapPromise.then( (index %d) — `+
+			`it must be attached SYNCHRONOUSLY before the bootstrap await`,
+			rejListenerIdx, thenIdx)
+	}
+
+	// 2. The console.error/.warn patch must stay POST-bootstrap (it depends on
+	//    the fetched patchConsole flag). Its CALL site (not the function
+	//    definition near the top of the file) must appear AFTER the .then(.
+	consolePatchIdx := strings.Index(src, "= readPatchConsoleFlag()")
+	if consolePatchIdx < 0 {
+		t.Fatal("expected a `= readPatchConsoleFlag()` call site in the snippet")
+	}
+	if consolePatchIdx < thenIdx {
+		t.Errorf("console patch call (readPatchConsoleFlag, index %d) must stay inside/after the bootstrap .then( (index %d)",
+			consolePatchIdx, thenIdx)
+	}
+
+	// 3. Bounded pre-bootstrap buffer + drop-on-disabled machinery must exist.
+	for _, want := range []string{
+		"PREBOOTSTRAP_BUFFER_CAP",
+		"flushReady",
+		"dropped",
+		"queue.length = 0",  // buffer cleared on disabled/error
+		"queue.length > PREBOOTSTRAP_BUFFER_CAP", // drop-oldest bound
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("browser-logger snippet missing expected crash-capture token %q", want)
+		}
+	}
+
+	// 4. There must be exactly ONE window 'error' listener registration — a
+	//    second one (re-introduced after bootstrap) would double-count events.
+	if n := strings.Count(src, `addEventListener("error"`); n != 1 {
+		t.Errorf(`expected exactly one window 'error' listener registration, found %d (a second set double-counts)`, n)
+	}
+	if n := strings.Count(src, `addEventListener("unhandledrejection"`); n != 1 {
+		t.Errorf(`expected exactly one 'unhandledrejection' listener registration, found %d`, n)
+	}
+}
