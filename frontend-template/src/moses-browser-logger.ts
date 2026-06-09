@@ -8,7 +8,7 @@
 //     import { installBrowserLogger } from "@moses/browser-logger";
 //     installBrowserLogger();
 //
-// At build time, the Moses platform's KanikoBuildService bakes three Vite
+// At build time, the Moses platform's in-cluster image builder bakes three Vite
 // env vars into the bundle:
 //
 //   - VITE_MOSES_CHART_ID       — the chart this build belongs to (UUID)
@@ -23,6 +23,20 @@
 // At boot the snippet hits BLF-A's bootstrap endpoint to fetch its config
 // (per-chart enabled flag + ingest token + sample rate). When the env vars
 // are missing (built outside Moses, or chart-id stripped) it silently no-ops.
+//
+// CRASH-CAPTURE ORDERING (CHAT-il3y6): bootstrap is async (`await fetch`), but
+// the most valuable errors — a render-time crash in the synchronous code that
+// runs right after `installBrowserLogger()` is called — fire window.onerror
+// BEFORE that fetch resolves. To avoid losing them, the window 'error' and
+// 'unhandledrejection' listeners are attached SYNCHRONOUSLY at the very top of
+// installBrowserLogger, before the await; their handlers push normalized
+// events into a bounded pre-bootstrap buffer. Once bootstrap resolves we either
+// drain that buffer through the single flush owner (enabled) or drop it
+// (disabled / bootstrap error). The console.error/console.warn patching stays
+// POST-bootstrap because it depends on the fetched config (patchConsole /
+// sampleRate). That split is intentional and load-bearing — do not move the
+// console patch up, and do not attach a second set of window listeners after
+// bootstrap (that would double-count every event).
 
 type Level = "error" | "warn" | "info" | "log";
 
@@ -32,6 +46,16 @@ type BootstrapConfig = {
   token?: string;
   sampleRate?: number;
 };
+
+interface QueuedEvent {
+  ts: string;
+  level: Level;
+  message: string;
+  stack?: string;
+  url?: string;
+  source_kind: string;
+  context?: Record<string, unknown>;
+}
 
 export interface InstallOptions {
   /** Patch console.error / console.warn to also push events. Default true. */
@@ -46,6 +70,9 @@ const MAX_STACK_BYTES = 16_000;
 const MAX_CONTEXT_BYTES = 2_000;
 const QUEUE_FLUSH_THRESHOLD = 50;
 const QUEUE_FLUSH_INTERVAL_MS = 5_000;
+// Bound the pre-bootstrap buffer so a crash-loop that fires before bootstrap
+// resolves can't grow memory without limit. Drop-oldest once the cap is hit.
+const PREBOOTSTRAP_BUFFER_CAP = 50;
 
 export async function installBrowserLogger(opts: InstallOptions = {}): Promise<void> {
   // import.meta.env is the Vite-injected env object. Use a guarded read so
@@ -58,31 +85,19 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
     return;
   }
 
-  const apiBase = env.VITE_MOSES_API_BASE || "";
-  const bootstrapUrl =
-    apiBase +
-    "/api/v1/browser-logs/bootstrap" +
-    "?chart_id=" + encodeURIComponent(chartId) +
-    "&deployment_id=" + encodeURIComponent(deploymentId);
-
-  let cfg: BootstrapConfig | null = null;
-  try {
-    const res = await fetch(bootstrapUrl, { credentials: "omit" });
-    if (!res.ok) return;
-    cfg = (await res.json()) as BootstrapConfig;
-  } catch {
-    return;
-  }
-  if (!cfg || !cfg.enabled || !cfg.token || !cfg.endpoint) {
-    return;
-  }
-
-  const ingestEndpoint = absolutize(cfg.endpoint, apiBase);
-  const sampleRate = clampSampleRate(opts.sampleRate ?? cfg.sampleRate ?? 1.0);
-  const patchConsole = opts.patchConsole ?? true;
-  const token = cfg.token;
-
-  const queue: unknown[] = [];
+  // --- Hoisted state (must outlive the await) -------------------------------
+  // `queue` collects events both before AND after bootstrap. Before bootstrap
+  // it is a bounded buffer fed only by the window listeners; after bootstrap
+  // the same array is drained and reused by the flush owner. `dropped` flips
+  // true when bootstrap reports disabled or errors — at that point the buffer
+  // is cleared and enqueue() becomes a silent no-op.
+  const queue: QueuedEvent[] = [];
+  let dropped = false;
+  // Post-bootstrap config. Null until (and unless) bootstrap enables logging.
+  let ingestEndpoint = "";
+  let token = "";
+  let sampleRate = 1.0;
+  let flushReady = false;
   let flushScheduled = false;
 
   function enqueue(
@@ -91,7 +106,10 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
     stack?: string,
     extra?: Record<string, unknown>
   ): void {
-    if (sampleRate < 1.0 && Math.random() > sampleRate) return;
+    if (dropped) return;
+    // Sampling only applies once we have a config; before bootstrap we keep
+    // everything (bounded) so a pre-bootstrap crash is never sampled away.
+    if (flushReady && sampleRate < 1.0 && Math.random() > sampleRate) return;
     queue.push({
       ts: new Date().toISOString(),
       level,
@@ -101,6 +119,13 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
       source_kind: "client_runtime",
       context: sanitize(extra),
     });
+    if (!flushReady) {
+      // Pre-bootstrap: bound the buffer, drop-oldest. No timers/flush yet.
+      while (queue.length > PREBOOTSTRAP_BUFFER_CAP) {
+        queue.shift();
+      }
+      return;
+    }
     if (queue.length >= QUEUE_FLUSH_THRESHOLD) {
       flush();
     } else if (!flushScheduled) {
@@ -111,6 +136,7 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
 
   function flush(): void {
     flushScheduled = false;
+    if (!flushReady) return;
     if (queue.length === 0) return;
     const events = queue.splice(0, queue.length);
     try {
@@ -133,6 +159,10 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
   }
 
   // Window error surface ------------------------------------------------------
+  // Attached SYNCHRONOUSLY, before the bootstrap await, so a render-time crash
+  // that fires window.onerror in the same tick as installBrowserLogger() is
+  // captured into the bounded pre-bootstrap buffer rather than lost. This is
+  // the single set of window listeners; do not add another after bootstrap.
   if (typeof window !== "undefined") {
     window.addEventListener("error", (e: ErrorEvent) => {
       const stack = e.error && typeof e.error === "object" && "stack" in e.error
@@ -159,7 +189,45 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
     });
   }
 
+  const apiBase = env.VITE_MOSES_API_BASE || "";
+  const bootstrapUrl =
+    apiBase +
+    "/api/v1/browser-logs/bootstrap" +
+    "?chart_id=" + encodeURIComponent(chartId) +
+    "&deployment_id=" + encodeURIComponent(deploymentId);
+
+  let cfg: BootstrapConfig | null = null;
+  try {
+    const res = await fetch(bootstrapUrl, { credentials: "omit" });
+    if (!res.ok) {
+      dropped = true;
+      queue.length = 0;
+      return;
+    }
+    cfg = (await res.json()) as BootstrapConfig;
+  } catch {
+    // Bootstrap failed — drop the buffered pre-bootstrap events and go silent.
+    dropped = true;
+    queue.length = 0;
+    return;
+  }
+  if (!cfg || !cfg.enabled || !cfg.token || !cfg.endpoint) {
+    // Logging disabled for this chart — drop the buffer, send nothing.
+    dropped = true;
+    queue.length = 0;
+    return;
+  }
+
+  // --- Bootstrap succeeded: wire up the flush owner -------------------------
+  ingestEndpoint = absolutize(cfg.endpoint, apiBase);
+  sampleRate = clampSampleRate(opts.sampleRate ?? cfg.sampleRate ?? 1.0);
+  token = cfg.token;
+  const patchConsole = opts.patchConsole ?? true;
+
   // Console patching ---------------------------------------------------------
+  // Stays POST-bootstrap: it depends on the fetched config (patchConsole /
+  // sampleRate). The window listeners above are the only thing that had to
+  // move before the await.
   if (patchConsole && typeof console !== "undefined") {
     const origErr = console.error.bind(console);
     console.error = (...args: unknown[]): void => {
@@ -190,6 +258,14 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
   }
   if (typeof window !== "undefined") {
     window.addEventListener("pagehide", flush);
+  }
+
+  // Open the flush gate and DRAIN the pre-bootstrap buffer in a single send.
+  // Done last so the listeners/console-patch above are fully wired before any
+  // buffered crash is flushed.
+  flushReady = true;
+  if (queue.length > 0) {
+    flush();
   }
 }
 

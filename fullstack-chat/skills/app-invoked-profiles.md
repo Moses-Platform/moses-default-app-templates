@@ -100,7 +100,7 @@ Your **static surface is 9 tools**:
 | `moses_read_file` | Read repo files; backend-mediated, no git creds in pod |
 | `moses_list_files` | Enumerate repo paths |
 | `moses_notify_push` | Trigger the deployment pipeline after committing to `agent/{ticket-id}` |
-| `moses_agent_request_build` | Request a Kaniko build of the current branch |
+| `moses_agent_request_build` | Request an in-cluster image build of the current branch |
 | `moses_agent_submit_completed` | Mark the ticket done — REQUIRED before pod exit |
 | `moses_agent_report_failure` | Mark the ticket failed — alternative terminal call |
 | `moses_await_deployment` | Block on Helm health when the action's outcome depends on deploy |

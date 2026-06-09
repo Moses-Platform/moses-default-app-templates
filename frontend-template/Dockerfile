@@ -1,20 +1,13 @@
-# Single-stage builder doing npm install + Vite/TS build in ONE RUN,
+# Single-stage builder running npm install then the Vite/TS build,
 # then a slim nginx runtime.
 #
-# CHAT-1mp04: Kaniko has a long-standing tar-serialization bug
-# (kaniko#1743, upstream archived UNFIXED) where npm-deduped hardlinks
-# are written with absolute-path targets and corrupt to 0-byte files
-# on tar restore. This bites at every Kaniko tar round-trip: registry
-# cache push/pull (mitigated by --cache=false on the platform), inter-
-# stage handoff (mitigated by single stage), AND per-RUN intra-stage
-# snapshot (mitigated by combining npm install + tsc + vite into one
-# RUN, so no Kaniko snapshot happens between node_modules creation
-# and use).
-#
-# Trade-off: no layer-level reuse of npm install — any source change
-# triggers a full reinstall. Matches the --cache=false steady state.
+# Standard two-step build (Kaniko hardlink workaround removed
+# post-CHAT-h0v8t.13). The build engine is now Buildah, which does not
+# share Kaniko's tar-hardlink corruption bug, so `npm install` and the
+# build can live in separate RUN layers as you'd expect — restoring
+# layer-level caching of dependencies across source-only changes.
 
-# --- Builder (install + Vite/TS build, all in ONE RUN) ------------------
+# --- Builder ------------------------------------------------------------
 FROM node:24-alpine AS build
 WORKDIR /app
 
@@ -30,11 +23,15 @@ ARG VITE_MOSES_API_BASE=""
 # we point npm at it for the install; otherwise we use the upstream default.
 ARG NPM_REGISTRY=""
 
-RUN NPM_REGISTRY="$NPM_REGISTRY" \
-    VITE_MOSES_CHART_ID="$VITE_MOSES_CHART_ID" \
+# Install deps (registry-aware) in its own layer.
+RUN if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi \
+    && npm install
+
+# Build with BLF-B vars in scope.
+RUN VITE_MOSES_CHART_ID="$VITE_MOSES_CHART_ID" \
     VITE_MOSES_DEPLOYMENT_ID="$VITE_MOSES_DEPLOYMENT_ID" \
     VITE_MOSES_API_BASE="$VITE_MOSES_API_BASE" \
-    sh -c 'if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi && npm install && npx tsc -p tsconfig.build.json && npx vite build'
+    sh -c 'npx tsc -p tsconfig.build.json && npx vite build'
 
 # --- Runtime ------------------------------------------------------------
 FROM nginx:1.28-alpine

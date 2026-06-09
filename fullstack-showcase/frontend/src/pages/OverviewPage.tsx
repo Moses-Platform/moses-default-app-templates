@@ -26,7 +26,7 @@ export default function OverviewPage() {
     {
       icon: '🚀',
       title: 'Deployment Pipeline',
-      description: 'Dual-pipeline system for apps and workspace tools with Kaniko + Helm',
+      description: 'Dual-pipeline system for apps and workspace tools with in-cluster image builds + Helm',
       path: '/deployment',
     },
     {

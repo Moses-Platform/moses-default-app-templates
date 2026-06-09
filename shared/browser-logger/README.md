@@ -22,7 +22,7 @@ The call is fire-and-forget — it returns a `Promise<void>` you can ignore.
 ## Build-time configuration
 
 The snippet expects three Vite env vars, baked in at build time by Moses's
-`KanikoBuildService`:
+in-cluster image build service:
 
 | Var                          | Source                                     | Required |
 | ---------------------------- | ------------------------------------------ | -------- |
@@ -112,3 +112,28 @@ its config from a server-rendered `<meta name="moses-config">` tag
 populated by `main.go` from the `MOSES_CHART_ID` / `MOSES_DEPLOYMENT_ID`
 / `MOSES_API_BASE` env vars. The two snippets stay in sync — change one,
 review the other.
+
+## Vendored copies (byte-identical contract)
+
+`shared/browser-logger/index.ts` is the **canonical source**. It is NOT
+imported across packages — each React template vendors a **byte-identical
+copy** at `<template>/frontend/src/moses-browser-logger.ts`:
+
+- `frontend-template`, `fullstack-simple`, `fullstack-chat`,
+  `fullstack-showcase`, `fullstack-oidc`.
+
+There is no symlink or bundler alias. **To change the logger: edit
+`shared/browser-logger/index.ts`, then re-copy it over all five vendored
+copies** (do NOT edit a copy directly). The vanilla-JS port
+(`fullstack-unified/static/moses-browser-logger.js`) is a separate
+language port — keep it behaviourally in sync by hand (see above).
+
+A CI gate enforces the byte-identity:
+[`tools/check-vendored-browser-logger.sh`](../../tools/check-vendored-browser-logger.sh)
+(wired via `.github/workflows/vendored-browser-logger-drift.yml`) fails the
+build if any vendored TS copy drifts from the canonical source. Run it
+locally after editing:
+
+```sh
+tools/check-vendored-browser-logger.sh
+```
