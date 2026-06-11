@@ -62,7 +62,10 @@ integration legible.
 2. Keycloak redirects back to `/auth/callback`; the backend exchanges
    the code (confidential client, in-cluster token endpoint), validates
    the ID token against JWKS, and sets an **HttpOnly, Secure,
-   SameSite=Lax** session cookie. The browser never sees a token.
+   SameSite=Lax** session cookie. The browser never sees a token. The
+   redirect_uri and session cookie are built for whichever registered
+   host the browser used, so login completes on the apex custom hostname
+   and the platform sub-path alike.
 3. Per request the middleware validates the session cookie and places an
    `Identity` on the request context.
 

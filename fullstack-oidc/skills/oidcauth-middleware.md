@@ -125,7 +125,11 @@ the backend — see `frontend/nginx.conf` + `frontend/entrypoint.sh`.
 `MOSES_OIDC_CLIENT_SECRET`, `MOSES_OIDC_AUDIENCE`,
 `MOSES_OIDC_PROTECTED_PATHS`, `MOSES_OIDC_PUBLIC_PATHS`,
 `MOSES_BASE_PATH`, `MOSES_OIDC_COOKIE_SECRET`,
-`MOSES_OIDC_INSECURE_COOKIE`.
+`MOSES_OIDC_INSECURE_COOKIE`, `MOSES_PUBLIC_URL`, `MOSES_PUBLIC_URLS`.
+`MOSES_PUBLIC_URLS` is the comma-separated set of every external origin
+the app is reachable at; the middleware builds redirect_uri on the one
+whose host matches the request (falls back to `MOSES_PUBLIC_URL`, then
+the request host).
 
 - **Pass-through mode**: when issuer/client/secret are absent,
   `Config.Enabled()` is false. Public routes + the header-trust path
@@ -161,7 +165,10 @@ post-login redirect back from Keycloak. See the doc comment on
 - JWKS fetched from the **internal** issuer (in-cluster), `iss`
   validated against the **external** issuer.
 - Session cookie is HMAC-signed (tamper-proof), HttpOnly (BFF: no token
-  in the browser), Path-scoped to the deploy sub-path.
+  in the browser), Cookie `Path=/` (so the session is returned whether
+  the app is served at root on a custom hostname or under
+  `/apps/<tenant>/<slug>/` on the platform host); cross-app isolation on
+  a shared host is by a per-app cookie name, not by Path.
 - PKCE `S256` always; `plain` never offered.
 - `state` CSRF nonce verified constant-time on callback.
 - Session expiry is capped to the sooner of the token `exp` and 8h.
