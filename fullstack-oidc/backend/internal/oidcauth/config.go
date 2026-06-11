@@ -49,6 +49,8 @@
 package oidcauth
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
@@ -106,6 +108,14 @@ const (
 	// middleware falls back to the legacy r.Host-based derivation —
 	// preserves behaviour for non-platform deployments and existing tests.
 	EnvPublicURL = "MOSES_PUBLIC_URL"
+
+	// EnvPublicURLs is the comma/space-separated set of every external origin
+	// (scheme://host[:port], no path) the app is reachable at — platform
+	// subpath, apex custom hostname, remote/tunnel host. absoluteURL selects
+	// the entry whose hostname matches the incoming request so login completes
+	// on whichever host the browser used. When unset, absoluteURL falls back to
+	// the single EnvPublicURL (legacy / standalone deploys).
+	EnvPublicURLs = "MOSES_PUBLIC_URLS"
 )
 
 // HeaderGatewayAuth (CHAT-t5d1u.28.21 S3) is the request header whose
@@ -179,6 +189,38 @@ type Config struct {
 	// the middleware falls back to the legacy header/Host derivation.
 	// Trailing slash is trimmed at use site.
 	PublicURL string
+
+	// PublicURLs is the allowlist of reachable external origins. Per request,
+	// absoluteURL picks the entry whose hostname matches X-Forwarded-Host/r.Host
+	// (the matched origin supplies the correct scheme+port). Empty -> fall back
+	// to PublicURL then r.Host.
+	PublicURLs []string
+}
+
+// cookieSuffix is a short, stable per-app token derived from the client id. It
+// namespaces the cookie names so co-tenant apps sharing the platform host (each
+// under its own /apps/<tenant>/<slug>/ subpath but all setting Path=/) do not
+// collide. Empty client id -> no suffix (standalone/dev).
+func (c Config) cookieSuffix() string {
+	if c.ClientID == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(c.ClientID))
+	return hex.EncodeToString(sum[:4]) // 8 hex chars
+}
+
+func (c Config) sessionCookieName() string {
+	if s := c.cookieSuffix(); s != "" {
+		return SessionCookieName + "_" + s
+	}
+	return SessionCookieName
+}
+
+func (c Config) stateCookieName() string {
+	if s := c.cookieSuffix(); s != "" {
+		return stateCookieName + "_" + s
+	}
+	return stateCookieName
 }
 
 // ConfigFromEnv builds a Config from the platform-injected environment.
@@ -202,6 +244,7 @@ func ConfigFromEnv() Config {
 		SecureCookie:      !isTruthy(os.Getenv(EnvInsecureCookie)),
 		GatewayAuthSecret: strings.TrimSpace(os.Getenv(EnvGatewayAuthSecret)),
 		PublicURL:         strings.TrimSpace(os.Getenv(EnvPublicURL)),
+		PublicURLs:        splitOrigins(os.Getenv(EnvPublicURLs)),
 	}
 
 	if cfg.InternalIssuer == "" {
@@ -277,6 +320,26 @@ func splitPaths(raw string) []string {
 			f = "/" + f
 		}
 		out = append(out, f)
+	}
+	return out
+}
+
+// splitOrigins parses a comma/space-separated list of scheme://host[:port]
+// origins into a trimmed slice. Empty/blank input -> nil. Trailing slashes are
+// stripped so the value joins cleanly with a route path.
+func splitOrigins(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == '\n'
+	})
+	var out []string
+	for _, f := range fields {
+		if f = strings.TrimRight(strings.TrimSpace(f), "/"); f != "" {
+			out = append(out, f)
+		}
 	}
 	return out
 }

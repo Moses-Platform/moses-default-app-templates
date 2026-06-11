@@ -86,23 +86,8 @@ func TestSessionValid(t *testing.T) {
 	}
 }
 
-func TestCookiePath(t *testing.T) {
-	cases := map[string]string{
-		"":                "/",
-		"/":               "/",
-		"/apps/t/s":       "/apps/t/s",
-		"/apps/t/s/":      "/apps/t/s",
-	}
-	for in, want := range cases {
-		if got := cookiePath(in); got != want {
-			t.Errorf("cookiePath(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
 // The session cookie MUST be HttpOnly, Secure (by default), SameSite=Lax,
-// and Path-scoped to the deploy sub-path. These attributes are the
-// security contract from the ticket.
+// and Path=/. These attributes are the security contract from the ticket.
 func TestSetSessionCookie_Attributes(t *testing.T) {
 	cfg := Config{
 		BasePath:     "/apps/t/s",
@@ -125,8 +110,8 @@ func TestSetSessionCookie_Attributes(t *testing.T) {
 	if c.SameSite != http.SameSiteLaxMode {
 		t.Errorf("session cookie SameSite = %v, want Lax", c.SameSite)
 	}
-	if c.Path != "/apps/t/s" {
-		t.Errorf("session cookie Path = %q, want /apps/t/s", c.Path)
+	if c.Path != "/" {
+		t.Errorf("session cookie Path = %q, want /", c.Path)
 	}
 }
 
@@ -228,6 +213,45 @@ func TestRandomURLToken(t *testing.T) {
 	}
 	if a == "" {
 		t.Errorf("randomURLToken returned empty")
+	}
+}
+
+func TestCookieNames_NamespacedByClient(t *testing.T) {
+	a := Config{ClientID: "app-aaa"}
+	b := Config{ClientID: "app-bbb"}
+	if a.sessionCookieName() == b.sessionCookieName() {
+		t.Fatalf("session cookie names must differ per app: %q", a.sessionCookieName())
+	}
+	if !strings.HasPrefix(a.sessionCookieName(), SessionCookieName) {
+		t.Fatalf("session cookie name %q must keep the %q prefix", a.sessionCookieName(), SessionCookieName)
+	}
+	if a.stateCookieName() == b.stateCookieName() {
+		t.Fatalf("state cookie names must differ per app")
+	}
+}
+
+func TestCookiePath_AlwaysRoot(t *testing.T) {
+	if got := cookiePath("/apps/t/s"); got != "/" {
+		t.Fatalf("cookiePath = %q, want / (root so it is returned on every app path on the host)", got)
+	}
+}
+
+func TestSessionRoundTrip_NamespacedCookieReadBack(t *testing.T) {
+	cfg := Config{ClientID: "app-aaa", CookieSecret: []byte("0123456789abcdef0123456789abcdef")}
+	w := httptest.NewRecorder()
+	if err := setSessionCookie(w, cfg, &Session{Subject: "u1", Expiry: time.Now().Add(time.Hour).Unix()}); err != nil {
+		t.Fatal(err)
+	}
+	res := w.Result()
+	c := res.Cookies()
+	if len(c) != 1 || c[0].Name != cfg.sessionCookieName() || c[0].Path != "/" {
+		t.Fatalf("set cookie = %+v, want name=%q path=/", c, cfg.sessionCookieName())
+	}
+	r := httptest.NewRequest("GET", "/admin", nil)
+	r.AddCookie(c[0])
+	sess, err := readSessionCookie(r, cfg)
+	if err != nil || sess.Subject != "u1" {
+		t.Fatalf("read back = %+v, err=%v", sess, err)
 	}
 }
 

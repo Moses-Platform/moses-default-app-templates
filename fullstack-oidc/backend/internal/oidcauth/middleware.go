@@ -403,17 +403,17 @@ func (m *Middleware) route(suffix string) string {
 // Scheme + host are derived from forwarded headers when present (the app
 // sits behind the platform ingress / nginx).
 func (m *Middleware) absoluteURL(r *http.Request, suffix string) string {
+	// Multi-home: prefer the configured origin whose hostname matches the
+	// host the browser actually used, so login completes on that same host
+	// (the matched origin also supplies the correct scheme+port even when the
+	// gateway strips :port from the Host header).
+	if origin := m.matchPublicOrigin(r); origin != "" {
+		return strings.TrimRight(origin, "/") + m.route(suffix)
+	}
 	if m.cfg.PublicURL != "" {
-		// Platform-injected public URL is the truthier source: envoy
-		// Gateway strips :port from the Host header (Gateway API
-		// hostname matching is port-agnostic by spec), so deriving from
-		// r.Host loses the port and produces an OIDC redirect_uri the
-		// IdP rejects. MOSES_PUBLIC_URL carries the full external
-		// scheme+host+port from spec.domain.
 		return strings.TrimRight(m.cfg.PublicURL, "/") + m.route(suffix)
 	}
-	// Legacy fallback: derive from request (preserves behavior for
-	// non-platform deployments where MOSES_PUBLIC_URL is unset).
+	// Legacy fallback: derive from request (non-platform deployments).
 	scheme := "https"
 	if xf := r.Header.Get("X-Forwarded-Proto"); xf != "" {
 		scheme = xf
@@ -425,6 +425,60 @@ func (m *Middleware) absoluteURL(r *http.Request, suffix string) string {
 		host = xfh
 	}
 	return scheme + "://" + host + m.route(suffix)
+}
+
+// matchPublicOrigin returns the configured public origin whose hostname equals
+// the request host (X-Forwarded-Host, else r.Host), compared on hostname only
+// (port-insensitive). "" when there is no allowlist or no match.
+func (m *Middleware) matchPublicOrigin(r *http.Request) string {
+	if len(m.cfg.PublicURLs) == 0 {
+		return ""
+	}
+	reqHost := requestHostname(r)
+	if reqHost == "" {
+		return ""
+	}
+	for _, o := range m.cfg.PublicURLs {
+		if originHostname(o) == reqHost {
+			return o
+		}
+	}
+	return ""
+}
+
+// requestHostname returns the lower-cased, port-stripped hostname the browser
+// used: X-Forwarded-Host (gateway-injected) wins over r.Host.
+func requestHostname(r *http.Request) string {
+	h := r.Host
+	if xfh := r.Header.Get("X-Forwarded-Host"); xfh != "" {
+		h = xfh
+	}
+	return hostnameOnly(h)
+}
+
+// originHostname returns the lower-cased, port-stripped hostname of a
+// scheme://host[:port] origin.
+func originHostname(origin string) string {
+	if i := strings.Index(origin, "://"); i >= 0 {
+		origin = origin[i+3:]
+	}
+	if j := strings.IndexAny(origin, "/?#"); j >= 0 {
+		origin = origin[:j]
+	}
+	return hostnameOnly(origin)
+}
+
+// hostnameOnly lower-cases and strips a trailing :port (and any leading
+// comma-list artifact from a chained X-Forwarded-Host).
+func hostnameOnly(h string) string {
+	h = strings.TrimSpace(strings.ToLower(h))
+	if i := strings.IndexByte(h, ','); i >= 0 { // first hop of a chained XFH
+		h = strings.TrimSpace(h[:i])
+	}
+	if i := strings.LastIndexByte(h, ':'); i >= 0 && !strings.Contains(h[i:], "]") {
+		h = h[:i]
+	}
+	return h
 }
 
 // wantsJSON reports whether the request looks like an XHR/fetch call
