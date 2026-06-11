@@ -190,3 +190,19 @@ func TestExpectedAudience(t *testing.T) {
 		t.Errorf("expectedAudience() falls back to ClientID: got %q", got)
 	}
 }
+
+func TestConfigFromEnv_PublicURLs(t *testing.T) {
+	t.Setenv(EnvPublicURLs, " https://moses-manager.eu, https://platform.moses-manager.eu ")
+	cfg := ConfigFromEnv()
+	want := []string{"https://moses-manager.eu", "https://platform.moses-manager.eu"}
+	if !reflect.DeepEqual(cfg.PublicURLs, want) {
+		t.Fatalf("PublicURLs = %#v, want %#v", cfg.PublicURLs, want)
+	}
+}
+
+func TestConfigFromEnv_PublicURLsUnsetIsNil(t *testing.T) {
+	t.Setenv(EnvPublicURLs, "")
+	if cfg := ConfigFromEnv(); cfg.PublicURLs != nil {
+		t.Fatalf("PublicURLs = %#v, want nil when unset", cfg.PublicURLs)
+	}
+}

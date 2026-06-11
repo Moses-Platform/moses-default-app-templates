@@ -75,16 +75,12 @@ func (s *Session) Valid(now time.Time) bool {
 	return now.Before(time.Unix(s.Expiry, 0))
 }
 
-// cookiePath returns the Path attribute for the session cookie. The
-// cookie is scoped to the app's deploy sub-path so a co-tenant app at a
-// sibling sub-path on the same host cannot read it. Root deploys -> "/".
-func cookiePath(basePath string) string {
-	p := strings.TrimRight(basePath, "/")
-	if p == "" {
-		return "/"
-	}
-	return p
-}
+// cookiePath returns the Path attribute for the app's cookies. It is ALWAYS
+// "/" so the session is returned on every path the app occupies on a host —
+// root on a custom (apex) hostname, the /apps/<tenant>/<slug>/ subpath on the
+// platform host. Cross-app isolation on a shared host is provided by the
+// per-app cookie NAME (Config.sessionCookieName / stateCookieName), not by Path.
+func cookiePath(string) string { return "/" }
 
 // encodeSession serializes + HMAC-signs a Session into a cookie value:
 //
@@ -132,16 +128,17 @@ func decodeSession(value string, secret []byte) (*Session, error) {
 	return &s, nil
 }
 
-// setSessionCookie writes the signed session cookie. HttpOnly, Path
-// scoped to the deploy sub-path, SameSite=Lax (see sessionSameSite),
-// Secure unless explicitly disabled for local dev.
+// setSessionCookie writes the signed session cookie. HttpOnly, Path=/,
+// SameSite=Lax (see sessionSameSite), Secure unless explicitly disabled for
+// local dev. Cookie name is per-app (Config.sessionCookieName) so co-tenant
+// apps on the same host do not collide when all share Path=/.
 func setSessionCookie(w http.ResponseWriter, cfg Config, s *Session) error {
 	value, err := encodeSession(s, cfg.CookieSecret)
 	if err != nil {
 		return err
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name:     SessionCookieName,
+		Name:     cfg.sessionCookieName(),
 		Value:    value,
 		Path:     cookiePath(cfg.BasePath),
 		HttpOnly: true,
@@ -156,7 +153,7 @@ func setSessionCookie(w http.ResponseWriter, cfg Config, s *Session) error {
 // clearSessionCookie expires the session cookie (used by /auth/logout).
 func clearSessionCookie(w http.ResponseWriter, cfg Config) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     SessionCookieName,
+		Name:     cfg.sessionCookieName(),
 		Value:    "",
 		Path:     cookiePath(cfg.BasePath),
 		HttpOnly: true,
@@ -169,7 +166,7 @@ func clearSessionCookie(w http.ResponseWriter, cfg Config) {
 
 // readSessionCookie extracts and verifies the session from a request.
 func readSessionCookie(r *http.Request, cfg Config) (*Session, error) {
-	c, err := r.Cookie(SessionCookieName)
+	c, err := r.Cookie(cfg.sessionCookieName())
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +197,7 @@ func setStateCookie(w http.ResponseWriter, cfg Config, hs *handshakeState) error
 	signed := base64.RawURLEncoding.EncodeToString(payload) + "." +
 		base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	http.SetCookie(w, &http.Cookie{
-		Name:     stateCookieName,
+		Name:     cfg.stateCookieName(),
 		Value:    signed,
 		Path:     cookiePath(cfg.BasePath),
 		HttpOnly: true,
@@ -213,7 +210,7 @@ func setStateCookie(w http.ResponseWriter, cfg Config, hs *handshakeState) error
 
 // readStateCookie verifies and decodes the handshake cookie.
 func readStateCookie(r *http.Request, cfg Config) (*handshakeState, error) {
-	c, err := r.Cookie(stateCookieName)
+	c, err := r.Cookie(cfg.stateCookieName())
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +241,7 @@ func readStateCookie(r *http.Request, cfg Config) (*handshakeState, error) {
 // clearStateCookie expires the handshake cookie after the callback.
 func clearStateCookie(w http.ResponseWriter, cfg Config) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     stateCookieName,
+		Name:     cfg.stateCookieName(),
 		Value:    "",
 		Path:     cookiePath(cfg.BasePath),
 		HttpOnly: true,

@@ -128,7 +128,7 @@ func TestHandler_ValidSessionServed(t *testing.T) {
 	cookieVal, _ := encodeSession(sess, cfg.CookieSecret)
 
 	r := httptest.NewRequest("GET", "/apps/t/s/api/private/data", nil)
-	r.AddCookie(&http.Cookie{Name: SessionCookieName, Value: cookieVal})
+	r.AddCookie(&http.Cookie{Name: cfg.sessionCookieName(), Value: cookieVal})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, r)
 
@@ -270,7 +270,7 @@ func TestHandler_LogoutClearsCookieEvenIfProviderDown(t *testing.T) {
 	// Cookie must be cleared regardless of provider reachability.
 	var cleared bool
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == SessionCookieName && c.MaxAge < 0 {
+		if c.Name == enabledCfg().sessionCookieName() && c.MaxAge < 0 {
 			cleared = true
 		}
 	}
@@ -560,5 +560,50 @@ func TestAbsoluteURL_PublicURLWithTrailingSlash(t *testing.T) {
 	want := "http://localhost:9877/apps/t/s/auth/callback"
 	if got != want {
 		t.Errorf("absoluteURL trailing-slash = %q, want %q", got, want)
+	}
+}
+
+func TestAbsoluteURL_PublicURLsMatchesRequestHost(t *testing.T) {
+	cfg := enabledCfg() // verified helper (middleware_test.go:15); absoluteURL ignores its OIDC fields
+	cfg.BasePath = "/apps/t/s"
+	cfg.PublicURL = "https://platform.example.com"
+	cfg.PublicURLs = []string{"https://apex.example.com", "https://platform.example.com"}
+	m := New(cfg)
+
+	r := httptest.NewRequest("GET", "/apps/t/s/auth/callback", nil)
+	r.Host = "apex.example.com" // browser came in on the apex
+	if got, want := m.absoluteURL(r, routeCallback), "https://apex.example.com/apps/t/s/auth/callback"; got != want {
+		t.Errorf("apex absoluteURL = %q, want %q", got, want)
+	}
+
+	r2 := httptest.NewRequest("GET", "/apps/t/s/auth/callback", nil)
+	r2.Host = "platform.example.com"
+	if got, want := m.absoluteURL(r2, routeCallback), "https://platform.example.com/apps/t/s/auth/callback"; got != want {
+		t.Errorf("platform absoluteURL = %q, want %q", got, want)
+	}
+}
+
+func TestAbsoluteURL_PublicURLsPortStrippedHostStillMatches(t *testing.T) {
+	cfg := enabledCfg()
+	cfg.BasePath = "/apps/t/s"
+	cfg.PublicURLs = []string{"http://localhost:9877"}
+	m := New(cfg)
+	r := httptest.NewRequest("GET", "/apps/t/s/auth/callback", nil)
+	r.Host = "localhost" // Envoy stripped :9877
+	if got, want := m.absoluteURL(r, routeCallback), "http://localhost:9877/apps/t/s/auth/callback"; got != want {
+		t.Errorf("absoluteURL = %q, want %q", got, want)
+	}
+}
+
+func TestAbsoluteURL_PublicURLsNoMatchFallsBackToPublicURL(t *testing.T) {
+	cfg := enabledCfg()
+	cfg.BasePath = "/apps/t/s"
+	cfg.PublicURL = "https://platform.example.com"
+	cfg.PublicURLs = []string{"https://apex.example.com"}
+	m := New(cfg)
+	r := httptest.NewRequest("GET", "/apps/t/s/auth/callback", nil)
+	r.Host = "unknown.example.com"
+	if got, want := m.absoluteURL(r, routeCallback), "https://platform.example.com/apps/t/s/auth/callback"; got != want {
+		t.Errorf("absoluteURL fallback = %q, want %q", got, want)
 	}
 }
