@@ -660,3 +660,36 @@ func TestAbsoluteURL_PublicURLsNoMatchFallsBackToPublicURL(t *testing.T) {
 		t.Errorf("absoluteURL fallback = %q, want %q", got, want)
 	}
 }
+
+// TestSessionFromClaims_PrefersMosesUserID asserts the P3a identity contract:
+// when the moses_user_id claim is present the session Subject is that stable
+// Moses platform UUID; when it is absent the Subject falls back to the
+// realm-local `sub` (backward-compat for tokens minted before the platform
+// deployed the moses_user_id mapper).
+func TestSessionFromClaims_PrefersMosesUserID(t *testing.T) {
+	cfg := Config{ClientID: "my-app"}
+
+	t.Run("moses_user_id present wins over sub", func(t *testing.T) {
+		c := &Claims{Subject: "realm-local-kc-uuid", MosesUserID: "moses-platform-uuid"}
+		sess := sessionFromClaims(c, cfg, 0)
+		if sess.Subject != "moses-platform-uuid" {
+			t.Fatalf("Subject = %q, want the stable moses_user_id %q", sess.Subject, "moses-platform-uuid")
+		}
+	})
+
+	t.Run("moses_user_id absent falls back to sub", func(t *testing.T) {
+		c := &Claims{Subject: "realm-local-kc-uuid"}
+		sess := sessionFromClaims(c, cfg, 0)
+		if sess.Subject != "realm-local-kc-uuid" {
+			t.Fatalf("Subject = %q, want fallback to sub %q", sess.Subject, "realm-local-kc-uuid")
+		}
+	})
+
+	t.Run("blank moses_user_id falls back to sub", func(t *testing.T) {
+		c := &Claims{Subject: "realm-local-kc-uuid", MosesUserID: "   "}
+		sess := sessionFromClaims(c, cfg, 0)
+		if sess.Subject != "realm-local-kc-uuid" {
+			t.Fatalf("Subject = %q, want fallback to sub on whitespace-only claim", sess.Subject)
+		}
+	})
+}

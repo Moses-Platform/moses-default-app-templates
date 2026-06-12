@@ -403,7 +403,11 @@ func sessionFromClaims(c *Claims, cfg Config, expiresIn int) *Session {
 		}
 	}
 	return &Session{
-		Subject:  c.Subject,
+		// Prefer the STABLE Moses platform user UUID (moses_user_id) so the
+		// session subject matches the header-trust path's X-Moses-User-ID for
+		// the same human. Fall back to the realm-local `sub` for tokens minted
+		// before the platform deployed the moses_user_id mapper (P3a).
+		Subject:  firstNonEmpty(c.MosesUserID, c.Subject),
 		Email:    c.Email,
 		Name:     c.Name,
 		Username: c.Username,
@@ -411,6 +415,17 @@ func sessionFromClaims(c *Claims, cfg Config, expiresIn int) *Session {
 		Expiry:   exp.Unix(),
 		IssuedAt: now.Unix(),
 	}
+}
+
+// firstNonEmpty returns the first argument whose trimmed value is non-empty,
+// or "" when all are empty.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // --- URL helpers -----------------------------------------------------
