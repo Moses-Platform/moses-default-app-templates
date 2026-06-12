@@ -103,7 +103,7 @@ Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tu
 
 ## Validation + maintenance hooks
 
-`moses-app.config.json` declares `go vet ./...` and `go test ./...` as required validation, plus weekly Renovate sweeps and a 15-minute log-error monitor.
+`moses-app.config.json` declares `go vet ./...` and `go test ./...` as required validation, plus weekly Renovate sweeps and a 15-minute log-error monitor. Self-maintenance is enabled via the Moses UI toggle; the `maintenance` block only provides its configuration.
 
 ## Conventions enforced by `tests/test_template_parity.sh`
 

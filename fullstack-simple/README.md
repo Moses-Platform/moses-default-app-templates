@@ -103,6 +103,8 @@ The `moses-app.config.json` declares:
 - `maintenance.renovate`: weekly Monday 4am sweep (currently agent-driven; no Renovate bot wired).
 - `maintenance.logMonitor`: 15-minute window log error monitor that fires Moses triggers when errors exceed 5 per window.
 
+Self-maintenance is enabled via the Moses UI toggle (the wrench on the app card); the `maintenance` block only provides its configuration — it does not turn the feature on.
+
 ## Conventions enforced by `tests/test_template_parity.sh`
 
 - Helm chart name is **`agent-deployed-app`** v1.0.0 (must match the platform's expected chart).
