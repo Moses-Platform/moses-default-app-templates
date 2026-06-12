@@ -23,6 +23,11 @@ const (
 	// decisionChallenge — protected path, no session, browser
 	// request; redirect to the OIDC login.
 	decisionChallenge
+	// decisionInterApp — request carries a valid X-Moses-Interapp-Token
+	// (a sibling app calling on behalf of the current user, P2c); serve,
+	// populating the auth context from the token's moses_user_id, with NO
+	// roles and NO OIDC redirect.
+	decisionInterApp
 )
 
 // trimBasePath removes the deploy sub-path prefix from a request path so
@@ -130,20 +135,33 @@ func (m *Middleware) isHeaderTrusted(r *http.Request) bool {
 
 // classify decides how to handle a request. It is pure given the
 // request, the config, and the (already-verified) session — no I/O — so
-// it is exhaustively unit-testable.
+// it is exhaustively unit-testable. When the outcome is decisionInterApp
+// the second return value is the trusted moses_user_id from the token.
 //
 // Order of precedence:
 //  1. Public paths (incl. /health + spec + handshake routes) -> public.
 //  2. Trusted X-Moses-* pod-to-pod header -> header-trust (dual mode).
-//  3. Valid session cookie -> session.
-//  4. Path is protected (or ProtectedPaths empty == protect-all) and
+//  3. Valid X-Moses-Interapp-Token from a sibling app (P2c) -> inter-app.
+//  4. Valid session cookie -> session.
+//  5. Path is protected (or ProtectedPaths empty == protect-all) and
 //     this is a browser request -> challenge.
-//  5. Otherwise -> public (unprotected path, no creds needed).
-func (m *Middleware) classify(r *http.Request, sess *Session, sessionValid bool) decision {
+//  6. Otherwise -> public (unprotected path, no creds needed).
+//
+// WHY inter-app is checked AFTER header-trust but BEFORE session: the
+// gateway header-trust path is the higher-trust platform-authenticated
+// pod-to-pod hop (gated by the gateway shared secret), so it wins when
+// both somehow appear on one request. The inter-app token is a sibling's
+// assertion, so it is consulted next — ahead of the browser session,
+// which it is meant to stand in for on the server-to-server hop. A
+// BAD/expired/wrong-aud token is NOT a hard failure: verifyInterAppToken
+// returns an error, classify ignores the token, and the request falls
+// through to the normal session/protected/public path. So a forged
+// inter-app token never breaks a legitimate browser session.
+func (m *Middleware) classify(r *http.Request, sess *Session, sessionValid bool) (decision, string) {
 	appPath := trimBasePath(r.URL.Path, m.cfg.BasePath)
 
 	if matchesPrefix(appPath, m.alwaysPublic()) || matchesPrefix(appPath, m.cfg.PublicPaths) {
-		return decisionPublic
+		return decisionPublic, ""
 	}
 
 	// Dual mode: a marker-gated, trusted pod-to-pod header bypasses OIDC
@@ -151,18 +169,30 @@ func (m *Middleware) classify(r *http.Request, sess *Session, sessionValid bool)
 	// (S3): isHeaderTrusted now also requires the X-Moses-Gateway-Auth
 	// shared-secret marker, and is disabled when no secret is configured.
 	if m.isHeaderTrusted(r) {
-		return decisionHeaderTrust
+		return decisionHeaderTrust, ""
+	}
+
+	// Inter-app trust (P2c): a sibling app calling on behalf of the
+	// current user. Gated independently of OIDC by interAppEnabled().
+	// Verify is pure (no I/O). On ANY validation failure we ignore the
+	// token and fall through — a bad token must not break a real session.
+	if m.cfg.interAppEnabled() {
+		if tok := interAppTokenFromRequest(r.Header.Get); tok != "" {
+			if uid, err := m.cfg.verifyInterAppToken(tok); err == nil {
+				return decisionInterApp, uid
+			}
+		}
 	}
 
 	if sessionValid && sess != nil {
-		return decisionSession
+		return decisionSession, ""
 	}
 
 	if m.pathIsProtected(appPath) {
-		return decisionChallenge
+		return decisionChallenge, ""
 	}
 
-	return decisionPublic
+	return decisionPublic, ""
 }
 
 // pathIsProtected reports whether appPath requires authentication. When

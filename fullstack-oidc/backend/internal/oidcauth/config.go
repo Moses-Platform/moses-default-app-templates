@@ -202,6 +202,21 @@ type Config struct {
 	// (the matched origin supplies the correct scheme+port). Empty -> fall back
 	// to PublicURL then r.Host.
 	PublicURLs []string
+
+	// InterAppSecret (P2c) is the per-tenant HS256 key shared by every
+	// interop app in the tenant. It signs/verifies the inter-app trust
+	// token (see interapp.go). Empty -> the inter-app path is disabled
+	// (interAppEnabled() false), INDEPENDENT of OIDC Enabled().
+	InterAppSecret string
+
+	// AppSlug is this app's own logical slug (MOSES_APP_SLUG). It is the
+	// `iss` stamped when minting and the required `aud` when verifying an
+	// inbound inter-app token. Shared with the inter-app path only.
+	AppSlug string
+
+	// TenantID is this app's own tenant UUID (MOSES_TENANT_ID). A verified
+	// inter-app token's tenant_id must equal it.
+	TenantID string
 }
 
 // cookieSuffix is a short, stable per-app token derived from the client id. It
@@ -252,6 +267,9 @@ func ConfigFromEnv() Config {
 		GatewayAuthSecret: strings.TrimSpace(os.Getenv(EnvGatewayAuthSecret)),
 		PublicURL:         strings.TrimSpace(os.Getenv(EnvPublicURL)),
 		PublicURLs:        splitOrigins(os.Getenv(EnvPublicURLs)),
+		InterAppSecret:    strings.TrimSpace(os.Getenv(EnvInterAppSecret)),
+		AppSlug:           strings.TrimSpace(os.Getenv(EnvAppSlug)),
+		TenantID:          strings.TrimSpace(os.Getenv(EnvTenantID)),
 	}
 
 	if cfg.InternalIssuer == "" {

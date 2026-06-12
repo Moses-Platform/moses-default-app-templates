@@ -27,7 +27,7 @@ type Identity struct {
 	// session or trusted pod-to-pod headers.
 	Authenticated bool
 
-	// Source is "session" or "moses-headers".
+	// Source is "session", "moses-headers", or "interapp".
 	Source string
 
 	Subject  string
@@ -137,12 +137,16 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		sess, sessErr := readSessionCookie(r, m.cfg)
 		sessionValid := sessErr == nil && sess.Valid(time.Now())
 
-		switch m.classify(r, sess, sessionValid) {
+		dec, interAppUserID := m.classify(r, sess, sessionValid)
+		switch dec {
 		case decisionPublic:
 			next.ServeHTTP(w, r.WithContext(withIdentity(r.Context(), Identity{})))
 
 		case decisionHeaderTrust:
 			next.ServeHTTP(w, r.WithContext(withIdentity(r.Context(), identityFromHeaders(r))))
+
+		case decisionInterApp:
+			next.ServeHTTP(w, r.WithContext(withIdentity(r.Context(), identityFromInterApp(interAppUserID))))
 
 		case decisionSession:
 			next.ServeHTTP(w, r.WithContext(withIdentity(r.Context(), identityFromSession(sess))))
@@ -189,6 +193,35 @@ func parseRolesHeader(raw string) []string {
 		return nil
 	}
 	return out
+}
+
+// identityFromInterApp builds an Identity from a verified inter-app token
+// (P2c). The Subject is the trusted moses_user_id the sibling asserted.
+//
+// ROLES ARE INTENTIONALLY EMPTY (nil) AND MUST STAY THAT WAY. An
+// inter-app token carries NO authorization — the receiving app authorizes
+// this user against its OWN ACLs. We never trust a sibling app (or an
+// agent) to assert roles, even if a forward-compatible token were to
+// carry a `roles` claim: verifyInterAppToken does not read one, and this
+// constructor sets Roles to nil unconditionally. This is the core
+// privilege-escalation guard for the shared-secret trust model.
+func identityFromInterApp(mosesUserID string) Identity {
+	return Identity{
+		Authenticated: true,
+		Source:        "interapp",
+		Subject:       mosesUserID,
+		Roles:         nil, // never carry roles across the inter-app hop
+	}
+}
+
+// MintInterAppToken mints a short-lived inter-app trust token for a call
+// to targetAppSlug on behalf of actingUserMosesID (the caller's OWN
+// authenticated Identity.Subject — never a caller-supplied arbitrary id).
+// It is a thin wrapper over Config.MintInterAppToken so handler code can
+// mint from the *Middleware it already holds. Returns an error when the
+// inter-app path is not configured.
+func (m *Middleware) MintInterAppToken(targetAppSlug, actingUserMosesID string) (string, error) {
+	return m.cfg.MintInterAppToken(targetAppSlug, actingUserMosesID)
 }
 
 // identityFromSession builds an Identity from a validated session.
