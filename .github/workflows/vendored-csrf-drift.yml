@@ -1,0 +1,21 @@
+name: Vendored csrf-go drift check
+on:
+  pull_request:
+    paths:
+      - 'shared/csrf-go/**'
+      - '**/csrf.go'
+      - '**/csrf_test.go'
+      - 'tools/check-vendored-csrf.sh'
+  push:
+    branches: [main]
+    paths:
+      - 'shared/csrf-go/**'
+      - '**/csrf.go'
+      - '**/csrf_test.go'
+      - 'tools/check-vendored-csrf.sh'
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./tools/check-vendored-csrf.sh

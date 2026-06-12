@@ -317,6 +317,34 @@ for ep in frontend-template/entrypoint.sh fullstack-simple/frontend/entrypoint.s
   fi
 done
 
+# CHAT-t5d1u.24 (WS-F F0c): apex/custom-hostname forwarding. Custom-hostname
+# routes serve the app at the HOST ROOT with no rewrite while the pod env
+# keeps the canonical MOSES_BASE_PATH, so root-relative /api/ requests must
+# be forwarded onto the backend's MOSES_BASE_PATH-prefixed routes. The ROOT
+# `location /api/` block therefore carries ${MOSES_BASE_PATH_PREFIX}/api/ as
+# its proxy_pass URI. At a non-root base path the rendered root block must
+# point at /apps/<t>/<s>/api/ (and /apps/<t>/<s>/__moses/ for fullstack-chat,
+# whose backend mounts the mosesproxy InvokePath under basePath too).
+for tmpl in fullstack-oidc/frontend fullstack-simple/frontend fullstack-chat/frontend fullstack-showcase/frontend; do
+  assert "$tmpl" "moses-only" "" "" \
+    "proxy_pass http://example-backend:8080/apps/t/x/api/;" \
+    "" "/apps/t/x/"
+done
+assert "fullstack-chat/frontend" "moses-only" "" "" \
+  "proxy_pass http://example-backend:8080/apps/t/x/__moses/;" \
+  "" "/apps/t/x/"
+
+# Regression: at the root base path the prefix is empty and the rendered
+# root block must be byte-identical to the historical plain pass-through.
+for tmpl in fullstack-oidc/frontend fullstack-simple/frontend fullstack-chat/frontend fullstack-showcase/frontend; do
+  assert "$tmpl" "moses-only" "" "" \
+    "proxy_pass http://example-backend:8080/api/;" \
+    "proxy_pass http://example-backend:8080/apps" "/"
+done
+assert "fullstack-chat/frontend" "moses-only" "" "" \
+  "proxy_pass http://example-backend:8080/__moses/;" \
+  "" "/"
+
 # CHAT-yfmwv: the sub-path API proxy MUST forward the prefix UNCHANGED. The
 # backend registers its API + the mosesproxy InvokePath under MOSES_BASE_PATH
 # (buildMux), so a `proxy_pass .../api/;` URI part — which makes nginx strip

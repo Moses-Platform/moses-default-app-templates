@@ -1,5 +1,5 @@
 {
-  "name": "fullstack-chat",
+  "name": "fullstack-chat-instance",
   "version": "1.0.0",
   "displayName": "Moses Chat Roundtrip Test",
   "description": "Reference template that exercises the full app↔Moses-Manager roundtrip: button-fired chat_prompt actions, MM call-back into the app's REST API via the workspace-tools wedge, completion webhooks, postMessage signalling, and the app-data git repo handover.",

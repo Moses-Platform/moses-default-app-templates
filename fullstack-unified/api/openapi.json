@@ -5,30 +5,14 @@
     "version": "1.0.0",
     "description": "A single Go binary serving both static frontend and API endpoints."
   },
+  "servers": [
+    {
+      "url": "/api/v1",
+      "description": "Canonical API base. MUST stay base-path-free: the platform's workspace-tool proxy prepends MOSES_BASE_PATH itself (CHAT-8qiu0). Paths below are relative to this base — the platform's openapi_parser folds servers[0].url + path into the registered endpoint path."
+    }
+  ],
   "paths": {
-    "/health": {
-      "get": {
-        "operationId": "getHealth",
-        "summary": "Health check",
-        "responses": {
-          "200": {
-            "description": "Healthy",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": { "type": "string" },
-                    "service": { "type": "string" }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/status": {
+    "/status": {
       "get": {
         "operationId": "getStatus",
         "summary": "Application status",

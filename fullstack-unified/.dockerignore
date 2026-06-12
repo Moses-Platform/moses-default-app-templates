@@ -1,0 +1,17 @@
+# NOTE: static/ and api/ must NOT be ignored — static/ is served content
+# compiled into the image and api/openapi.json is the embedded spec.
+node_modules/
+helm/
+.git/
+.gitignore
+*.md
+!README.md
+vendor/
+*.exe
+*.out
+*.test
+.env*
+.vscode/
+.idea/
+*.swp
+*.swo

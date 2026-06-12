@@ -256,6 +256,91 @@ for t in $TEMPLATES; do
 done
 
 # ---------------------------------------------------------------------------
+# 11. moses-app.config.json `name` must NOT collide with the platform's
+#     reserved canonical-template slugs. The platform hard-rejects any
+#     deployed config whose name is in `reservedTemplateSlugs`
+#     (moses-platform-prep/backend/pkg/validator/app_config_validator.go,
+#     CHAT-m9vi: "name %q is reserved for the canonical built-in template"),
+#     so a clone deployed without editing `name` would fail validation on
+#     every deploy. The `<template>-instance` rename convention exists to
+#     dodge that check (see rule 2). RESERVED mirrors the platform list,
+#     PLUS fullstack-oidc proactively: it is a directory in this repo and
+#     the platform list's own source-of-truth comment ("directory names in
+#     moses-default-app-templates/") means it will be added there.
+#
+#     Checked over EVERY config file in the repo (incl. the with-secrets
+#     examples), not just the TEMPLATES list — fullstack-chat and
+#     fullstack-oidc are not in it.
+# ---------------------------------------------------------------------------
+RESERVED="backend-template frontend-template fullstack-chat fullstack-oidc fullstack-showcase fullstack-simple fullstack-unified"
+for cfg in */moses-app.config.json */moses-app.config.with-secrets.example.json; do
+  [ -f "$cfg" ] || continue
+  name=$(sed -n 's/^[[:space:]]*"name": *"\([^"]*\)".*/\1/p' "$cfg" | head -1)
+  if [ -z "$name" ]; then
+    fail "reserved slug: could not extract \"name\" from $cfg"
+    continue
+  fi
+  collided=0
+  for r in $RESERVED; do
+    if [ "$name" = "$r" ]; then
+      collided=1
+      break
+    fi
+  done
+  if [ "$collided" -eq 1 ]; then
+    fail "reserved slug: $cfg has \"name\": \"$name\" which collides with the platform's reservedTemplateSlugs (rename to \"$name-instance\")"
+  else
+    pass "reserved slug: $cfg → $name"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# 12. Every declared Docker build context must carry a .dockerignore at the
+#     CONTEXT ROOT (the only place the build engine reads it — a template-root
+#     .dockerignore is dead weight when the context is a subdir, which is how
+#     fullstack-simple shipped a 104 MB node_modules/ into its frontend build
+#     context). Contexts containing a package.json must ignore node_modules/.
+#     Contexts come from moses-app.config.json docker.files[].context;
+#     extracted with python3 (JSON-correct — the "context" key also appears
+#     in renovate/triage sections with prose values).
+# ---------------------------------------------------------------------------
+if command -v python3 >/dev/null 2>&1; then
+  for cfg in */moses-app.config.json; do
+    [ -f "$cfg" ] || continue
+    t=$(dirname "$cfg")
+    contexts=$(python3 -c '
+import json, sys
+cfg = json.load(open(sys.argv[1]))
+for f in (cfg.get("docker") or {}).get("files") or []:
+    ctx = f.get("context")
+    if ctx:
+        print(ctx)
+' "$cfg") || { fail "dockerignore: could not parse $cfg"; continue; }
+    for ctx in $contexts; do
+      ctx_dir="$t/$ctx"
+      di="$ctx_dir/.dockerignore"
+      # Normalize "<template>/." to "<template>".
+      ctx_dir=$(cd "$ctx_dir" 2>/dev/null && pwd) || { fail "dockerignore: context dir $t/$ctx missing"; continue; }
+      di="$ctx_dir/.dockerignore"
+      if [ ! -f "$di" ]; then
+        fail "dockerignore: missing at build-context root $di (context \"$ctx\" in $cfg)"
+        continue
+      fi
+      pass "dockerignore: present at $di"
+      if [ -f "$ctx_dir/package.json" ]; then
+        if grep -q '^node_modules/$' "$di"; then
+          pass "dockerignore: $di ignores node_modules/"
+        else
+          fail "dockerignore: $di must contain a node_modules/ line (context has a package.json)"
+        fi
+      fi
+    done
+  done
+else
+  echo "SKIP: rule 12 (dockerignore contexts) needs python3"
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo
