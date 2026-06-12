@@ -166,7 +166,7 @@ func TestClassify(t *testing.T) {
 			if c.marker != "" {
 				r.Header.Set(HeaderGatewayAuth, c.marker)
 			}
-			got := m.classify(r, c.sess, c.sessionValid)
+			got, _ := m.classify(r, c.sess, c.sessionValid)
 			if got != c.want {
 				t.Errorf("classify(%q) = %d, want %d", c.path, got, c.want)
 			}
@@ -190,7 +190,7 @@ func TestClassify_HeaderTrustDisabledWithoutSecret(t *testing.T) {
 	r := httptest.NewRequest("GET", "/apps/t/s/api/private/x", nil)
 	r.Header.Set("X-Moses-User-ID", "svc-user")
 	r.Header.Set(HeaderGatewayAuth, "any-marker")
-	if got := m.classify(r, nil, false); got != decisionChallenge {
+	if got, _ := m.classify(r, nil, false); got != decisionChallenge {
 		t.Errorf("header-trust disabled: classify = %d, want decisionChallenge", got)
 	}
 }
@@ -208,17 +208,17 @@ func TestClassify_DenyByDefault(t *testing.T) {
 	m := New(cfg)
 
 	r := httptest.NewRequest("GET", "/some/random/page", nil)
-	if got := m.classify(r, nil, false); got != decisionChallenge {
+	if got, _ := m.classify(r, nil, false); got != decisionChallenge {
 		t.Errorf("deny-by-default: classify = %d, want decisionChallenge", got)
 	}
 
 	rPublic := httptest.NewRequest("GET", "/api/v1/info", nil)
-	if got := m.classify(rPublic, nil, false); got != decisionPublic {
+	if got, _ := m.classify(rPublic, nil, false); got != decisionPublic {
 		t.Errorf("explicit public path: classify = %d, want decisionPublic", got)
 	}
 
 	rHealth := httptest.NewRequest("GET", "/health", nil)
-	if got := m.classify(rHealth, nil, false); got != decisionPublic {
+	if got, _ := m.classify(rHealth, nil, false); got != decisionPublic {
 		t.Errorf("/health: classify = %d, want decisionPublic", got)
 	}
 }
