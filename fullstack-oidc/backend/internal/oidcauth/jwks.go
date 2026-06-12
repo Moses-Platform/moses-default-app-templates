@@ -197,14 +197,21 @@ func (j jwkRSA) toRSA() (*rsa.PublicKey, error) {
 
 // Claims is the validated subset of an OIDC ID token exposed to handlers.
 type Claims struct {
-	Subject  string   `json:"sub"`
-	Email    string   `json:"email"`
-	Name     string   `json:"name"`
-	Username string   `json:"preferred_username"`
-	Issuer   string   `json:"iss"`
-	Audience audSlice `json:"aud"`
-	Expiry   int64    `json:"exp"`
-	IssuedAt int64    `json:"iat"`
+	Subject string `json:"sub"`
+	// MosesUserID is the STABLE Moses platform user UUID, emitted by the
+	// tenant realm's moses_user_id protocol mapper (platform P3a). It is the
+	// SAME value the header-trust path carries in X-Moses-User-ID, whereas
+	// `sub` is a realm-local Keycloak UUID that differs per auth path. Prefer
+	// this for durable identity/ACLs; falls back to `sub` when empty (tokens
+	// minted before the mapper was deployed).
+	MosesUserID string   `json:"moses_user_id"`
+	Email       string   `json:"email"`
+	Name        string   `json:"name"`
+	Username    string   `json:"preferred_username"`
+	Issuer      string   `json:"iss"`
+	Audience    audSlice `json:"aud"`
+	Expiry      int64    `json:"exp"`
+	IssuedAt    int64    `json:"iat"`
 
 	// ResourceAccess carries `resource_access.<client>.roles` — the
 	// Keycloak client-role projection used for in-app authorization.
