@@ -78,13 +78,11 @@
   },
   "maintenance": {
     "renovate": {
-      "enabled": true,
       "schedule": "0 4 * * 1",
       "configPath": "renovate.json",
       "context": "React+Vite frontend. Group React ecosystem updates. Watch for Vite major version changes that may break the build pipeline."
     },
     "logMonitor": {
-      "enabled": true,
       "lookbackMinutes": 15,
       "minErrorCount": 5,
       "context": "Static frontend served by nginx. Common errors: chunk loading failures (stale cache after deploy), CORS issues if API proxy misconfigured, 404s on SPA routes without proper fallback."

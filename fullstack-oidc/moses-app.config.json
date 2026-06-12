@@ -94,13 +94,11 @@
   },
   "maintenance": {
     "renovate": {
-      "enabled": true,
       "schedule": "0 4 * * 1",
       "configPath": "renovate.json",
       "context": "OIDC relying-party app with React frontend, Go backend, and PostgreSQL. Update npm packages, Go modules, Docker images, and Helm chart dependencies."
     },
     "logMonitor": {
-      "enabled": true,
       "lookbackMinutes": 15,
       "minErrorCount": 5,
       "context": "Full-stack OIDC relying party. Common errors: OIDC discovery/JWKS fetch failures, token-exchange errors, session cookie issues, and PostgreSQL connection failures."
