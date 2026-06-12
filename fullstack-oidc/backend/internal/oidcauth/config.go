@@ -124,6 +124,13 @@ const (
 // X-Moses-* header-trust path.
 const HeaderGatewayAuth = "X-Moses-Gateway-Auth"
 
+// HeaderMosesRoles is the request header carrying comma-separated app role
+// names granted to AGENT calls by the tenant admin (Moses shield modal →
+// Agents toggle). It is honoured ONLY on the header-trust path — i.e. only
+// when the request also passed the HeaderGatewayAuth constant-time check —
+// so an external caller cannot mint roles by setting the header.
+const HeaderMosesRoles = "X-Moses-Roles"
+
 // Config is the fully-resolved middleware configuration. Build it from
 // the environment with ConfigFromEnv, or assemble one directly in tests.
 type Config struct {

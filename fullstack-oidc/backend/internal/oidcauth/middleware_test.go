@@ -72,6 +72,59 @@ func TestHandler_HeaderTrustBypassesOIDC(t *testing.T) {
 	if got.Subject != "svc-user-9" {
 		t.Errorf("Subject = %q, want svc-user-9", got.Subject)
 	}
+	if got.Roles != nil {
+		t.Errorf("Roles = %v, want nil when no X-Moses-Roles header is sent", got.Roles)
+	}
+}
+
+// TestHandler_HeaderTrustLiftsAgentRoles confirms the agent-role-grants
+// contract: X-Moses-Roles (set by the platform's WorkspaceToolProxy under
+// the gateway-auth marker) is lifted onto Identity.Roles so role-gated
+// handlers can authorise explicitly-granted agent calls.
+func TestHandler_HeaderTrustLiftsAgentRoles(t *testing.T) {
+	m := New(enabledCfg())
+	var got Identity
+	h := m.Handler(recordingHandler(&got))
+
+	r := httptest.NewRequest("GET", "/apps/t/s/api/private/data", nil)
+	r.Header.Set("X-Moses-User-ID", "svc-user-9")
+	r.Header.Set(HeaderGatewayAuth, testGatewaySecret)
+	r.Header.Set(HeaderMosesRoles, " oidc-admin, oidc-member ,, ")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("header-trust path status = %d, want 200", rec.Code)
+	}
+	want := []string{"oidc-admin", "oidc-member"}
+	if len(got.Roles) != len(want) || got.Roles[0] != want[0] || got.Roles[1] != want[1] {
+		t.Errorf("Roles = %v, want %v (trimmed, empties dropped)", got.Roles, want)
+	}
+	if !got.HasRole("oidc-admin") {
+		t.Errorf("HasRole(oidc-admin) = false, want true")
+	}
+}
+
+// TestHandler_RolesHeaderIgnoredWithoutMarker confirms X-Moses-Roles is
+// worthless without the gateway-auth marker: the request never reaches the
+// header-trust branch, so a forged roles header cannot mint authorisation.
+func TestHandler_RolesHeaderIgnoredWithoutMarker(t *testing.T) {
+	m := New(enabledCfg())
+	h := m.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("next handler must not run — forged roles without the marker must be rejected")
+	}))
+
+	r := httptest.NewRequest("GET", "/apps/t/s/api/private/data", nil)
+	r.Header.Set("X-Moses-User-ID", "forged-user")
+	r.Header.Set(HeaderMosesRoles, "oidc-admin")
+	r.Header.Set("Sec-Fetch-Mode", "navigate")
+	// No X-Moses-Gateway-Auth header.
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusFound {
+		t.Errorf("forged X-Moses-Roles without marker status = %d, want 302 (challenge)", rec.Code)
+	}
 }
 
 // TestHandler_HeaderTrustRejectedWithoutMarker confirms the CHAT-t5d1u.28.21

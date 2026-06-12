@@ -159,13 +159,36 @@ func withIdentity(ctx context.Context, id Identity) context.Context {
 }
 
 // identityFromHeaders builds an Identity from the trusted X-Moses-*
-// headers (pod-to-pod path).
+// headers (pod-to-pod path). Roles come from X-Moses-Roles — agent role
+// grants made in the Moses shield modal (Agents toggle) — and are
+// trustworthy here because this function is only reached after the
+// constant-time gateway-secret match in isHeaderTrusted.
 func identityFromHeaders(r *http.Request) Identity {
 	return Identity{
 		Authenticated: true,
 		Source:        "moses-headers",
 		Subject:       strings.TrimSpace(r.Header.Get("X-Moses-User-ID")),
+		Roles:         parseRolesHeader(r.Header.Get(HeaderMosesRoles)),
 	}
+}
+
+// parseRolesHeader splits a comma-separated role list, trimming whitespace
+// and dropping empties. Returns nil for a blank or all-empty header.
+func parseRolesHeader(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // identityFromSession builds an Identity from a validated session.
