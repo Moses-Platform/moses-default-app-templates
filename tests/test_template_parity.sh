@@ -295,6 +295,52 @@ for cfg in */moses-app.config.json */moses-app.config.with-secrets.example.json;
 done
 
 # ---------------------------------------------------------------------------
+# 12. Every declared Docker build context must carry a .dockerignore at the
+#     CONTEXT ROOT (the only place the build engine reads it — a template-root
+#     .dockerignore is dead weight when the context is a subdir, which is how
+#     fullstack-simple shipped a 104 MB node_modules/ into its frontend build
+#     context). Contexts containing a package.json must ignore node_modules/.
+#     Contexts come from moses-app.config.json docker.files[].context;
+#     extracted with python3 (JSON-correct — the "context" key also appears
+#     in renovate/triage sections with prose values).
+# ---------------------------------------------------------------------------
+if command -v python3 >/dev/null 2>&1; then
+  for cfg in */moses-app.config.json; do
+    [ -f "$cfg" ] || continue
+    t=$(dirname "$cfg")
+    contexts=$(python3 -c '
+import json, sys
+cfg = json.load(open(sys.argv[1]))
+for f in (cfg.get("docker") or {}).get("files") or []:
+    ctx = f.get("context")
+    if ctx:
+        print(ctx)
+' "$cfg") || { fail "dockerignore: could not parse $cfg"; continue; }
+    for ctx in $contexts; do
+      ctx_dir="$t/$ctx"
+      di="$ctx_dir/.dockerignore"
+      # Normalize "<template>/." to "<template>".
+      ctx_dir=$(cd "$ctx_dir" 2>/dev/null && pwd) || { fail "dockerignore: context dir $t/$ctx missing"; continue; }
+      di="$ctx_dir/.dockerignore"
+      if [ ! -f "$di" ]; then
+        fail "dockerignore: missing at build-context root $di (context \"$ctx\" in $cfg)"
+        continue
+      fi
+      pass "dockerignore: present at $di"
+      if [ -f "$ctx_dir/package.json" ]; then
+        if grep -q '^node_modules/$' "$di"; then
+          pass "dockerignore: $di ignores node_modules/"
+        else
+          fail "dockerignore: $di must contain a node_modules/ line (context has a package.json)"
+        fi
+      fi
+    done
+  done
+else
+  echo "SKIP: rule 12 (dockerignore contexts) needs python3"
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo

@@ -1,0 +1,20 @@
+# Documentation
+*.md
+
+# Git
+.git/
+.gitignore
+
+# Dependencies
+vendor/
+
+# Build artifacts
+*.exe
+*.out
+*.test
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
