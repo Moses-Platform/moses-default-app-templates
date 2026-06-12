@@ -256,6 +256,45 @@ for t in $TEMPLATES; do
 done
 
 # ---------------------------------------------------------------------------
+# 11. moses-app.config.json `name` must NOT collide with the platform's
+#     reserved canonical-template slugs. The platform hard-rejects any
+#     deployed config whose name is in `reservedTemplateSlugs`
+#     (moses-platform-prep/backend/pkg/validator/app_config_validator.go,
+#     CHAT-m9vi: "name %q is reserved for the canonical built-in template"),
+#     so a clone deployed without editing `name` would fail validation on
+#     every deploy. The `<template>-instance` rename convention exists to
+#     dodge that check (see rule 2). RESERVED mirrors the platform list,
+#     PLUS fullstack-oidc proactively: it is a directory in this repo and
+#     the platform list's own source-of-truth comment ("directory names in
+#     moses-default-app-templates/") means it will be added there.
+#
+#     Checked over EVERY config file in the repo (incl. the with-secrets
+#     examples), not just the TEMPLATES list — fullstack-chat and
+#     fullstack-oidc are not in it.
+# ---------------------------------------------------------------------------
+RESERVED="backend-template frontend-template fullstack-chat fullstack-oidc fullstack-showcase fullstack-simple fullstack-unified"
+for cfg in */moses-app.config.json */moses-app.config.with-secrets.example.json; do
+  [ -f "$cfg" ] || continue
+  name=$(sed -n 's/^[[:space:]]*"name": *"\([^"]*\)".*/\1/p' "$cfg" | head -1)
+  if [ -z "$name" ]; then
+    fail "reserved slug: could not extract \"name\" from $cfg"
+    continue
+  fi
+  collided=0
+  for r in $RESERVED; do
+    if [ "$name" = "$r" ]; then
+      collided=1
+      break
+    fi
+  done
+  if [ "$collided" -eq 1 ]; then
+    fail "reserved slug: $cfg has \"name\": \"$name\" which collides with the platform's reservedTemplateSlugs (rename to \"$name-instance\")"
+  else
+    pass "reserved slug: $cfg → $name"
+  fi
+done
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo
