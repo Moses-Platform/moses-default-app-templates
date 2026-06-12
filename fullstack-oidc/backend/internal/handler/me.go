@@ -50,9 +50,10 @@ func Me(w http.ResponseWriter, r *http.Request) {
 // (who you are) and authorization (what you may do) are separate steps,
 // and that the second one is driven by the projected token roles.
 //
-// The header-trust (pod-to-pod) path carries no app roles, so a
-// workspace-tool call reaches here un-roled and is correctly 403'd —
-// app-role authorization is a browser-session concern.
+// The header-trust (pod-to-pod) path carries only the roles a tenant admin
+// explicitly granted to AGENT calls (Moses shield modal → Agents toggle,
+// delivered as X-Moses-Roles under the gateway-auth marker). An agent call
+// with no agent role grant reaches here un-roled and is correctly 403'd.
 func AdminArea(w http.ResponseWriter, r *http.Request) {
 	id := oidcauth.IdentityFrom(r.Context())
 	w.Header().Set("Content-Type", "application/json")
