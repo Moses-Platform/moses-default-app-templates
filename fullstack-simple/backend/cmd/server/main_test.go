@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -116,4 +117,74 @@ func TestOpenAPISpec_ServersBasePathFree(t *testing.T) {
 			t.Errorf("servers[].url %q must not contain a /apps/ base-path prefix", s.URL)
 		}
 	}
+}
+
+// WS-F F1: the served spec is normalized to the canonical pattern —
+// servers exactly [{url:"/api/v1"}] with all paths RELATIVE to that base.
+// The platform's openapi_parser folds servers[0].url + path into the
+// registered endpoint path, so given servers[0].url == "/api/v1" a paths
+// key that itself starts with /api/ would double-prefix (the showcase bug
+// class), and /health must not be listed (it would register a phantom
+// tool at /api/v1/health).
+func TestOpenAPISpec_CanonicalServersAndRelativePaths(t *testing.T) {
+	spec := loadOpenAPISpec(t, openAPISpecPath())
+	if len(spec.Servers) != 1 || spec.Servers[0].URL != "/api/v1" {
+		t.Fatalf("servers must be exactly [{url:\"/api/v1\"}], got %+v", spec.Servers)
+	}
+	for p := range spec.Paths {
+		if !strings.HasPrefix(p, "/") {
+			t.Errorf("paths key %q must start with /", p)
+		}
+		if strings.HasPrefix(p, "/api/") {
+			t.Errorf("paths key %q must be relative to servers[0].url (/api/v1) — an /api/-rooted key double-prefixes", p)
+		}
+		if p == "/health" {
+			t.Errorf("/health must not be listed in the served spec — it would register a phantom workspace tool")
+		}
+	}
+}
+
+// WS-F F1 spec↔mux consistency lock: every spec path, folded with
+// servers[0].url ("/api/v1") and mounted under MOSES_BASE_PATH, must
+// resolve to a registered mux route. This is exactly the address the
+// platform's workspace-tool proxy requests (openapi_parser.go folds
+// servers[0].url + path; apppath prepends MOSES_BASE_PATH). We resolve
+// via mux.Handler (pattern non-empty == route exists) instead of
+// ServeHTTP status codes because a registered {id} route legitimately
+// answers 404 for a missing resource.
+func TestOpenAPISpec_MuxConsistency(t *testing.T) {
+	spec := loadOpenAPISpec(t, openAPISpecPath())
+	mux := buildMux("/apps/t/x")
+	param := regexp.MustCompile(`\{[^}]+\}`)
+	for p := range spec.Paths {
+		urlPath := "/apps/t/x/api/v1" + param.ReplaceAllString(p, "1")
+		req := httptest.NewRequest("GET", urlPath, nil)
+		if _, pattern := mux.Handler(req); pattern == "" {
+			t.Errorf("spec path %q → GET %s does not resolve to any registered route (spec↔mux drift)", p, urlPath)
+		}
+	}
+}
+
+func openAPISpecPath() string {
+	return filepath.Join("..", "..", "api", "openapi.json")
+}
+
+type openAPISpec struct {
+	Servers []struct {
+		URL string `json:"url"`
+	} `json:"servers"`
+	Paths map[string]json.RawMessage `json:"paths"`
+}
+
+func loadOpenAPISpec(t *testing.T, specPath string) openAPISpec {
+	t.Helper()
+	raw, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatalf("read OpenAPI spec %s: %v", specPath, err)
+	}
+	var spec openAPISpec
+	if err := json.Unmarshal(raw, &spec); err != nil {
+		t.Fatalf("parse OpenAPI spec %s: %v", specPath, err)
+	}
+	return spec
 }

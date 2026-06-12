@@ -8,44 +8,11 @@
   "servers": [
     {
       "url": "/api/v1",
-      "description": "API v1"
+      "description": "Canonical API base. MUST stay base-path-free: the platform's workspace-tool proxy prepends MOSES_BASE_PATH itself (CHAT-8qiu0). Paths below are relative to this base — the platform's openapi_parser folds servers[0].url + path into the registered endpoint path."
     }
   ],
   "paths": {
-    "/health": {
-      "get": {
-        "operationId": "healthCheck",
-        "summary": "Health check endpoint",
-        "tags": ["System"],
-        "responses": {
-          "200": {
-            "description": "Service is healthy",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "example": "healthy"
-                    },
-                    "service": {
-                      "type": "string",
-                      "example": "fullstack-showcase"
-                    },
-                    "version": {
-                      "type": "string",
-                      "example": "1.0.0"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/moses-info": {
+    "/moses-info": {
       "get": {
         "operationId": "getMosesInfo",
         "summary": "Get current Moses context",
@@ -104,7 +71,7 @@
         }
       }
     },
-    "/api/v1/capabilities": {
+    "/capabilities": {
       "get": {
         "operationId": "listCapabilities",
         "summary": "List all Moses capabilities",
@@ -127,7 +94,7 @@
         }
       }
     },
-    "/api/v1/capabilities/{id}": {
+    "/capabilities/{id}": {
       "get": {
         "operationId": "getCapability",
         "summary": "Get capability by ID",
@@ -161,7 +128,7 @@
         }
       }
     },
-    "/api/v1/notes": {
+    "/notes": {
       "get": {
         "operationId": "listNotes",
         "summary": "List all notes",
@@ -215,7 +182,7 @@
         }
       }
     },
-    "/api/v1/notes/{id}": {
+    "/notes/{id}": {
       "get": {
         "operationId": "getNote",
         "summary": "Get a note by ID",

@@ -11,46 +11,12 @@
   },
   "servers": [
     {
-      "url": "/",
-      "description": "Default server"
+      "url": "/api/v1",
+      "description": "Canonical API base. MUST stay base-path-free: the platform's workspace-tool proxy prepends MOSES_BASE_PATH itself (CHAT-8qiu0). Paths below are relative to this base — the platform's openapi_parser folds servers[0].url + path into the registered endpoint path."
     }
   ],
   "paths": {
-    "/health": {
-      "get": {
-        "operationId": "healthCheck",
-        "summary": "Health check endpoint",
-        "description": "Returns the service health status. Used by Moses platform health probes.",
-        "tags": ["System"],
-        "responses": {
-          "200": {
-            "description": "Service is healthy",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "example": "healthy"
-                    },
-                    "service": {
-                      "type": "string",
-                      "example": "backend-template"
-                    },
-                    "version": {
-                      "type": "string",
-                      "example": "1.0.0"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/items": {
+    "/items": {
       "get": {
         "operationId": "listItems",
         "summary": "List all items",
@@ -139,7 +105,7 @@
         }
       }
     },
-    "/api/v1/items/{id}": {
+    "/items/{id}": {
       "get": {
         "operationId": "getItem",
         "summary": "Get item by ID",
