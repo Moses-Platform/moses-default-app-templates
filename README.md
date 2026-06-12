@@ -127,7 +127,12 @@ gives each surface exactly one correct address:
    `/__moses/`) to the backend with `proxy_pass` carrying NO URI part** — that
    preserves the `MOSES_BASE_PATH` prefix end-to-end. A URI part strips it and
    the backend 404s; `tests/test_nginx_entrypoint.sh` guards the regression
-   (CHAT-yfmwv).
+   (CHAT-yfmwv). The **root** `location /api/` block is the one exception: it
+   must forward onto `${MOSES_BASE_PATH_PREFIX}/api/` so apex/custom-hostname
+   traffic — which the platform serves at the host root with no rewrite, while
+   the pod env keeps the canonical `MOSES_BASE_PATH` — still reaches the
+   single API registration (CHAT-t5d1u.24; an empty prefix renders the plain
+   `/api/` pass-through, so standalone deploys are unchanged).
 
 This is the *current* reality, not a plan: the workspace-tool proxy calls the
 app API under `MOSES_BASE_PATH` (platform fix CHAT-uzu24), all six templates
