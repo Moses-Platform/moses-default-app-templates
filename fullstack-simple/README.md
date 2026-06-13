@@ -1,6 +1,6 @@
 # Fullstack Simple
 
-Two-container Moses template: a React + Vite SPA served by nginx, and a Go API backend, communicating over Kubernetes service DNS. Pick this when you want a clean separation between frontend assets and an API server, but you don't need a database (use `fullstack-showcase` if you do).
+Two-container Moses template: a React + Vite SPA served by nginx, and a Go API backend, communicating over Kubernetes service DNS. Pick this when you want a clean separation between frontend assets and an API server. Need a relational database? You don't need a different template — just declare `dependencies.services: ["postgresql"]` (see Extending below).
 
 ## Layout
 
@@ -91,7 +91,7 @@ helm install fullstack-simple-test . \
 - Backend handlers: add to `backend/internal/handler/`, register in `cmd/server/main.go`. Update `backend/api/openapi.json` so the new endpoint becomes an MCP tool via WorkspaceToolProxy.
   - **The served `openapi.json` is the single source of truth for MCP tool registration** — Moses registers each tool at `servers[0].url` + the path key and calls *that* exact path. If the spec declares a path your router does not serve, every agent tool call 404s while the relative-path UI keeps working. `apiEndpoints.basePath` in `moses-app.config.json` does **not** control this (it's a discovery/health hint). If you change the API base (this template uses `/api/v1`), change it consistently in **all four** places: the router (`cmd/server/main.go`), `openapi.json` (paths + any `servers`), the frontend `fetch()` calls, and `apiEndpoints.basePath`. Curl every declared path on your own running server (expect non-404) before submit.
 - Frontend pages: standard Vite/React. Use the `useApi()` hook for the relative-path convention.
-- Database: copy the `helm/templates/postgresql.yaml` pattern from `fullstack-showcase` and add `dependencies.services: ["postgresql"]` in `moses-app.config.json`.
+- Database: declare `dependencies.services: ["postgresql"]` in `moses-app.config.json` — Moses provisions a PostgreSQL database for your app and injects `DATABASE_URL` + `DB_*` env vars automatically (no chart changes needed). If instead you want an in-pod database you fully control, ship your own `helm/templates/postgresql.yaml` and declare `dependencies.bundledServices: ["postgresql"]` (see `fullstack-showcase`).
 
 Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tutorial.md).
 
