@@ -97,7 +97,7 @@ helm install fullstack-unified-test . \
 
 - Add API handlers in `main.go` (or split into a `handlers/` package). Register routes on `mux` and update `api/openapi.json` so the new endpoint becomes an MCP tool.
 - Frontend lives in `static/`. Edit any of the existing files or add new ones — they get re-embedded on build.
-- Need a database? Switch to `fullstack-showcase` — adding Postgres support to a single-binary template doubles the deployment complexity and defeats the purpose.
+- Need a relational database? Just declare `dependencies.services: ["postgresql"]` in `moses-app.config.json` — Moses provisions a PostgreSQL database for your app and injects `DATABASE_URL` + `DB_*` env vars automatically (no chart changes needed). If instead you want an in-pod database you fully control, ship your own `helm/templates/postgresql.yaml` and declare `dependencies.bundledServices: ["postgresql"]` (see `fullstack-showcase`).
 
 Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tutorial.md).
 

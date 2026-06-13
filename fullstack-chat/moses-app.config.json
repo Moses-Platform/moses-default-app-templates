@@ -134,7 +134,8 @@
     }
   },
   "dependencies": {
-    "services": ["postgresql"]
+    "services": ["postgresql"],
+    "bundledServices": ["postgresql"]
   },
   "validation": {
     "enabled": true,

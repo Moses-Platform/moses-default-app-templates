@@ -40,7 +40,7 @@ The template includes a working in-memory CRUD example with items scoped per ten
 | POST | `/api/v1/items` | Create an item (`{"title": "..."}`) — returns the created item with UUID and timestamp |
 | DELETE | `/api/v1/items/{id}` | Delete an item by UUID |
 
-Items are stored in memory using `sync.RWMutex` and are scoped by the `X-Moses-Tenant-ID` header that Moses injects automatically. Data resets on pod restart — for persistent storage, see the fullstack-showcase template.
+Items are stored in memory using `sync.RWMutex` and are scoped by the `X-Moses-Tenant-ID` header that Moses injects automatically. Data resets on pod restart — for persistent storage, declare `dependencies.services: ["postgresql"]` in `moses-app.config.json` and Moses provisions a PostgreSQL database for your app, injecting `DATABASE_URL` + `DB_*` env vars automatically (no chart changes needed).
 
 ## API Path Convention
 
