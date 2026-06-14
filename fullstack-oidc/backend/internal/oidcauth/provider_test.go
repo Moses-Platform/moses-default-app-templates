@@ -348,3 +348,64 @@ func TestExchangeCode_ErrorResponse(t *testing.T) {
 		t.Errorf("exchangeCode should error on an OAuth error response")
 	}
 }
+
+func TestRewriteToInternalHost(t *testing.T) {
+	tests := []struct {
+		name           string
+		discovered     string
+		internalIssuer string
+		want           string
+	}{
+		{
+			name:           "frontend host rewritten to internal svc, path preserved",
+			discovered:     "http://localhost:9876/realms/moses/protocol/openid-connect/token",
+			internalIssuer: "http://keycloak.moses.svc.cluster.local:8080/realms/moses",
+			want:           "http://keycloak.moses.svc.cluster.local:8080/realms/moses/protocol/openid-connect/token",
+		},
+		{
+			name:           "jwks uri rewritten, custom realm path preserved",
+			discovered:     "http://localhost:9876/realms/custom/protocol/openid-connect/certs",
+			internalIssuer: "https://kc-internal:8443/realms/custom",
+			want:           "https://kc-internal:8443/realms/custom/protocol/openid-connect/certs",
+		},
+		{
+			name:           "scheme rewritten when issuer differs",
+			discovered:     "https://kc.example.com/realms/m/protocol/openid-connect/token",
+			internalIssuer: "http://kc.svc:8080/realms/m",
+			want:           "http://kc.svc:8080/realms/m/protocol/openid-connect/token",
+		},
+		{
+			name:           "empty discovered returned unchanged",
+			discovered:     "",
+			internalIssuer: "http://kc.svc:8080/realms/m",
+			want:           "",
+		},
+		{
+			name:           "garbage discovered (no host) returned unchanged",
+			discovered:     "not a url",
+			internalIssuer: "http://kc.svc:8080/realms/m",
+			want:           "not a url",
+		},
+		{
+			name:           "empty internalIssuer leaves discovered unchanged",
+			discovered:     "http://localhost:9876/realms/m/token",
+			internalIssuer: "",
+			want:           "http://localhost:9876/realms/m/token",
+		},
+		{
+			name:           "garbage internalIssuer (no host) leaves discovered unchanged",
+			discovered:     "http://localhost:9876/realms/m/token",
+			internalIssuer: "not a url",
+			want:           "http://localhost:9876/realms/m/token",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := rewriteToInternalHost(tt.discovered, tt.internalIssuer)
+			if got != tt.want {
+				t.Errorf("rewriteToInternalHost(%q, %q) = %q, want %q",
+					tt.discovered, tt.internalIssuer, got, tt.want)
+			}
+		})
+	}
+}

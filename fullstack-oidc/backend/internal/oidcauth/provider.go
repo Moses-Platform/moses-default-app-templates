@@ -88,8 +88,13 @@ func (p *provider) discover(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("oidcauth: internal discovery (%s): %w", p.cfg.InternalIssuer, err)
 	}
-	p.tokenURL = intDoc.TokenEndpoint
-	p.keys = newKeySet(intDoc.JWKSURI, p.httpClient)
+	// Keycloak fills token_endpoint/jwks_uri in the discovery doc with its
+	// FRONTEND host (from KC_HOSTNAME_URL) even when the doc is fetched from
+	// the internal service URL. Rewrite both onto the in-cluster issuer's
+	// scheme+host so the server-to-server token exchange + JWKS fetch are
+	// reachable from inside the pod (Bug B, CHAT-t5d1u.28.x).
+	p.tokenURL = rewriteToInternalHost(intDoc.TokenEndpoint, p.cfg.InternalIssuer)
+	p.keys = newKeySet(rewriteToInternalHost(intDoc.JWKSURI, p.cfg.InternalIssuer), p.httpClient)
 
 	// External discovery is best-effort: when it succeeds it gives us
 	// the canonical browser-facing endpoints; when it fails (in-cluster
@@ -137,6 +142,24 @@ func (p *provider) fetchDiscovery(ctx context.Context, issuer string) (*discover
 		return nil, fmt.Errorf("discovery missing required endpoints")
 	}
 	return &doc, nil
+}
+
+// rewriteToInternalHost forces a Keycloak-advertised endpoint (which carries
+// the BROWSER/frontend host from KC_HOSTNAME_URL) onto the in-cluster issuer's
+// scheme+host so server-to-server calls (token exchange, JWKS) are reachable
+// from inside the pod. Paths (incl. custom realm paths) are preserved.
+func rewriteToInternalHost(discovered, internalIssuer string) string {
+	d, err := url.Parse(discovered)
+	if err != nil || d.Host == "" {
+		return discovered
+	}
+	i, err := url.Parse(internalIssuer)
+	if err != nil || i.Host == "" {
+		return discovered
+	}
+	d.Scheme = i.Scheme
+	d.Host = i.Host
+	return d.String()
 }
 
 // authorizeRedirectURL builds the browser redirect to the OIDC
