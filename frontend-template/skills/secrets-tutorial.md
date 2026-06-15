@@ -18,8 +18,10 @@ fullstack template instead**:
 - `fullstack-chat` — chat-roundtrip + LLM API integration
 - `fullstack-oidc` — OIDC relying-party + app-issued JWTs
 
-Each ships a `skills/secrets-tutorial.md` with the Go snippet, a sibling
-`moses-app.config.with-secrets.example.json`, and the read+validate pattern.
+The hands-on walkthrough (read the env var, declare `secrets.external[]`, the
+5-step enable flow) ships as the embedded **`secrets-tutorial`** agent skill —
+already on hand in every agent execution pod, plus a sibling
+`moses-app.config.with-secrets.example.json` in each fullstack template.
 
 For the platform-side contract (the `awaiting_secrets` gate, image reuse on
 resume, the Apps-page shield modal) see `arch.md § App-declared secrets` in
