@@ -23,6 +23,21 @@ fi
 
 case "$MOSES_EMBEDDING_FRAMING" in
   public)
+    # SECURITY (CHAT-dn23s): "public" emits frame-ancestors * for EVERY
+    # route. That is correct for an all-public app (e.g. a marketing site),
+    # but if this app ALSO serves an authenticated/admin surface, those
+    # routes inherit frame-ancestors * too and become clickjackable. When
+    # you opt into public framing AND have authed pages, lock the sensitive
+    # routes back down with a per-location override in nginx.conf, e.g.:
+    #
+    #   location /admin {
+    #     add_header Content-Security-Policy "frame-ancestors 'none'; ${MOSES_CSP_REPORT_URI}" always;
+    #     add_header X-Frame-Options "DENY" always;
+    #     add_header X-Content-Type-Options "nosniff" always;  # add_header does NOT inherit
+    #     try_files $uri $uri/ /index.html;
+    #   }
+    #
+    # (See moses-landingpage-v2 for a worked example.)
     MOSES_CSP_FRAME_ANCESTORS="*"
     MOSES_X_FRAME_OPTIONS=""
     ;;
