@@ -1,6 +1,6 @@
 {
   "name": "frontend-template-instance",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "displayName": "My App",
   "description": "UPDATE THIS — describe what your app does. This text appears in the Moses app registry.",
   "appType": "frontend",

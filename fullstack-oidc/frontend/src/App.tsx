@@ -9,7 +9,7 @@
  * MOSES ROUTING: all fetch() calls use RELATIVE paths (no leading '/').
  * The app is served under /apps/<tenant>/<slug>/ — relative paths route
  * through the app's nginx proxy to the Go backend. Absolute paths bypass
- * the proxy and hit the Moses platform (404). See auth/api.ts and
+ * the proxy and hit the Moses platform (404). See api/client.ts and
  * utils/baseUrl.ts.
  */
 import { BrowserRouter, Routes, Route } from 'react-router-dom';

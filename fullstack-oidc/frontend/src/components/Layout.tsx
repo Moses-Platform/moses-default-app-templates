@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
+import ThemeToggle from './ThemeToggle';
 import './Layout.css';
 
 /**
@@ -103,6 +104,7 @@ export default function Layout() {
                 </button>
               </>
             )}
+            <ThemeToggle />
           </div>
         </header>
 

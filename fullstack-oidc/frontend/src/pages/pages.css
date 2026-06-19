@@ -1,4 +1,5 @@
-/* Shared styling for the fullstack-oidc demo pages. */
+/* Shared styling for the fullstack-oidc demo pages.
+   Tokens live in styles/theme.css; this file only composes them. */
 
 .page {
   display: flex;
@@ -7,7 +8,7 @@
 }
 
 .page > h2 {
-  font-size: var(--font-size-2xl);
+  font-size: var(--font-size-3xl);
   margin: 0;
 }
 
@@ -17,16 +18,24 @@
   max-width: 70ch;
 }
 
+/* Bento content card: elevated emerald-aligned surface with hover lift. */
 .card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  position: relative;
+  background: var(--color-primary-background);
+  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-lg);
   padding: var(--spacing-6);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
+  transition: box-shadow var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
 }
 
 .card h3 {
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-xl);
   margin: 0 0 var(--spacing-4) 0;
 }
 
@@ -41,28 +50,33 @@
 
 /* Route badges — PUBLIC vs PROTECTED vs ROLE-GATED. */
 .badge {
-  display: inline-block;
-  padding: 2px var(--spacing-2);
-  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25em 0.62em;
+  border-radius: 999px;
+  font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
-  text-transform: uppercase;
   letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid var(--color-border-subtle);
 }
 
 .badge-public {
-  background: var(--badge-public-bg);
-  color: var(--badge-public-text);
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  border-color: rgba(var(--color-primary-rgb), 0.3);
 }
 
 .badge-protected {
-  background: var(--badge-protected-bg);
-  color: var(--badge-protected-text);
+  background: var(--color-info-bg);
+  color: var(--color-info);
 }
 
 .badge-role {
-  background: var(--badge-role-bg);
-  color: var(--badge-role-text);
+  background: var(--color-brand-primary-light);
+  color: var(--color-brand-primary);
+  border-color: rgba(var(--color-primary-rgb), 0.4);
 }
 
 /* Definition-list identity display. */
@@ -74,13 +88,14 @@
 }
 
 .kv dt {
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
 }
 
 .kv dd {
   margin: 0;
+  color: var(--color-text-secondary);
   word-break: break-word;
 }
 
@@ -92,19 +107,22 @@
 }
 
 .chip {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   padding: var(--spacing-1) var(--spacing-3);
   border-radius: 999px;
-  background: var(--color-primary-light);
-  color: var(--color-primary);
+  background: var(--color-brand-primary-light);
+  color: var(--color-brand-primary);
+  font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
+  border: 1px solid rgba(var(--color-primary-rgb), 0.3);
 }
 
 .chip-empty {
-  background: var(--color-bg);
-  color: var(--color-text-secondary);
-  border: 1px dashed var(--color-border);
+  background: var(--color-secondary-background);
+  color: var(--color-text-tertiary);
+  border: 1px dashed var(--color-border-strong);
 }
 
 /* Status banners. */
@@ -112,26 +130,30 @@
   border-radius: var(--radius-md);
   padding: var(--spacing-3) var(--spacing-4);
   font-size: var(--font-size-sm);
+  border: 1px solid transparent;
 }
 
+.banner code { background: rgba(var(--color-page-rgb), 0.45); border-color: transparent; }
+
 .banner-info {
-  background: var(--color-primary-light);
-  color: var(--color-primary);
+  background: var(--color-info-bg);
+  color: var(--color-info);
+  border-color: rgba(var(--color-info), 0.3);
 }
 
 .banner-ok {
-  background: var(--banner-ok-bg);
-  color: var(--banner-ok-text);
+  background: var(--color-success-bg);
+  color: var(--color-success);
 }
 
 .banner-warn {
-  background: var(--banner-warn-bg);
-  color: var(--banner-warn-text);
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
 }
 
 .banner-error {
-  background: var(--banner-error-bg);
-  color: var(--banner-error-text);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
 }
 
 /* Route table. */
@@ -145,13 +167,21 @@
 .route-table td {
   text-align: left;
   padding: var(--spacing-3);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border-subtle);
   vertical-align: top;
 }
 
 .route-table th {
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary);
   font-weight: var(--font-weight-semibold);
+}
+
+.route-table tbody tr {
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.route-table tbody tr:hover {
+  background: var(--color-bg-hover);
 }
 
 .route-table tr:last-child td {
@@ -182,11 +212,12 @@
   width: 32px;
   height: 32px;
   border-radius: 999px;
-  background: var(--color-primary);
+  background: var(--color-brand-primary-button);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-family: var(--font-mono);
   font-weight: var(--font-weight-bold);
   font-size: var(--font-size-sm);
 }
@@ -211,16 +242,6 @@
 
 .entry-form input {
   flex: 1;
-  padding: var(--spacing-2) var(--spacing-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
-  font-family: inherit;
-}
-
-.entry-form input:focus {
-  outline: 2px solid var(--color-primary);
-  outline-offset: -1px;
 }
 
 .entry-list {
@@ -234,7 +255,8 @@
 
 .entry-list li {
   padding: var(--spacing-3);
-  background: var(--color-bg);
+  background: var(--color-secondary-background);
+  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md);
   font-size: var(--font-size-sm);
   display: flex;
@@ -243,28 +265,37 @@
 }
 
 .entry-list li time {
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   white-space: nowrap;
 }
 
+/* Hero: emerald-tinted technical banner (no flat brand fill). */
 .hero {
-  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
-  color: #fff;
+  position: relative;
+  background:
+    radial-gradient(900px 360px at 90% -20%, rgba(var(--color-primary-rgb), 0.16), transparent 60%),
+    var(--color-primary-background);
+  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-xl);
   padding: var(--spacing-10) var(--spacing-8);
+  box-shadow: var(--shadow-md);
 }
 
 .hero h2 {
-  color: #fff;
-  font-size: var(--font-size-3xl);
+  font-size: var(--font-size-4xl);
   margin: 0 0 var(--spacing-3) 0;
+  background: linear-gradient(120deg, var(--color-text-primary) 30%, var(--color-brand-primary));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .hero p {
   margin: 0;
   max-width: 60ch;
-  opacity: 0.92;
+  color: var(--color-text-secondary);
 }
 
 .feature-grid {
@@ -274,7 +305,6 @@
 }
 
 .empty-note {
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary);
   font-size: var(--font-size-sm);
-  font-style: italic;
 }

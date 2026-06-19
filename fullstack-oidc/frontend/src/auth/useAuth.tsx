@@ -1,25 +1,32 @@
 /**
  * Shared authentication state for the fullstack-oidc reference app.
  *
- * `AuthProvider` runs the BFF bootstrap ONCE at app mount:
- *   1. Try the existing session cookie (`GET /api/v1/me`).
- *   2. If none, run a silent (`prompt=none`) SSO probe in a hidden
- *      iframe — invisible if the user is already logged into Moses.
- *   3. Fall back to anonymous; the user clicks "Sign in".
+ * Identity + posture are SERVER STATE, so they live in TanStack Query
+ * (`useMe` / `usePublicInfo` in ../api/hooks) — not in hand-rolled
+ * useState + useEffect-fetch. This provider layers the OIDC BFF bootstrap
+ * lifecycle on top of those queries:
+ *   1. The `me` query reads the existing session cookie (`GET /api/v1/me`).
+ *   2. If it resolves anonymous, a silent (`prompt=none`) SSO probe runs
+ *      ONCE in a hidden iframe — invisible if the user is already logged
+ *      into Moses — then the `me` query is invalidated to re-read.
+ *   3. Otherwise the user is anonymous and clicks "Sign in".
  *
- * Every page reads the result via `useAuth()` so the demo pages all
+ * Every page reads the derived phase via `useAuth()` so the demo pages all
  * reflect the same identity without each re-fetching.
  */
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
-import { fetchMe, fetchPublicInfo, type MeResponse, type PublicInfo } from './api';
+import { useQueryClient } from '@tanstack/react-query';
+import { useMe, usePublicInfo } from '../api/hooks';
+import { queryKeys } from '../api/queryKeys';
+import type { MeResponse, PublicInfo } from '../api/client';
 import { attemptSilentSSO, startInteractiveLogin, logout } from './silentSSO';
 
 /** Where the bootstrap currently stands. */
@@ -38,7 +45,7 @@ export interface AuthState {
   via: AuthVia;
   /** Human-readable note about the last bootstrap outcome. */
   note: string;
-  /** Re-run the full bootstrap (used after sign-in returns). */
+  /** Re-read the identity (used after sign-in returns / a silent probe). */
   refresh: () => Promise<void>;
   /** Navigate to the interactive Keycloak login. */
   signIn: () => void;
@@ -49,57 +56,53 @@ export interface AuthState {
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [phase, setPhase] = useState<AuthPhase>('loading');
-  const [me, setMe] = useState<MeResponse | null>(null);
-  const [info, setInfo] = useState<PublicInfo | null>(null);
+  const qc = useQueryClient();
+  const meQuery = useMe();
+  const infoQuery = usePublicInfo();
+
+  // `via` is the only piece of genuinely local lifecycle state: it records
+  // HOW the (server-owned) identity was obtained, for the demo narration.
   const [via, setVia] = useState<AuthVia>('none');
-  const [note, setNote] = useState('');
+  // Guard so the silent-SSO probe runs at most once per anonymous result.
+  const silentTried = useRef(false);
 
-  const refresh = useCallback(async () => {
-    setPhase('loading');
-    try {
-      setInfo(await fetchPublicInfo());
-    } catch {
-      /* public-info is best-effort — the app still works without it. */
-    }
+  const me = meQuery.data ?? null;
+  const info = infoQuery.data ?? null;
 
-    // 1. Existing session cookie?
-    const existing = await fetchMe();
-    if (existing?.authenticated) {
-      setMe(existing);
-      setVia('session');
-      setNote('Signed in from an existing session cookie.');
-      setPhase('authenticated');
+  // Bootstrap orchestration (an imperative side-effect, NOT data-into-useState:
+  // the data lives in Query). When the `me` query settles to anonymous and a
+  // silent probe has not yet been tried, run it once; if it establishes a
+  // session, invalidate `me` so Query re-reads the now-authenticated identity.
+  useEffect(() => {
+    if (meQuery.isPending) return;
+    if (me?.authenticated) {
+      setVia((prev) => (prev === 'none' ? 'session' : prev));
       return;
     }
-
-    // 2. Silent SSO — invisible if the user is already logged into Moses.
-    const silent = await attemptSilentSSO();
-    if (silent.authenticated) {
-      const after = await fetchMe();
-      if (after?.authenticated) {
-        setMe(after);
+    if (silentTried.current) return;
+    silentTried.current = true;
+    void (async () => {
+      const silent = await attemptSilentSSO();
+      if (silent.authenticated) {
         setVia('silent-sso');
-        setNote('Signed in silently via prompt=none — no login page was shown.');
-        setPhase('authenticated');
-        return;
+        await qc.invalidateQueries({ queryKey: queryKeys.me });
       }
-    }
+    })();
+  }, [meQuery.isPending, me?.authenticated, qc]);
 
-    // 3. Anonymous — interactive login required.
-    setMe(null);
-    setVia('none');
-    setNote(
-      silent.authenticated === false
-        ? `Silent SSO did not establish a session (${silent.reason}). Click "Sign in".`
-        : 'Not signed in.',
-    );
-    setPhase('anonymous');
-  }, []);
+  const phase: AuthPhase = meQuery.isPending
+    ? 'loading'
+    : me?.authenticated
+      ? 'authenticated'
+      : 'anonymous';
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const note = me?.authenticated
+    ? via === 'silent-sso'
+      ? 'Signed in silently via prompt=none — no login page was shown.'
+      : 'Signed in from an existing session cookie.'
+    : silentTried.current
+      ? 'Silent SSO did not establish a session. Click "Sign in".'
+      : 'Not signed in.';
 
   const value = useMemo<AuthState>(
     () => ({
@@ -108,11 +111,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       info,
       via,
       note,
-      refresh,
+      refresh: async () => {
+        silentTried.current = false;
+        await qc.invalidateQueries({ queryKey: queryKeys.me });
+      },
       signIn: () => startInteractiveLogin(),
       signOut: () => logout(),
     }),
-    [phase, me, info, via, note, refresh],
+    [phase, me, info, via, note, qc],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

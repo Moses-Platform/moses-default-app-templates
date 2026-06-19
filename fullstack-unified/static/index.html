@@ -14,11 +14,27 @@
         data-chart-id="{{.ChartID}}"
         data-deployment-id="{{.DeploymentID}}"
         data-api-base="{{.APIBase}}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="favicon.svg">
+  <!-- No-flash theme init: set data-theme before first paint. -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('moses-theme');
+        if (t !== 'light' && t !== 'dark') {
+          t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <div class="app">
+    <button class="theme-toggle" type="button" id="theme-toggle" aria-label="Toggle dark/light mode" title="Toggle dark/light mode">☀</button>
     <header class="header">
       <h1>Fullstack Unified</h1>
       <p>Single Go binary &mdash; static files + API in one container</p>
@@ -35,5 +51,22 @@
   <!-- BLF-J: install error/console capture early so it catches app.js errors too. -->
   <script src="moses-browser-logger.js"></script>
   <script src="app.js"></script>
+  <!-- Vanilla dark/light toggle (no framework). -->
+  <script>
+    (function () {
+      var btn = document.getElementById('theme-toggle');
+      if (!btn) return;
+      function sync() {
+        btn.textContent = (document.documentElement.getAttribute('data-theme') === 'light') ? '☾' : '☀';
+      }
+      sync();
+      btn.addEventListener('click', function () {
+        var next = (document.documentElement.getAttribute('data-theme') === 'light') ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('moses-theme', next); } catch (e) {}
+        sync();
+      });
+    })();
+  </script>
 </body>
 </html>

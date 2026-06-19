@@ -1,6 +1,6 @@
 {
   "name": "fullstack-oidc-frontend",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Moses OIDC relying-party reference app - Frontend",
   "type": "module",
   "scripts": {
@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.62.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.15.1"

@@ -7,6 +7,24 @@
     <meta name="moses-base-path" content="__MOSES_BASE_PATH__" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Fullstack Simple</title>
+
+    <!-- Distinctive display + mono webfonts; graceful fallback to the system stack. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+    <!-- No-flash theme init: set data-theme before first paint. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('moses-theme');
+          if (t !== 'light' && t !== 'dark') {
+            t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          }
+          document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

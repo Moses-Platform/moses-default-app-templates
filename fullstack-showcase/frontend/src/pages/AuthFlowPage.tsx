@@ -1,18 +1,9 @@
-import { useEffect, useState } from 'react';
-import { getMosesInfo } from '../api/client';
+import { useMosesInfo } from '../api/hooks';
 import FlowDiagram from '../components/FlowDiagram';
 import './AuthFlowPage.css';
 
 export default function AuthFlowPage() {
-  const [mosesInfo, setMosesInfo] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    getMosesInfo()
-      .then(setMosesInfo)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
+  const { data: mosesInfo, isPending: loading } = useMosesInfo();
 
   const authMethods = [
     { name: 'OIDC/JWT', description: 'Keycloak integration for web users' },

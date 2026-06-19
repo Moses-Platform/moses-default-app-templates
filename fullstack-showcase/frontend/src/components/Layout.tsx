@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
+import ThemeToggle from './ThemeToggle';
 import './Layout.css';
 
 export default function Layout() {
@@ -71,6 +72,7 @@ export default function Layout() {
           </button>
           <h1>Moses Platform Showcase</h1>
           <p className="header-subtitle">Interactive demonstration of platform capabilities</p>
+          <ThemeToggle />
         </header>
 
         <main className="content-area">

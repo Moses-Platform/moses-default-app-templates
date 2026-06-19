@@ -10,7 +10,7 @@
 .hero-section h2 {
   font-size: var(--font-size-4xl);
   margin-bottom: var(--spacing-4);
-  background: linear-gradient(135deg, var(--color-primary) 0%, #7C3AED 100%);
+  background: linear-gradient(120deg, var(--color-brand-primary) 0%, var(--color-info) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -58,9 +58,9 @@
 }
 
 .context-value {
-  font-family: 'SF Mono', Monaco, monospace;
+  font-family: var(--font-mono);
   font-size: var(--font-size-sm);
-  color: var(--color-text);
+  color: var(--color-text-primary);
 }
 
 .context-value.mode-mcp-proxy {

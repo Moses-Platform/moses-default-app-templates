@@ -19,13 +19,16 @@
 }
 
 .hero h1 {
-  font-size: 3rem;
+  font-size: var(--font-size-4xl);
   margin-bottom: var(--spacing-4);
-  color: var(--color-text);
+  background: linear-gradient(120deg, var(--color-text-primary) 30%, var(--color-brand-primary));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .hero-subtitle {
-  font-size: 1.25rem;
+  font-size: var(--font-size-lg);
   color: var(--color-text-secondary);
   max-width: 600px;
   margin: 0 auto;
@@ -47,15 +50,17 @@
 }
 
 .feature-card {
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
+  position: relative;
+  background: var(--color-primary-background);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
   padding: var(--spacing-6);
-  transition: all 0.2s ease;
+  box-shadow: var(--shadow-md);
+  transition: box-shadow var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
 }
 
 .feature-card:hover {
-  box-shadow: var(--card-hover-shadow);
+  box-shadow: var(--shadow-lg);
   transform: translateY(-2px);
 }
 
@@ -65,9 +70,9 @@
 }
 
 .feature-card h3 {
-  font-size: 1.25rem;
+  font-size: var(--font-size-2xl);
   margin-bottom: var(--spacing-3);
-  color: var(--color-text);
+  color: var(--color-text-primary);
 }
 
 .feature-card p {
@@ -78,10 +83,11 @@
 
 .cta {
   text-align: center;
-  background-color: var(--color-surface);
-  border-radius: var(--radius);
+  background: var(--color-secondary-background);
+  border: 1px solid var(--color-border-subtle);
+  border-left: 3px solid var(--color-brand-primary);
+  border-radius: var(--radius-md);
   padding: var(--spacing-8);
-  border: 1px solid var(--color-border);
 }
 
 .cta h2 {
@@ -89,18 +95,18 @@
 }
 
 .cta p {
-  font-size: 1.125rem;
+  font-size: var(--font-size-lg);
   color: var(--color-text-secondary);
   margin: 0;
 }
 
 @media (max-width: 768px) {
   .hero h1 {
-    font-size: 2rem;
+    font-size: var(--font-size-3xl);
   }
 
   .hero-subtitle {
-    font-size: 1rem;
+    font-size: var(--font-size-base);
   }
 
   .feature-grid {

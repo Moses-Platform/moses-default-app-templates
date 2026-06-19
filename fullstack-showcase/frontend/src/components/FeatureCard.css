@@ -1,42 +1,59 @@
 .feature-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  position: relative;
+  background: var(--color-primary-background);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
   padding: var(--spacing-6);
-  transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-4);
+  gap: var(--spacing-3);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: transform var(--dur) var(--ease-out),
+              box-shadow var(--dur) var(--ease-out),
+              border-color var(--dur) var(--ease-out);
+}
+
+/* emerald top-accent that draws in on hover */
+.feature-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, var(--color-brand-primary), transparent 65%);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--dur) var(--ease-out);
 }
 
 .feature-card.clickable {
   cursor: pointer;
-  border: none;
-  background: var(--color-surface);
   text-align: left;
   width: 100%;
+  font: inherit;
+  color: inherit;
 }
 
 .feature-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-4px);
   box-shadow: var(--shadow-lg);
+  border-color: var(--color-border-strong);
 }
-
-.feature-card.clickable:hover {
-  border-color: var(--color-primary);
-}
+.feature-card:hover::before { transform: scaleX(1); }
+.feature-card.clickable:hover { border-color: rgba(var(--color-primary-rgb), 0.55); }
 
 .feature-icon {
-  font-size: 48px;
+  font-size: 40px;
   line-height: 1;
-  margin-bottom: var(--spacing-2);
+  margin-bottom: var(--spacing-1);
+  filter: drop-shadow(0 4px 12px rgba(var(--color-primary-rgb), 0.18));
 }
 
 .feature-title {
+  font-family: var(--font-display);
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-semibold);
-  color: var(--color-text);
-  margin: 0 0 var(--spacing-2) 0;
+  color: var(--color-text-primary);
+  letter-spacing: -0.01em;
+  margin: 0;
 }
 
 .feature-description {
@@ -49,23 +66,20 @@
 .feature-details {
   list-style: none;
   padding: 0;
-  margin: var(--spacing-4) 0 0 0;
+  margin: var(--spacing-2) 0 0 0;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-2);
 }
-
 .feature-details li {
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
   padding-left: var(--spacing-4);
   position: relative;
 }
-
 .feature-details li::before {
-  content: '•';
+  content: '▸';
   position: absolute;
   left: 0;
-  color: var(--color-primary);
-  font-weight: var(--font-weight-bold);
+  color: var(--color-brand-primary);
 }

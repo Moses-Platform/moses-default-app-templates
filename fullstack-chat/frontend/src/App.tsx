@@ -4,7 +4,8 @@
  *
  * MOSES ROUTING (CHAT-pswm.2/.8/.9 — canonical reference impl):
  *   - Calls to THIS APP's backend use relative paths: `fetch('api/v1/entries')`.
- *     They route through the app's nginx proxy to our Go backend.
+ *     They route through the app's nginx proxy to our Go backend. The entries
+ *     list (non-stream server state) lives in TanStack Query (api/hooks.ts).
  *   - Calls to MOSES platform actions go through `window.moses.actions.invoke`,
  *     supplied by the iframe SDK loaded in index.html. The SDK POSTs to
  *     `/__moses/invoke` on this app's OWN backend (same-origin under the
@@ -12,18 +13,20 @@
  *     pod-to-pod to moses-backend with the user's JWT preserved. The
  *     iframe never contacts moses-backend directly — see iframe_sdk_handler.go
  *     for the SDK source and shared/mosesproxy-go/proxy.go for the proxy.
+ *
+ * DATA-LAYER SCOPE (FRONTEND_DATA_LAYER.md):
+ *   - Non-stream data (the entries list) is migrated to TanStack Query.
+ *   - The imperative surfaces stay imperative on purpose: the SDK action invoke
+ *     (an explicit on-click) and the host-shell postMessage listener (a push
+ *     channel, not a data fetch). The completion postMessage invalidates the
+ *     entries query so the feed reconciles immediately.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEntries } from './api/hooks';
+import { queryKeys } from './api/queryKeys';
+import ThemeToggle from './components/ThemeToggle';
 import './App.css';
-
-type Entry = {
-  id: string;
-  text: string;
-  source: string;
-  created_at: string;
-};
-
-type EntriesResponse = { entries: Entry[]; count: number };
 
 type CompletionMessage = {
   type: 'moses_embed_chat_complete';
@@ -49,42 +52,23 @@ type StatusBanner =
 const APP_SLUG = 'fullstack-chat';
 const ACTION_ID = 'generate-entry';
 
-const POLL_INTERVAL_MS = 2_000;
-
-async function fetchEntries(): Promise<Entry[]> {
-  const r = await fetch('api/v1/entries', { credentials: 'same-origin' });
-  if (!r.ok) throw new Error(`entries fetch failed: ${r.status}`);
-  const j = (await r.json()) as EntriesResponse;
-  return j.entries ?? [];
-}
-
 export default function App() {
-  const [entries, setEntries] = useState<Entry[]>([]);
+  // Server state: the entries list lives in TanStack Query (with a steady-state
+  // refetchInterval backstop — see api/hooks.ts). Client/UI state stays local.
+  const { data: entries = [] } = useEntries();
+  const queryClient = useQueryClient();
   const [topic, setTopic] = useState('');
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<StatusBanner>({ kind: 'idle' });
-  const lastSeenRef = useRef<number>(0);
 
-  const refresh = useCallback(async () => {
-    try {
-      const next = await fetchEntries();
-      setEntries(next);
-    } catch (err) {
-      console.warn('[fullstack-chat] poll failed', err);
-    }
-  }, []);
-
-  // Initial fetch + steady-state polling.
-  useEffect(() => {
-    void refresh();
-    const id = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void refresh();
-    }, POLL_INTERVAL_MS);
-    return () => window.clearInterval(id);
-  }, [refresh]);
+  // Invalidate the entries query so the feed reconciles with server truth.
+  const refreshEntries = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.entries });
+  }, [queryClient]);
 
   // postMessage listener: opens host's chat sidebar for this conversation,
-  // and reflects completion events into the status banner.
+  // and reflects completion events into the status banner. This is a push
+  // channel from the host shell, not a data fetch — it stays imperative.
   useEffect(() => {
     function onMessage(e: MessageEvent) {
       if (e.origin !== window.location.origin) return;
@@ -100,8 +84,9 @@ export default function App() {
           preview: msg.preview,
           reason: msg.finishReason,
         });
-        // Faster refresh on completion than the 2s steady-state poll.
-        void refresh();
+        // Reconcile the feed immediately on completion (faster than the
+        // steady-state refetch interval).
+        refreshEntries();
       }
       // moses_embed_open_chat is host-shell-bound (the host opens its own
       // sidebar). The app neither sends nor consumes it directly; it's
@@ -109,12 +94,7 @@ export default function App() {
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [refresh]);
-
-  // Visual signal when new entries land via the roundtrip.
-  useEffect(() => {
-    if (entries.length > lastSeenRef.current) lastSeenRef.current = entries.length;
-  }, [entries.length]);
+  }, [refreshEntries]);
 
   async function onGenerate() {
     const trimmed = topic.trim();
@@ -164,12 +144,12 @@ export default function App() {
             window.location.origin,
           );
         } catch (err) {
-          // Cross-origin posts will throw — non-fatal; polling still works.
+          // Cross-origin posts will throw — non-fatal; the query refetch still works.
           console.warn('[fullstack-chat] moses_embed_open_chat post failed', err);
         }
       }
       // Optimistically refresh: MM may complete fast.
-      window.setTimeout(() => void refresh(), 1_000);
+      window.setTimeout(() => refreshEntries(), 1_000);
     } catch (err) {
       // The SDK reshapes the platform's structured 4xx envelope so .hint
       // (e.g. CHAT-mux7 action_not_activated) lands on the error object
@@ -188,13 +168,16 @@ export default function App() {
 
   return (
     <div className="app">
-      <header>
-        <h1>Fullstack Chat Roundtrip</h1>
-        <p className="lede">
-          Demonstrates the full app ↔ Moses-Manager roundtrip: button-fired{' '}
-          <code>chat_prompt</code> action, MM call-back via the workspace-tools wedge,
-          completion webhook, and host-shell postMessage signalling.
-        </p>
+      <header className="app-header">
+        <div className="header-text">
+          <h1>Fullstack Chat Roundtrip</h1>
+          <p className="lede">
+            Demonstrates the full app ↔ Moses-Manager roundtrip: button-fired{' '}
+            <code>chat_prompt</code> action, MM call-back via the workspace-tools wedge,
+            completion webhook, and host-shell postMessage signalling.
+          </p>
+        </div>
+        <ThemeToggle />
       </header>
 
       <section className="trigger">
@@ -208,7 +191,7 @@ export default function App() {
           disabled={busy}
           maxLength={200}
         />
-        <button type="button" onClick={onGenerate} disabled={busy || !topic.trim()}>
+        <button type="button" className="btn" onClick={onGenerate} disabled={busy || !topic.trim()}>
           {busy ? 'Asking Moses Manager…' : 'Generate entry via Moses Manager'}
         </button>
       </section>

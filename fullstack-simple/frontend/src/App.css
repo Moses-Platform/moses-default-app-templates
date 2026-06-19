@@ -1,177 +1,220 @@
-:root {
-  color-scheme: light dark;
-  --bg: #f8fafc;
-  --surface: #ffffff;
-  --border: #e2e8f0;
-  --text: #0f172a;
-  --text-muted: #64748b;
-  --primary: #4f46e5;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1117;
-    --surface: #1a1d27;
-    --border: #2a2d3a;
-    --text: #e1e4ed;
-    --text-muted: #8b8fa3;
-    --primary: #6366f1;
-  }
-}
+/* Global element + utility styles. Design tokens live in styles/theme.css.
+   Aesthetic: refined technical editorial — emerald terminal. */
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+html { scroll-behavior: smooth; }
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
-  background: var(--bg);
-  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
   line-height: 1.6;
+  color: var(--color-text-primary);
+  background-color: var(--color-page-background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
 }
 
+/* Fixed atmosphere layer: emerald/blue glow + fine dot-grid. Never scrolls. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    var(--atmos-glow),
+    radial-gradient(var(--atmos-dot) 1px, transparent 1px);
+  background-size: auto, 22px 22px;
+  background-position: 0 0, 0 0;
+}
+
+/* Smooth, scoped theme transitions on the surfaces that recolor. */
+.card, input, textarea, button, code, pre, .theme-toggle {
+  transition: background-color var(--dur) var(--ease-out),
+              border-color var(--dur) var(--ease-out),
+              color var(--dur) var(--ease-out),
+              box-shadow var(--dur) var(--ease-out);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+}
+
+a {
+  color: var(--color-brand-primary);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+a:hover { color: var(--color-brand-primary-hover); }
+
+/* Technical identity: monospace for inline code, IDs, endpoints. */
+code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--color-secondary-background);
+  color: var(--color-text-primary);
+  padding: 0.12em 0.45em;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-subtle);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent-cta);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+::selection { background: rgba(var(--color-primary-rgb), 0.28); color: var(--color-text-primary); }
+
+/* Themed thin scrollbars */
+* { scrollbar-width: thin; scrollbar-color: var(--color-border-strong) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--color-brand-primary); background-clip: content-box; }
+
+/* ---- Orchestrated page-load: staggered fade-up of the cards ---- */
+@keyframes mosesFadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.main > .card { animation: mosesFadeUp var(--dur-slow) var(--ease-out) both; }
+.main > .card:nth-child(1) { animation-delay: 40ms; }
+.main > .card:nth-child(2) { animation-delay: 110ms; }
+.main > .card:nth-child(3) { animation-delay: 180ms; }
+
+/* ============================ Layout ============================ */
 .app {
   max-width: 640px;
   margin: 0 auto;
-  padding: 48px 24px;
+  padding: var(--spacing-12) var(--spacing-6);
 }
 
 .header {
-  margin-bottom: 32px;
+  margin-bottom: var(--spacing-8);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-4);
 }
 
 .header h1 {
-  font-size: 24px;
-  font-weight: 600;
-  margin-bottom: 4px;
+  font-size: var(--font-size-3xl);
+  margin-bottom: var(--spacing-1);
 }
 
 .header p {
-  color: var(--text-muted);
-  font-size: 14px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  margin: 0;
 }
 
 .main {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--spacing-4);
 }
 
+/* ---- Bento content cards: elevated, Moses-aligned surface with emerald hover edge. */
 .card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 20px;
+  position: relative;
+  background: var(--color-primary-background);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-6);
+  box-shadow: var(--shadow-md);
+  transition: box-shadow var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
+}
+.card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
 }
 
 .card h2 {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 12px;
+  margin-bottom: var(--spacing-3);
 }
 
 .status {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--spacing-2);
 }
 
 .row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 0;
+  padding: var(--spacing-1) 0;
 }
 
 .label {
-  color: var(--text-muted);
-  font-size: 13px;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
 }
 
 .value {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
 }
 
 .mono {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
 }
 
 .loading {
-  color: var(--text-muted);
-  font-size: 14px;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
 }
 
 .error {
-  color: #ef4444;
-  font-size: 14px;
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
 }
 
 .empty {
-  color: var(--text-muted);
-  font-size: 14px;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
 }
 
 .items-input {
   display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--spacing-2);
+  margin-bottom: var(--spacing-3);
 }
 
-.input {
-  flex: 1;
-  padding: 8px 12px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font-size: 14px;
-  outline: none;
-}
-
-.input:focus {
-  border-color: var(--primary);
-}
-
-.input::placeholder {
-  color: var(--text-muted);
-}
-
-.btn {
-  padding: 8px 16px;
-  background: var(--primary);
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.btn:hover:not(:disabled) {
-  opacity: 0.9;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+.items-input .input { flex: 1; }
 
 .items-list {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--spacing-1);
 }
 
 .items-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
+  padding: var(--spacing-2) 0;
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .items-row:last-child {
@@ -184,33 +227,101 @@ body {
   gap: 2px;
 }
 
+/* ============================ Unified buttons ============================ */
+.btn {
+  --btn-bg: var(--color-brand-primary-button);
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--spacing-2);
+  font-family: var(--font-sans); font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold);
+  line-height: 1; letter-spacing: 0.01em;
+  padding: 0.72em 1.15em;
+  color: #fff;
+  background-color: var(--btn-bg);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0));
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: var(--radius-md);
+  cursor: pointer; user-select: none;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur) var(--ease-out),
+              background-color var(--dur-fast) var(--ease-out), filter var(--dur-fast) var(--ease-out);
+}
+.btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow-glow); filter: brightness(1.06); }
+.btn:active:not(:disabled) { transform: translateY(0); filter: brightness(0.95); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; filter: none; }
+
+.btn-secondary { color: var(--color-brand-primary); background-color: transparent; background-image: none; border-color: rgba(var(--color-primary-rgb), 0.5); box-shadow: none; }
+.btn-secondary:hover { background-color: var(--color-brand-primary-light); filter: none; box-shadow: none; }
+.btn-cta { --btn-bg: var(--color-accent-cta); }
+.btn-cta:hover { box-shadow: 0 0 22px rgba(var(--color-accent-rgb), 0.35); }
+.btn-ghost { color: var(--color-text-secondary); background-color: transparent; background-image: none; border-color: var(--color-border-subtle); box-shadow: none; }
+.btn-ghost:hover { color: var(--color-text-primary); background-color: var(--color-bg-hover); filter: none; box-shadow: none; }
+.btn-danger { color: var(--color-danger); background-color: transparent; background-image: none; border-color: rgba(var(--color-accent-rgb), 0.4); box-shadow: none; }
+.btn-danger:hover { background-color: var(--color-danger-bg); filter: none; box-shadow: none; }
+.btn-sm { font-size: var(--font-size-xs); padding: 0.5em 0.8em; }
+.btn-icon { padding: 0; width: 2.2em; height: 2.2em; }
+
+/* Delete control on item rows — ghost danger icon button. */
 .btn-delete {
   background: none;
   border: none;
-  color: var(--text-muted);
-  font-size: 20px;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xl);
   cursor: pointer;
-  padding: 4px 8px;
+  padding: var(--spacing-1) var(--spacing-2);
   line-height: 1;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
+  transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+}
+.btn-delete:hover {
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
 }
 
-.btn-delete:hover {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.1);
+/* ============================ Theme toggle ============================ */
+.theme-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2.4em; height: 2.4em; flex-shrink: 0;
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+  background: var(--color-secondary-background);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.theme-toggle:hover { color: var(--color-brand-primary); border-color: var(--color-brand-primary); }
+
+/* ============================ Form fields ============================ */
+.input {
+  font: inherit; font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  background: var(--color-secondary-background);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.62em 0.8em;
+  outline: none;
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.input::placeholder { color: var(--color-text-tertiary); }
+.input:focus {
+  border-color: var(--color-brand-primary);
+  box-shadow: 0 0 0 3px rgba(var(--color-primary-rgb), 0.18);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .main > .card { animation: none; }
 }
 
 /* Mobile tap targets — bump interactive controls to ≥44px on phones. */
 @media (max-width: 640px) {
   .btn,
   .input,
-  .btn-delete {
+  .btn-delete,
+  .theme-toggle {
     min-height: 44px;
   }
   .btn-delete {
     min-width: 44px;
   }
   .app {
-    padding: 32px 16px;
+    padding: var(--spacing-8) var(--spacing-4);
   }
 }

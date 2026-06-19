@@ -1,34 +1,12 @@
-import { useState, useEffect } from 'react';
-
-interface PlatformUser {
-  id: string;
-  email: string;
-  displayName: string;
-  role: string;
-}
+import { useUsers } from '../api/hooks';
 
 export default function UserList() {
-  const [users, setUsers] = useState<PlatformUser[]>([]);
-  const [message, setMessage] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isPending, isError, error } = useUsers();
+  const users = data?.users ?? [];
+  const message = data?.message ?? null;
 
-  useEffect(() => {
-    fetch('api/v1/users')
-      .then(res => res.json())
-      .then(data => {
-        setUsers(data.users || []);
-        setMessage(data.message || null);
-        setLoading(false);
-      })
-      .catch(err => {
-        setError(err.message);
-        setLoading(false);
-      });
-  }, []);
-
-  if (loading) return <div className="feature-card"><p>Loading tenant users...</p></div>;
-  if (error) return <div className="feature-card"><p>Error: {error}</p></div>;
+  if (isPending) return <div className="feature-card"><p>Loading tenant users...</p></div>;
+  if (isError) return <div className="feature-card"><p>Error: {(error as Error).message}</p></div>;
 
   return (
     <div className="feature-card">

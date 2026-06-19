@@ -7,17 +7,25 @@
 }
 
 .about-section {
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
+  position: relative;
+  background: var(--color-primary-background);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
   padding: var(--spacing-6);
   margin-bottom: var(--spacing-6);
+  box-shadow: var(--shadow-md);
+  transition: box-shadow var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
+}
+
+.about-section:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
 }
 
 .about-section h2 {
-  color: var(--color-primary);
+  color: var(--color-brand-primary);
   margin-bottom: var(--spacing-4);
-  font-size: 1.5rem;
+  font-size: var(--font-size-2xl);
 }
 
 .about-section p {
@@ -37,13 +45,11 @@
 }
 
 .about-section a {
-  color: var(--color-primary);
-  text-decoration: none;
+  color: var(--color-brand-primary);
 }
 
 .about-section a:hover {
-  color: var(--color-primary-hover);
-  text-decoration: underline;
+  color: var(--color-brand-primary-hover);
 }
 
 @media (max-width: 768px) {

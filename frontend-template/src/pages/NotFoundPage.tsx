@@ -10,7 +10,7 @@ function NotFoundPage() {
         <p className="not-found-message">
           The page you're looking for doesn't exist or has been moved.
         </p>
-        <Link to="/" className="not-found-link">
+        <Link to="/" className="btn btn-cta not-found-link">
           Go back home
         </Link>
       </div>

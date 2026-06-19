@@ -1,4 +1,5 @@
 import { ReactNode } from 'react'
+import ThemeToggle from './ThemeToggle'
 import './Layout.css'
 
 interface LayoutProps {
@@ -11,10 +12,12 @@ function Layout({ children }: LayoutProps) {
       <header className="layout-header">
         <div className="header-content">
           <h1 className="header-title">Moses Frontend Template</h1>
+          <ThemeToggle />
         </div>
       </header>
 
-      <main className="layout-main">
+      {/* `content-area` scopes the App.css bento/button/form/table styles. */}
+      <main className="layout-main content-area">
         {children}
       </main>
 

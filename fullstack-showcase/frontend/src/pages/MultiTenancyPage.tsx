@@ -1,13 +1,9 @@
-import { useEffect, useState } from 'react';
-import { getMosesInfo } from '../api/client';
+import { useMosesInfo } from '../api/hooks';
+import NotesPanel from '../components/NotesPanel';
 import './MultiTenancyPage.css';
 
 export default function MultiTenancyPage() {
-  const [mosesInfo, setMosesInfo] = useState<any>(null);
-
-  useEffect(() => {
-    getMosesInfo().then(setMosesInfo).catch(console.error);
-  }, []);
+  const { data: mosesInfo, isPending, isError } = useMosesInfo();
 
   const isolationLayers = [
     { layer: 'Database', description: 'tenant_id column on all tables, enforced by foreign keys' },
@@ -72,7 +68,11 @@ export default function MultiTenancyPage() {
 
       <section className="section">
         <h3>Live Tenant Context</h3>
-        {mosesInfo ? (
+        {isPending ? (
+          <div className="tenant-loading">Loading tenant context...</div>
+        ) : isError ? (
+          <div className="tenant-loading">Tenant context unavailable.</div>
+        ) : mosesInfo ? (
           <div className="tenant-info">
             <div className="tenant-item">
               <span className="tenant-label">Current Tenant:</span>
@@ -90,8 +90,13 @@ export default function MultiTenancyPage() {
             )}
           </div>
         ) : (
-          <div className="tenant-loading">Loading tenant context...</div>
+          <div className="tenant-loading">Tenant context unavailable.</div>
         )}
+      </section>
+
+      <section className="section">
+        <h3>Tenant-Scoped Data (live query + mutation)</h3>
+        <NotesPanel />
       </section>
 
       <section className="section">

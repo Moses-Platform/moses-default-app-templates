@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useAuth } from '../auth/useAuth';
-import { createEntry, listEntries, type Entry } from '../auth/api';
+import { useEntries, useCreateEntry } from '../api/hooks';
+import { getErrorMessage } from '../api/client';
 import './pages.css';
 
 /**
@@ -8,42 +9,24 @@ import './pages.css';
  * pinned tenant id and the authenticated OIDC subject — so the validated
  * identity from `oidcauth` feeds row-level ownership. A protected
  * read/write route.
+ *
+ * Data lives in TanStack Query: the read is gated by auth state via
+ * `enabled`, so the protected route is never hit while anonymous; the
+ * create mutation invalidates the list. No useEffect, no manual loading
+ * state — only the draft input is true client state.
  */
 export default function EntriesPage() {
   const { phase, me, signIn } = useAuth();
-  const [entries, setEntries] = useState<Entry[]>([]);
+  const authenticated = phase === 'authenticated';
+  const { data: entries, isPending, isError, error } = useEntries(authenticated);
+  const createEntry = useCreateEntry();
   const [draft, setDraft] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
 
-  const reload = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      setEntries(await listEntries());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'failed to load entries');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (phase === 'authenticated') void reload();
-  }, [phase, reload]);
-
-  async function onCreate(e: React.FormEvent) {
+  function onCreate(e: FormEvent) {
     e.preventDefault();
     const body = draft.trim();
     if (!body) return;
-    setError('');
-    try {
-      const created = await createEntry(body);
-      setEntries((prev) => [created, ...prev]);
-      setDraft('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to create entry');
-    }
+    createEntry.mutate(body, { onSuccess: () => setDraft('') });
   }
 
   if (phase === 'loading') {
@@ -97,20 +80,21 @@ export default function EntriesPage() {
             aria-label="Entry body"
             maxLength={500}
           />
-          <button className="btn btn-primary" type="submit" disabled={!draft.trim()}>
-            Save
+          <button className="btn btn-primary" type="submit" disabled={!draft.trim() || createEntry.isPending}>
+            {createEntry.isPending ? 'Saving…' : 'Save'}
           </button>
         </form>
 
-        {error && <div className="banner banner-error">{error}</div>}
+        {createEntry.isError && <div className="banner banner-error">{getErrorMessage(createEntry.error)}</div>}
+        {isError && <div className="banner banner-error">{getErrorMessage(error)}</div>}
 
-        {loading ? (
+        {isPending ? (
           <p className="empty-note">Loading your entries…</p>
-        ) : entries.length === 0 ? (
+        ) : entries && entries.length === 0 ? (
           <p className="empty-note">No entries yet — add your first one above.</p>
         ) : (
           <ul className="entry-list">
-            {entries.map((entry) => (
+            {(entries ?? []).map((entry) => (
               <li key={entry.id}>
                 <span>{entry.body}</span>
                 <time dateTime={entry.created_at}>

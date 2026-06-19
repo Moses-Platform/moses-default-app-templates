@@ -1,32 +1,20 @@
-import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../auth/useAuth';
-import { probeAdminArea, type AdminAreaResult } from '../auth/api';
+import { useAdminArea } from '../api/hooks';
 import './pages.css';
 
 /**
  * Demonstrates AUTHORIZATION (distinct from authentication): the roles
  * Moses projects onto the token, and a role-gated route that 403s a
  * signed-in user who lacks the `oidc-admin` role.
+ *
+ * The probe is a TanStack Query gated by auth state (`enabled`): it fires
+ * automatically once authenticated, and the "Probe" button re-runs it via
+ * `refetch()`. No useEffect, no manual loading state.
  */
 export default function RolesPage() {
   const { phase, me, info, signIn } = useAuth();
-  const [probe, setProbe] = useState<AdminAreaResult | null>(null);
-  const [probing, setProbing] = useState(false);
-
-  const runProbe = useCallback(async () => {
-    setProbing(true);
-    try {
-      setProbe(await probeAdminArea());
-    } catch {
-      setProbe(null);
-    } finally {
-      setProbing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (phase === 'authenticated') void runProbe();
-  }, [phase, runProbe]);
+  const authenticated = phase === 'authenticated';
+  const { data: probe, isFetching: probing, refetch } = useAdminArea(authenticated);
 
   return (
     <div className="page">
@@ -100,7 +88,7 @@ export default function RolesPage() {
             </p>
             <button
               className="btn btn-primary"
-              onClick={runProbe}
+              onClick={() => void refetch()}
               disabled={probing}
               style={{ marginTop: 'var(--spacing-3)' }}
             >

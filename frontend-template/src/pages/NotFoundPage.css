@@ -13,38 +13,30 @@
 
 .not-found-title {
   font-size: 6rem;
-  font-weight: 700;
-  color: var(--color-primary);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-brand-primary);
   margin-bottom: var(--spacing-4);
   line-height: 1;
 }
 
 .not-found-content h2 {
-  font-size: 2rem;
+  font-size: var(--font-size-3xl);
   margin-bottom: var(--spacing-4);
-  color: var(--color-text);
+  color: var(--color-text-primary);
 }
 
 .not-found-message {
-  font-size: 1.125rem;
+  font-size: var(--font-size-lg);
   color: var(--color-text-secondary);
   margin-bottom: var(--spacing-8);
 }
 
+/* The link wears the unified .btn .btn-cta classes; this only neutralizes the
+   global `a` underline-gradient so the button surface renders cleanly. */
 .not-found-link {
-  display: inline-block;
-  background-color: var(--color-primary);
-  color: white;
-  padding: var(--spacing-3) var(--spacing-6);
-  border-radius: var(--radius);
-  font-weight: 500;
-  transition: background-color 0.2s ease;
-  text-decoration: none;
-}
-
-.not-found-link:hover {
-  background-color: var(--color-primary-hover);
-  text-decoration: none;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0));
+  background-size: auto;
+  background-repeat: repeat;
 }
 
 @media (max-width: 768px) {
@@ -53,6 +45,6 @@
   }
 
   .not-found-content h2 {
-    font-size: 1.5rem;
+    font-size: var(--font-size-2xl);
   }
 }

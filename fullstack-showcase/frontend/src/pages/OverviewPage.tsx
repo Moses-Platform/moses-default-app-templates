@@ -1,20 +1,11 @@
-import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getMosesInfo } from '../api/client';
+import { useMosesInfo } from '../api/hooks';
 import FeatureCard from '../components/FeatureCard';
 import './OverviewPage.css';
 
 export default function OverviewPage() {
   const navigate = useNavigate();
-  const [mosesInfo, setMosesInfo] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    getMosesInfo()
-      .then(setMosesInfo)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
+  const { data: mosesInfo, isPending: loading } = useMosesInfo();
 
   const features = [
     {

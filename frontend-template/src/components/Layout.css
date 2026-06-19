@@ -4,27 +4,51 @@
   flex-direction: column;
 }
 
+/* ---- Header (glass) ---- */
 .layout-header {
-  background-color: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
-  height: 60px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--surface-glass);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border-bottom: 1px solid var(--color-border-subtle);
+  min-height: 60px;
   display: flex;
   align-items: center;
   padding: 0 var(--spacing-6);
-  box-shadow: var(--header-shadow);
 }
+/* animated emerald hairline under the header — the subtle "pipeline" motif */
+.layout-header::after {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: -1px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-brand-primary), transparent);
+  opacity: 0.55;
+  background-size: 200% 100%;
+  animation: mosesFlow 6s linear infinite;
+}
+@keyframes mosesFlow { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
 .header-content {
   max-width: 1200px;
   margin: 0 auto;
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-4);
 }
 
 .header-title {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--color-text);
+  font-family: var(--font-display);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.02em;
   margin: 0;
+  background: linear-gradient(120deg, var(--color-text-primary) 30%, var(--color-brand-primary));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .layout-main {
@@ -32,20 +56,41 @@
   max-width: 1200px;
   width: 100%;
   margin: 0 auto;
-  padding: var(--spacing-8) var(--spacing-6);
+  padding: var(--spacing-10) var(--spacing-6);
+}
+
+/* ---- Theme toggle (in-header) ---- */
+.theme-toggle {
+  flex-shrink: 0;
+  width: 40px; height: 40px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: var(--font-size-lg); line-height: 1;
+  background: var(--color-secondary-background);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.theme-toggle:hover {
+  color: var(--color-brand-primary);
+  border-color: var(--color-brand-primary);
+  box-shadow: var(--shadow-glow);
+  transform: translateY(-1px);
 }
 
 .layout-footer {
-  background-color: var(--color-surface);
-  border-top: 1px solid var(--color-border);
-  padding: var(--spacing-6);
+  background: var(--surface-glass);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border-top: 1px solid var(--color-border-subtle);
+  padding: var(--spacing-5) var(--spacing-6);
   text-align: center;
 }
 
 .layout-footer p {
   margin: 0;
-  color: var(--color-text-secondary);
-  font-size: 0.875rem;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
 }
 
 @media (max-width: 768px) {
@@ -62,6 +107,6 @@
   }
 
   .header-title {
-    font-size: 1.125rem;
+    font-size: var(--font-size-lg);
   }
 }
