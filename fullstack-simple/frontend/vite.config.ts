@@ -2,7 +2,10 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    // React Compiler — auto-memoizes; no manual useMemo/useCallback/React.memo needed.
+    react({ babel: { plugins: [['babel-plugin-react-compiler', {}]] } }),
+  ],
   base: './',
   server: {
     port: 3000,
