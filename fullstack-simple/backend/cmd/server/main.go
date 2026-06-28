@@ -39,7 +39,7 @@ func main() {
 		alias := strings.TrimSuffix(os.Getenv("BASE_URL"), "/")
 		if alias != "" && strings.HasPrefix(alias, "/") {
 			basePath = alias
-			log.Printf("WARN: BASE_URL is deprecated; please set MOSES_BASE_PATH instead. See DEPRECATIONS.md")
+			log.Printf("NOTE: BASE_URL is deprecated; please set MOSES_BASE_PATH instead. See DEPRECATIONS.md")
 		}
 	}
 

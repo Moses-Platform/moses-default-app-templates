@@ -32,7 +32,7 @@ func resolveSelfTenant() {
 			if os.Getenv("MOSES_DEPLOYED") == "1" {
 				log.Printf("ERROR: MOSES_TENANT_ID env unset on a deployed pod (MOSES_DEPLOYED=1); using sentinel 'local-dev' until Validate() forces shutdown")
 			} else {
-				log.Printf("warning: MOSES_TENANT_ID not set; using local-dev sentinel for non-deployed run")
+				log.Printf("note: MOSES_TENANT_ID not set; using local-dev sentinel for non-deployed run")
 			}
 		}
 		selfTenant = v

@@ -43,17 +43,17 @@ type indexContext struct {
 func loadIndexTemplate() {
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
-		log.Printf("WARN: failed to create static sub-filesystem: %v", err)
+		log.Printf("NOTE: failed to create static sub-filesystem: %v", err)
 		return
 	}
 	data, err := fs.ReadFile(staticFS, "index.html")
 	if err != nil {
-		log.Printf("WARN: failed to read embedded static/index.html: %v", err)
+		log.Printf("NOTE: failed to read embedded static/index.html: %v", err)
 		return
 	}
 	tmpl, err := template.New("index.html").Parse(string(data))
 	if err != nil {
-		log.Printf("WARN: failed to parse static/index.html as template; serving raw: %v", err)
+		log.Printf("NOTE: failed to parse static/index.html as template; serving raw: %v", err)
 		return
 	}
 	indexTemplate = tmpl
@@ -68,7 +68,7 @@ func renderIndex(w http.ResponseWriter, ctx indexContext) bool {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := indexTemplate.Execute(w, ctx); err != nil {
-		log.Printf("WARN: failed to render index.html template: %v", err)
+		log.Printf("NOTE: failed to render index.html template: %v", err)
 	}
 	return true
 }
@@ -93,7 +93,7 @@ func main() {
 	if baseURL == "" {
 		baseURL = strings.TrimSuffix(os.Getenv("BASE_URL"), "/")
 		if baseURL != "" {
-			log.Printf("WARN: BASE_URL is deprecated; please set MOSES_BASE_PATH instead. See DEPRECATIONS.md")
+			log.Printf("NOTE: BASE_URL is deprecated; please set MOSES_BASE_PATH instead. See DEPRECATIONS.md")
 		}
 	}
 

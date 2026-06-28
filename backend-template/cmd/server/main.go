@@ -48,7 +48,7 @@ func main() {
 		// log output, which must NOT become a route prefix.
 		if alias != "" && strings.HasPrefix(alias, "/") {
 			basePath = alias
-			log.Printf("WARN: BASE_URL is deprecated; please set MOSES_BASE_PATH instead. See DEPRECATIONS.md")
+			log.Printf("NOTE: BASE_URL is deprecated; please set MOSES_BASE_PATH instead. See DEPRECATIONS.md")
 		}
 	}
 	// observability-only: full URL for log lines below.

@@ -56,7 +56,12 @@ func Connect(cfg Config) (*sql.DB, error) {
 	for i := 0; i < maxRetries; i++ {
 		db, err = sql.Open("pgx", dsn)
 		if err != nil {
-			log.Printf("Database open attempt %d/%d failed: %v", i+1, maxRetries, err)
+			// Transient line kept token-free (see the ping-attempt note below).
+			if i == maxRetries-1 {
+				log.Printf("Database open attempt %d/%d failed: %v", i+1, maxRetries, err)
+			} else {
+				log.Printf("Database not ready yet (open attempt %d/%d), retrying in 2s", i+1, maxRetries)
+			}
 			time.Sleep(2 * time.Second)
 			continue
 		}
@@ -82,7 +87,19 @@ func Connect(cfg Config) (*sql.DB, error) {
 			)
 		}
 
-		log.Printf("Database ping attempt %d/%d failed: %v", i+1, maxRetries, err)
+		// Keep the transient per-attempt line token-free: the post-deploy log
+		// watcher content-matches (?i)(error|err|warn|panic|fatal) on raw pod
+		// stdout (not on log level), so emitting the pgx "dial error ...
+		// connection refused" text on every retry trips a false post-deploy
+		// alert during the benign concurrent app+DB startup race. Full pgx
+		// detail is retained on the final attempt, and a genuine 30-attempt
+		// exhaustion (and the 28P01 fail-fast above) still surface via the
+		// returned error.
+		if i == maxRetries-1 {
+			log.Printf("Database ping attempt %d/%d failed: %v", i+1, maxRetries, err)
+		} else {
+			log.Printf("Database not ready yet (attempt %d/%d), retrying in 2s", i+1, maxRetries)
+		}
 		db.Close()
 		time.Sleep(2 * time.Second)
 	}

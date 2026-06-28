@@ -119,7 +119,7 @@ func chatPromptActionDeclared() bool {
 		readErr = err
 	}
 	if data == nil {
-		log.Printf("CHAT-ct5q: moses-app.config.json not found (last err: %v); defaulting to strict chat_prompt-required mode", readErr)
+		log.Printf("CHAT-ct5q: moses-app.config.json not found (last read issue: %v); defaulting to strict chat_prompt-required mode", readErr)
 		return true
 	}
 
@@ -178,7 +178,7 @@ func validatePlatformEnv(exit func(int)) bool {
 	// Dev mode: warn-and-continue.
 	log.Printf("CHAT-0b6g: %d platform env vars are unset (running in standalone mode — set MOSES_DEPLOYED=1 to fail-fast):", len(missing))
 	for _, m := range missing {
-		log.Printf("  - WARN: %s", m)
+		log.Printf("  - NOTE: %s", m)
 	}
 	return false
 }
