@@ -122,7 +122,19 @@ export default function HowItWorksPage() {
               <td>
                 <span className="badge badge-protected">protected</span>
               </td>
-              <td>Per-user data scoped to the authenticated subject.</td>
+              <td>User space — per-user data scoped to the authenticated subject (private).</td>
+            </tr>
+            <tr>
+              <td>
+                <code>/api/v1/shared-notes</code>
+              </td>
+              <td>
+                <span className="badge badge-protected">protected</span>
+              </td>
+              <td>
+                Tenant space — scoped by tenant alone, shared by the whole
+                workspace (and where agent-delivered content lands).
+              </td>
             </tr>
             <tr>
               <td>

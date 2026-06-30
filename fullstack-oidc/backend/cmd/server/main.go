@@ -5,10 +5,11 @@
 // pod-to-pod MCP / workspace-tool calls.
 //
 // The route surface is the demo: one PUBLIC route (/api/v1/public-info),
-// two PROTECTED routes (/api/v1/me, /api/v1/entries), and one PROTECTED
-// + ROLE-GATED route (/api/v1/admin-area) that enforces an app role
-// projected from the validated token. /health and the OpenAPI spec are
-// always public.
+// three PROTECTED routes (/api/v1/me, the per-user /api/v1/entries, and the
+// tenant-shared /api/v1/shared-notes), and one PROTECTED + ROLE-GATED route
+// (/api/v1/admin-area) that enforces an app role projected from the validated
+// token. entries (user space) vs shared-notes (tenant space) is the demo's
+// data-ownership contrast. /health and the OpenAPI spec are always public.
 package main
 
 import (
@@ -77,7 +78,8 @@ func main() {
 	}
 
 	entriesHandler := handler.NewEntriesHandler(db)
-	mux := buildMux(basePath, oidcCfg.Enabled(), entriesHandler)
+	sharedNotesHandler := handler.NewSharedNotesHandler(db)
+	mux := buildMux(basePath, oidcCfg.Enabled(), entriesHandler, sharedNotesHandler)
 
 	// Middleware order (outermost first):
 	//   Logging -> CORS -> MosesHeaders -> OIDCAuth -> mux
@@ -131,7 +133,7 @@ func main() {
 // /health and /api/openapi.json are mounted at BOTH the canonical root
 // and the base-path alias. See ../../README.md "deployed-app path
 // contract".
-func buildMux(basePath string, oidcEnabled bool, entriesHandler *handler.EntriesHandler) *http.ServeMux {
+func buildMux(basePath string, oidcEnabled bool, entriesHandler *handler.EntriesHandler, sharedNotesHandler *handler.SharedNotesHandler) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// Health — canonical (K8s probe bypasses the ingress) + alias.
@@ -149,18 +151,24 @@ func buildMux(basePath string, oidcEnabled bool, entriesHandler *handler.Entries
 	}
 
 	// API endpoints — registered ONCE under MOSES_BASE_PATH.
-	//   /api/v1/public-info  — PUBLIC  (declared in access.oidc.publicPaths)
-	//   /api/v1/me           — PROTECTED (OIDCAuth gates it on a session)
-	//   /api/v1/entries      — PROTECTED (per-user data)
-	//   /api/v1/admin-area   — PROTECTED + ROLE-GATED (oidc-admin role)
+	//   /api/v1/public-info   — PUBLIC  (declared in access.oidc.publicPaths)
+	//   /api/v1/me            — PROTECTED (OIDCAuth gates it on a session)
+	//   /api/v1/entries       — PROTECTED (USER space: per-user, private)
+	//   /api/v1/shared-notes  — PROTECTED (TENANT space: shared by the workspace)
+	//   /api/v1/admin-area    — PROTECTED + ROLE-GATED (oidc-admin role)
 	//
 	// The contrast between public-info and the rest is the whole demo:
 	// one route any visitor can read, the others gated by the vendored
-	// oidcauth middleware. admin-area goes one step further and enforces
-	// an app role projected from the token (see handler.AdminArea).
+	// oidcauth middleware. entries vs shared-notes is the SECOND contrast:
+	// entries is owned per OIDC subject (private), shared-notes is owned per
+	// tenant (visible to the whole workspace — and to content agents post via
+	// workspace tools, which arrive under the agent's X-Moses-User-ID).
+	// admin-area goes one step further and enforces an app role projected from
+	// the token (see handler.AdminArea).
 	mux.HandleFunc(basePath+"/api/v1/public-info", handler.PublicInfo(oidcEnabled))
 	mux.HandleFunc(basePath+"/api/v1/me", handler.Me)
 	mux.HandleFunc(basePath+"/api/v1/entries", entriesHandler.Entries)
+	mux.HandleFunc(basePath+"/api/v1/shared-notes", sharedNotesHandler.SharedNotes)
 	mux.HandleFunc(basePath+"/api/v1/admin-area", handler.AdminArea)
 
 	return mux

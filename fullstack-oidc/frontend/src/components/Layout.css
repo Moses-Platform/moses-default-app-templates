@@ -1,24 +1,29 @@
 .app-layout {
   display: grid;
-  grid-template-columns: 264px 1fr;
+  /* Content first, sidebar second — the nav lives on the RIGHT. `auto` lets the
+     sidebar track hug its own width so the collapsed (72px) state leaves no gap. */
+  grid-template-columns: 1fr auto;
   min-height: 100vh;
   background: var(--color-page-background);
 }
 
-/* ---- Sidebar (glass) ---- */
+/* ---- Sidebar (glass, right-anchored) ---- */
 .sidebar {
+  grid-column: 2;
+  grid-row: 1;
+  width: 264px;
   position: sticky;
   top: 0;
   height: 100vh;
   background: var(--surface-glass);
   backdrop-filter: blur(16px) saturate(140%);
   -webkit-backdrop-filter: blur(16px) saturate(140%);
-  border-right: 1px solid var(--color-border-subtle);
+  border-left: 1px solid var(--color-border-subtle);
   display: flex;
   flex-direction: column;
   transition: width var(--dur) var(--ease-out);
 }
-.sidebar.closed { width: 72px; grid-column: 1; }
+.sidebar.closed { width: 72px; }
 
 .sidebar-header {
   padding: var(--spacing-5) var(--spacing-5);
@@ -73,19 +78,27 @@
   color: var(--color-brand-primary);
   font-weight: var(--font-weight-semibold);
 }
-/* emerald accent bar on the active route */
+/* emerald accent bar on the active route — anchored to the sidebar's outer
+   (screen) edge, which is now the right. */
 .nav-link.active::before {
   content: '';
-  position: absolute; left: -2px; top: 50%; transform: translateY(-50%);
+  position: absolute; right: -2px; top: 50%; transform: translateY(-50%);
   height: 60%; width: 3px; border-radius: 999px;
   background: var(--color-brand-primary);
   box-shadow: 0 0 12px rgba(var(--color-primary-rgb), 0.7);
 }
-.nav-icon { font-size: var(--font-size-lg); min-width: 24px; text-align: center; }
+.nav-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; color: inherit;
+}
+.nav-icon svg { width: 20px; height: 20px; display: block; }
 .sidebar.closed .nav-label { display: none; }
+/* Collapsed rail: centre the lone icon / toggle now that the track hugs 72px. */
+.sidebar.closed .nav-link { justify-content: center; }
+.sidebar.closed .sidebar-header { justify-content: center; }
 
 /* ---- Main ---- */
-.main-content { display: flex; flex-direction: column; min-height: 100vh; }
+.main-content { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; min-height: 100vh; }
 
 .app-header {
   position: sticky;
@@ -193,11 +206,11 @@
 @media (max-width: 768px) {
   .app-layout { grid-template-columns: 1fr; }
   .sidebar {
-    position: fixed; top: 0; left: 0; height: 100vh; width: 264px; z-index: 1000;
-    transform: translateX(-100%);
+    position: fixed; top: 0; right: 0; left: auto; height: 100vh; width: 264px; z-index: 1000;
+    transform: translateX(100%);
   }
   .sidebar.open { transform: translateX(0); box-shadow: var(--shadow-xl); }
-  .sidebar.closed { transform: translateX(-100%); }
+  .sidebar.closed { transform: translateX(100%); }
   .app-header { padding-right: var(--spacing-6); }
   .mobile-menu-toggle {
     display: inline-flex; align-items: center; justify-content: center;

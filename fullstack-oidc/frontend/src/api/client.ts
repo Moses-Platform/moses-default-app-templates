@@ -32,10 +32,21 @@ export interface PublicInfo {
   known_roles: string[];
 }
 
-/** A per-user entry from GET/POST /api/v1/entries. */
+/** A per-user entry from GET/POST /api/v1/entries (USER space — private). */
 export interface Entry {
   id: string;
   owner_sub: string;
+  body: string;
+  created_at: string;
+}
+
+/**
+ * A tenant-shared note from GET/POST /api/v1/shared-notes (TENANT space).
+ * Visible to every member of the workspace; `author_sub` is attribution only.
+ */
+export interface SharedNote {
+  id: string;
+  author_sub: string;
   body: string;
   created_at: string;
 }
@@ -130,6 +141,12 @@ export const listEntries = (signal?: AbortSignal) => fetchAPI<Entry[]>('api/v1/e
 
 /** Create an entry owned by the signed-in user (protected route). */
 export const createEntry = (body: string) => mutateAPI<Entry>('api/v1/entries', 'POST', { body });
+
+/** List the workspace's shared notes — tenant-scoped, every member sees them. */
+export const listSharedNotes = (signal?: AbortSignal) => fetchAPI<SharedNote[]>('api/v1/shared-notes', signal);
+
+/** Post a note to the tenant-shared list (protected route). */
+export const createSharedNote = (body: string) => mutateAPI<SharedNote>('api/v1/shared-notes', 'POST', { body });
 
 /**
  * Probe the role-gated /api/v1/admin-area route. This is the clearest

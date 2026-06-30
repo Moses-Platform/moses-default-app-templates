@@ -1,4 +1,11 @@
 import { useAuth } from '../auth/useAuth';
+import {
+  IdentityIcon,
+  RolesIcon,
+  EntriesIcon,
+  SharedNotesIcon,
+  SilentSSOIcon,
+} from '../components/NavIcons';
 import './pages.css';
 
 /**
@@ -75,28 +82,50 @@ export default function OverviewPage() {
         <h3>What each page shows</h3>
         <div className="feature-grid">
           <div>
-            <h4>🧑 My Identity</h4>
+            <h4>
+              <span className="feature-icon"><IdentityIcon /></span>
+              My Identity
+            </h4>
             <p className="empty-note">
               The principal from the validated session — subject, email, name,
               and how it was authenticated.
             </p>
           </div>
           <div>
-            <h4>🛡️ Roles &amp; Access</h4>
+            <h4>
+              <span className="feature-icon"><RolesIcon /></span>
+              Roles &amp; Access
+            </h4>
             <p className="empty-note">
               Roles projected from <code>resource_access.&lt;client&gt;.roles</code>,
               and a role-gated route that 403s without the right role.
             </p>
           </div>
           <div>
-            <h4>📝 My Entries</h4>
+            <h4>
+              <span className="feature-icon"><EntriesIcon /></span>
+              My Entries
+            </h4>
             <p className="empty-note">
-              Per-user data scoped to the authenticated OIDC subject — a
-              protected read/write route.
+              The <strong>user space</strong>: per-user data scoped to the
+              authenticated OIDC subject — private to you.
             </p>
           </div>
           <div>
-            <h4>👻 Silent SSO</h4>
+            <h4>
+              <span className="feature-icon"><SharedNotesIcon /></span>
+              Shared Notes
+            </h4>
+            <p className="empty-note">
+              The <strong>tenant space</strong>: scoped by tenant, shared by the
+              whole workspace — and where agent-delivered content lands.
+            </p>
+          </div>
+          <div>
+            <h4>
+              <span className="feature-icon"><SilentSSOIcon /></span>
+              Silent SSO
+            </h4>
             <p className="empty-note">
               The <code>prompt=none</code> hidden-iframe path for the embedded
               case — no visible login page.

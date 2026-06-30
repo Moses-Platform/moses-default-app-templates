@@ -20,6 +20,7 @@
       "protectedPaths": [
         "/api/v1/me",
         "/api/v1/entries",
+        "/api/v1/shared-notes",
         "/api/v1/admin-area"
       ],
       "publicPaths": [
