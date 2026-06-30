@@ -202,9 +202,17 @@
 .steps li {
   display: grid;
   grid-template-columns: 32px 1fr;
-  gap: var(--spacing-4);
+  column-gap: var(--spacing-4);
+  row-gap: var(--spacing-1);
   align-items: start;
 }
+/* The badge (::before) sits in col 1; the heading + paragraph BOTH belong in
+   col 2 and stack. Without pinning them, the third grid item (the <p>) auto-
+   flows into (row 2, col 1) — the 32px track — and the text collapses to one
+   word per line. */
+.steps li::before { grid-column: 1; grid-row: 1; }
+.steps li strong { grid-column: 2; }
+.steps li p { grid-column: 2; }
 
 .steps li::before {
   counter-increment: step;
@@ -314,6 +322,25 @@
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: var(--spacing-4);
 }
+
+/* Feature-card headings: custom icon in an emerald chip + the label. */
+.feature-grid h4 {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+.feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-brand-primary-light);
+  color: var(--color-brand-primary);
+}
+.feature-icon svg { width: 18px; height: 18px; }
 
 .empty-note {
   color: var(--color-text-tertiary);

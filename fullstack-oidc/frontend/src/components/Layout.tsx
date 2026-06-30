@@ -2,6 +2,15 @@ import { useState } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 import ThemeToggle from './ThemeToggle';
+import {
+  OverviewIcon,
+  IdentityIcon,
+  RolesIcon,
+  EntriesIcon,
+  SharedNotesIcon,
+  SilentSSOIcon,
+  HowItWorksIcon,
+} from './NavIcons';
 import './Layout.css';
 
 /**
@@ -13,13 +22,13 @@ export default function Layout() {
   const { phase, me, signIn, signOut } = useAuth();
 
   const navItems = [
-    { path: '/', label: 'Overview', icon: '🔐' },
-    { path: '/identity', label: 'My Identity', icon: '🧑' },
-    { path: '/roles', label: 'Roles & Access', icon: '🛡️' },
-    { path: '/entries', label: 'My Entries', icon: '📝' },
-    { path: '/shared-notes', label: 'Shared Notes', icon: '🌐' },
-    { path: '/silent-sso', label: 'Silent SSO', icon: '👻' },
-    { path: '/how-it-works', label: 'How It Works', icon: '📚' },
+    { path: '/', label: 'Overview', Icon: OverviewIcon },
+    { path: '/identity', label: 'My Identity', Icon: IdentityIcon },
+    { path: '/roles', label: 'Roles & Access', Icon: RolesIcon },
+    { path: '/entries', label: 'My Entries', Icon: EntriesIcon },
+    { path: '/shared-notes', label: 'Shared Notes', Icon: SharedNotesIcon },
+    { path: '/silent-sso', label: 'Silent SSO', Icon: SilentSSOIcon },
+    { path: '/how-it-works', label: 'How It Works', Icon: HowItWorksIcon },
   ];
 
   return (
@@ -32,15 +41,15 @@ export default function Layout() {
             onClick={() => setSidebarOpen(!sidebarOpen)}
             aria-label="Toggle sidebar"
           >
-            {sidebarOpen ? '◀' : '▶'}
+            {sidebarOpen ? '▶' : '◀'}
           </button>
         </div>
         <nav className="sidebar-nav">
-          {navItems.map((item) => (
+          {navItems.map(({ path, label, Icon }) => (
             <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.path === '/'}
+              key={path}
+              to={path}
+              end={path === '/'}
               className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
               onClick={() => {
                 /* Tap-to-dismiss on mobile: closing on nav avoids leaving
@@ -50,10 +59,10 @@ export default function Layout() {
                 }
               }}
             >
-              <span className="nav-icon" aria-hidden="true">
-                {item.icon}
+              <span className="nav-icon">
+                <Icon />
               </span>
-              {sidebarOpen && <span className="nav-label">{item.label}</span>}
+              {sidebarOpen && <span className="nav-label">{label}</span>}
             </NavLink>
           ))}
         </nav>
