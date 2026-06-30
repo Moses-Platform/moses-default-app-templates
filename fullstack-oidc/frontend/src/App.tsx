@@ -20,6 +20,7 @@ import OverviewPage from './pages/OverviewPage';
 import IdentityPage from './pages/IdentityPage';
 import RolesPage from './pages/RolesPage';
 import EntriesPage from './pages/EntriesPage';
+import SharedNotesPage from './pages/SharedNotesPage';
 import SilentSSOPage from './pages/SilentSSOPage';
 import HowItWorksPage from './pages/HowItWorksPage';
 
@@ -37,6 +38,7 @@ function App() {
             <Route path="identity" element={<IdentityPage />} />
             <Route path="roles" element={<RolesPage />} />
             <Route path="entries" element={<EntriesPage />} />
+            <Route path="shared-notes" element={<SharedNotesPage />} />
             <Route path="silent-sso" element={<SilentSSOPage />} />
             <Route path="how-it-works" element={<HowItWorksPage />} />
             <Route

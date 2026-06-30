@@ -271,6 +271,17 @@
   white-space: nowrap;
 }
 
+/* Shared-notes attribution: who posted the note (display only — never a
+   visibility filter). Set apart so the "you vs another author/agent"
+   distinction is legible. */
+.note-author {
+  display: block;
+  margin-top: var(--spacing-1);
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
 /* Hero: emerald-tinted technical banner (no flat brand fill). */
 .hero {
   position: relative;

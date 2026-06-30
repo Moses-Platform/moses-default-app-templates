@@ -29,7 +29,7 @@ Concretely the app shows:
 - A deployed Moses app acting as an **OIDC relying party** —
   authorization-code flow + PKCE, confidential client, HttpOnly session
   cookie. The browser never holds a token (BFF pattern).
-- A clear **route split**: a PUBLIC route, two PROTECTED routes, and one
+- A clear **route split**: a PUBLIC route, three PROTECTED routes, and one
   PROTECTED + ROLE-GATED route — so a viewer can SEE the integration.
 - **Roles**: the user's `resource_access.<client>.roles` projection,
   surfaced in the UI and enforced server-side on `/api/v1/admin-area`.
@@ -38,17 +38,23 @@ Concretely the app shows:
   workspace-tool calls.
 - **Silent SSO**: an already-logged-into-Moses user is authenticated
   with no visible login page (`prompt=none`, hidden iframe).
-- **Per-user data**: the `entries` table is scoped by both the
-  deploy-pinned tenant id and the authenticated OIDC subject.
+- **Two data spaces, side by side**: the **user space** (`entries`, scoped by
+  tenant id + OIDC subject = private to one person) and the **tenant space**
+  (`shared_notes`, scoped by tenant id alone = shared by the whole workspace).
+  Most apps need both. Default collaborative or agent-fed content to the tenant
+  space — content an agent posts via a workspace-tool call arrives under the
+  *agent's* `X-Moses-User-ID`, so user-scoped-only data is invisible to the
+  human. See **Data scoping** below.
 
-## The six demo pages
+## The seven demo pages
 
 | Page            | What it shows |
 |-----------------|---------------|
 | Overview        | The pattern + the live backend posture (OIDC enforced vs pass-through) |
 | My Identity     | The authenticated principal from the validated session (`GET /api/v1/me`) |
 | Roles & Access  | Projected roles + a role-gated route that 403s without `oidc-admin` |
-| My Entries      | Per-user data scoped to the OIDC subject (protected read/write) |
+| My Entries      | USER space — per-user data scoped to the OIDC subject (protected read/write) |
+| Shared Notes    | TENANT space — tenant-scoped data shared by the whole workspace (protected) |
 | Silent SSO      | The `prompt=none` hidden-iframe path for the embedded case |
 | How It Works    | The full declare → inject → enforce → read walkthrough + route map |
 
@@ -60,8 +66,33 @@ Concretely the app shows:
 | `/api/openapi.json`   | public (implicit)       | Platform discovery / workspace-tool surface |
 | `/api/v1/public-info` | public (declared)       | Anonymous visitors can read the app posture |
 | `/api/v1/me`          | protected               | The validated identity |
-| `/api/v1/entries`     | protected               | Per-user data |
+| `/api/v1/entries`     | protected               | USER space — per-user data (private to the OIDC subject) |
+| `/api/v1/shared-notes`| protected               | TENANT space — shared by the whole workspace |
 | `/api/v1/admin-area`  | protected + role-gated  | Requires the `oidc-admin` app role |
+
+## Data scoping — user space vs tenant space
+
+The two demo tables exist to make one decision explicit, because getting it
+wrong is a silent bug:
+
+| | `entries` (user space) | `shared_notes` (tenant space) |
+|---|---|---|
+| Storage key | `(tenant_id, owner_sub)` | `tenant_id` |
+| Visibility | private to one OIDC subject | every member of the tenant |
+| Read filter | `WHERE tenant_id = $1 AND owner_sub = $2` | `WHERE tenant_id = $1` |
+
+`tenant_id` always comes from `config.SelfTenantID()` (the deploy-pinned
+`MOSES_TENANT_ID` env), **never** from the `X-Moses-Tenant-ID` request header
+(that header is caller context — see `internal/config`).
+
+**Why this matters for agents.** When another agent delivers content into this
+app through a Moses **workspace-tool** call, the request arrives on the trusted
+`X-Moses-*` header path and `oidcauth` resolves its identity from the
+`X-Moses-User-ID` header — i.e. the **agent's** user id, not the human's. A row
+scoped by user id alone therefore lands under the agent and the human who owns
+the app never sees it. **Default user-facing / collaborative / agent-fed content
+to the tenant space; reserve the user space for data that is meant to stay
+private.**
 
 ## Layout
 
@@ -74,13 +105,13 @@ fullstack-oidc/
 │       ├── oidcauth/             ★ the vendored OIDC middleware
 │       ├── config/               deploy-pinned tenant identity
 │       ├── database/             PostgreSQL connection + schema
-│       ├── handler/              health, openapi, me, admin-area, entries
+│       ├── handler/              health, openapi, me, admin-area, entries, shared
 │       └── middleware/           moses-headers, cors, logging
 ├── frontend/
 │   └── src/
 │       ├── auth/                 useAuth hook + silentSSO helper + api client
 │       ├── components/Layout.tsx app shell + sidebar nav + auth pill
-│       └── pages/                the six demo pages
+│       └── pages/                the seven demo pages
 ├── helm/                         multi-service chart (+ oidc Secret)
 ├── skills/                       agent skill docs
 └── moses-app.config.json         declares access.oidc + access.roles

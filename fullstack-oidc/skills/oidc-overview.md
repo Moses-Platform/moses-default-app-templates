@@ -9,12 +9,14 @@ demonstrates the whole pattern end-to-end and the moving parts are meant
 to be copied.
 
 - **Frontend**: React 19 + TypeScript + Vite, served by nginx. A
-  six-page SPA where every page makes one part of the OIDC integration
+  seven-page SPA where every page makes one part of the OIDC integration
   visible.
 - **Backend**: Go stdlib HTTP server with the **vendored `oidcauth`
   middleware** in `backend/internal/oidcauth/`.
-- **Database**: PostgreSQL — a per-user `entries` table scoped by both
-  the deploy-pinned tenant id and the authenticated OIDC subject.
+- **Database**: PostgreSQL — TWO demo tables showing the two data spaces an
+  app must choose between: `entries` (USER space — scoped by tenant id + OIDC
+  subject, private) and `shared_notes` (TENANT space — scoped by tenant id
+  alone, shared by the whole workspace). See **Data scoping** below.
 
 ## The app-owned-OIDC chain
 
@@ -48,7 +50,8 @@ The route split is the whole demo — a viewer can SEE the integration:
 | `/api/openapi.json`   | public (implicit)     | Platform discovery / workspace-tool surface |
 | `/api/v1/public-info` | public (declared)     | Anonymous visitors can read app posture |
 | `/api/v1/me`          | protected             | The validated identity projection |
-| `/api/v1/entries`     | protected             | Per-user data scoped to the OIDC subject |
+| `/api/v1/entries`     | protected             | USER space — per-user data scoped to the OIDC subject |
+| `/api/v1/shared-notes`| protected             | TENANT space — shared by the whole workspace |
 | `/api/v1/admin-area`  | protected + role-gated| `oidc-admin` role enforced via `HasRole` |
 
 The contrast between `public-info` and the gated routes — and between a
@@ -85,6 +88,39 @@ platform proxy on the in-cluster hop) bypasses OIDC entirely. This keeps
 the OpenAPI workspace-tool surface working without an OIDC session.
 The header path carries **no app roles** — pod-to-pod callers are
 authorized by the platform, so `/api/v1/admin-area` correctly 403s them.
+
+## Data scoping — user space vs tenant space (read this before designing tables)
+
+The header path above has a consequence that is easy to miss and produces a
+**silent** bug. On a pod-to-pod / workspace-tool call, `oidcauth` resolves the
+identity from `X-Moses-User-ID` — that is the **calling agent's** user id, not
+the human who owns the app. So:
+
+> A row scoped by user id alone, written by an agent through a workspace tool,
+> lands under the agent and is **invisible** to the human (and to every other
+> user in the tenant).
+
+The template ships two tables to make the choice explicit:
+
+| | `entries` (USER space) | `shared_notes` (TENANT space) |
+|---|---|---|
+| Storage key | `(tenant_id, owner_sub)` | `tenant_id` |
+| Read filter | `WHERE tenant_id=$1 AND owner_sub=$2` | `WHERE tenant_id=$1` |
+| Who sees a row | only its author | every member of the tenant |
+
+Rules of thumb when you build or extend an app:
+
+- **Default user-facing, collaborative, and agent-fed content to the tenant
+  space** (`shared_notes` shape) so the whole workspace — and anything an agent
+  delivers via workspace tools — is visible. This is the right default for most
+  app content.
+- **Reserve the user space** (`entries` shape) for data that is genuinely
+  private to one person (personal drafts, per-user settings, account links).
+- `tenant_id` always comes from `config.SelfTenantID()` (the deploy-pinned
+  `MOSES_TENANT_ID` env), **never** the `X-Moses-Tenant-ID` request header.
+
+Mirror `shared_notes` (`backend/internal/handler/shared.go` +
+`database/db.go`) for shared resources; mirror `entries` only for private ones.
 
 ## Graceful degradation
 

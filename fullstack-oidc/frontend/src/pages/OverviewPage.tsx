@@ -91,8 +91,15 @@ export default function OverviewPage() {
           <div>
             <h4>📝 My Entries</h4>
             <p className="empty-note">
-              Per-user data scoped to the authenticated OIDC subject — a
-              protected read/write route.
+              The <strong>user space</strong>: per-user data scoped to the
+              authenticated OIDC subject — private to you.
+            </p>
+          </div>
+          <div>
+            <h4>🌐 Shared Notes</h4>
+            <p className="empty-note">
+              The <strong>tenant space</strong>: scoped by tenant, shared by the
+              whole workspace — and where agent-delivered content lands.
             </p>
           </div>
           <div>

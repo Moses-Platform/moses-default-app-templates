@@ -17,6 +17,7 @@ export default function Layout() {
     { path: '/identity', label: 'My Identity', icon: '🧑' },
     { path: '/roles', label: 'Roles & Access', icon: '🛡️' },
     { path: '/entries', label: 'My Entries', icon: '📝' },
+    { path: '/shared-notes', label: 'Shared Notes', icon: '🌐' },
     { path: '/silent-sso', label: 'Silent SSO', icon: '👻' },
     { path: '/how-it-works', label: 'How It Works', icon: '📚' },
   ];

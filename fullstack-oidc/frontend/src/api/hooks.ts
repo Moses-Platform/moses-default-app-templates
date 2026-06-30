@@ -19,6 +19,8 @@ import {
   getPublicInfo,
   listEntries,
   createEntry,
+  listSharedNotes,
+  createSharedNote,
   probeAdminArea,
 } from './client';
 
@@ -48,6 +50,20 @@ export function useEntries(enabled: boolean) {
 }
 
 /**
+ * The workspace's shared notes (protected, TENANT space). Like useEntries it is
+ * gated by auth state, but the list is the same for every member of the tenant —
+ * including notes an agent posted via a workspace-tool call. Contrast with
+ * useEntries, whose list is private to the signed-in OIDC subject.
+ */
+export function useSharedNotes(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.sharedNotes,
+    queryFn: ({ signal }) => listSharedNotes(signal),
+    enabled,
+  });
+}
+
+/**
  * The role-gated /api/v1/admin-area probe. Also gated by auth state — the
  * point of the demo is that a signed-in user without the role gets `forbidden`
  * (authorization), distinct from the anonymous 401 (authentication).
@@ -69,5 +85,13 @@ export function useCreateEntry() {
   return useMutation({
     mutationFn: (body: string) => createEntry(body),
     onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.entries }),
+  });
+}
+
+export function useCreateSharedNote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: string) => createSharedNote(body),
+    onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.sharedNotes }),
   });
 }

@@ -7,5 +7,6 @@ export const queryKeys = {
   me: ['me'] as const,
   publicInfo: ['public-info'] as const,
   entries: ['entries'] as const,
+  sharedNotes: ['shared-notes'] as const,
   adminArea: ['admin-area'] as const,
 };
