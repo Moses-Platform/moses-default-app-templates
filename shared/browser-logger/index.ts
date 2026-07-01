@@ -80,6 +80,17 @@ const QUEUE_FLUSH_INTERVAL_MS = 5_000;
 const PREBOOTSTRAP_BUFFER_CAP = 50;
 
 export async function installBrowserLogger(opts: InstallOptions = {}): Promise<void> {
+  // Idempotency latch: guarantee a single install even if this runs twice
+  // (bundled snippet + gateway-injected client.js coexisting, or a double
+  // import). Must precede the synchronous window-listener attach below so the
+  // second call attaches no duplicate listeners. Guarded on `window` so the
+  // no-window path (SSR / tests without a DOM) still falls through to the
+  // existing loc-fallback behavior.
+  if (typeof window !== "undefined") {
+    if ((window as any).__mosesBrowserLoggerInstalled) return;
+    (window as any).__mosesBrowserLoggerInstalled = true;
+  }
+
   // import.meta.env is the Vite-injected env object. Use a guarded read so
   // this file also compiles under bundlers that don't define it (the call
   // becomes a no-op and the snippet stays silent).

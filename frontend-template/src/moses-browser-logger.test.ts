@@ -110,6 +110,10 @@ beforeEach(() => {
   savedConsoleError = console.error
   savedConsoleWarn = console.warn
   trackedListeners = []
+  // The idempotency latch (window.__mosesBrowserLoggerInstalled) persists on
+  // the shared jsdom window across tests. Clear it so each test's
+  // installBrowserLogger() call runs a fresh install instead of early-returning.
+  delete (window as unknown as Record<string, unknown>).__mosesBrowserLoggerInstalled
   window.addEventListener = ((type: string, l: EventListenerOrEventListenerObject, opts?: unknown) => {
     trackedListeners.push([type, l])
     return realAdd(type, l, opts as AddEventListenerOptions)
@@ -262,5 +266,41 @@ describe('installBrowserLogger pre-bootstrap crash capture', () => {
     // And the buffered crash still flushed via the resolved (loc) identity.
     expect(ingestCalls.length).toBe(1)
     expect(ingestCalls[0].events.length).toBe(1)
+  })
+})
+
+describe('installBrowserLogger idempotency guard', () => {
+  it('attaches window listeners once and latches the flag across repeated installs', async () => {
+    const { fetchMock, releaseBootstrap } = makeFetchMock({
+      ok: true,
+      body: { enabled: true, token: 'tok', endpoint: '/api/v1/browser-logs/ingest' },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    // First install: attaches the synchronous window listeners (error +
+    // unhandledrejection) before the bootstrap await, and sets the latch.
+    const first = installBrowserLogger()
+    expect(trackedListeners.length).toBeGreaterThanOrEqual(2)
+    expect(
+      (window as unknown as Record<string, unknown>).__mosesBrowserLoggerInstalled
+    ).toBe(true)
+
+    releaseBootstrap()
+    await first
+    await Promise.resolve()
+
+    const listenerCountAfterFirst = trackedListeners.length
+
+    // Second install: the guard early-returns, so NO new window listeners are
+    // attached — the logger installs exactly once per page.
+    const second = installBrowserLogger()
+    expect(trackedListeners.length).toBe(listenerCountAfterFirst)
+    await second
+    await Promise.resolve()
+    // Still no new listeners after the second install fully settles.
+    expect(trackedListeners.length).toBe(listenerCountAfterFirst)
+    expect(
+      (window as unknown as Record<string, unknown>).__mosesBrowserLoggerInstalled
+    ).toBe(true)
   })
 })

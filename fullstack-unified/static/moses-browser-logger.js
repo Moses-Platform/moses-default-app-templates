@@ -149,6 +149,15 @@
   }
 
   function install(cfg) {
+    // Idempotency latch: guarantee a single install even if this script and a
+    // gateway-injected client.js both load (or the file is included twice).
+    // Must precede the synchronous window-listener attach below so the second
+    // run attaches no duplicate listeners.
+    if (typeof window !== "undefined") {
+      if (window.__mosesBrowserLoggerInstalled) return;
+      window.__mosesBrowserLoggerInstalled = true;
+    }
+
     var apiBase = cfg.apiBase || "";
     // Identity resolution: when both ids are present, pass them directly. When
     // either is missing, fall back to a `loc` param (origin+pathname) so the
