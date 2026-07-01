@@ -26,13 +26,20 @@ in-cluster image build service:
 
 | Var                          | Source                                     | Required |
 | ---------------------------- | ------------------------------------------ | -------- |
-| `VITE_MOSES_CHART_ID`        | The chart this build belongs to (UUID)    | yes      |
-| `VITE_MOSES_DEPLOYMENT_ID`   | `agent_pod_executions.id` for this build   | yes      |
+| `VITE_MOSES_CHART_ID`        | The chart this build belongs to (UUID)    | recommended |
+| `VITE_MOSES_DEPLOYMENT_ID`   | `agent_pod_executions.id` for this build   | recommended |
 | `VITE_MOSES_API_BASE`        | Absolute URL to Moses API (empty = same origin) | no |
 
-When either of the first two is missing, the snippet silently no-ops — that
-makes it safe to leave in templates built outside Moses (e.g. local
-`vite build` for a dry run).
+When both of the first two are baked in, the snippet bootstraps with
+`chart_id` + `deployment_id`. When either is missing (build args not
+forwarded, chart-id stripped, or a non-Vite build), the snippet no longer
+self-disables: it bootstraps with a `loc=<origin+pathname>` param so the
+Moses platform resolves the chart/deployment identity server-side from the
+request URL. The per-chart "Browser error logging" toggle still gates the
+stream — a chart with logging disabled bootstraps to not-enabled and the
+snippet stays silent. Building outside Moses (e.g. a local `vite build` dry
+run) is still safe: the bootstrap request just fails/404s and the snippet
+goes quiet.
 
 For local dev against a running Moses, set these in `.env.local`:
 

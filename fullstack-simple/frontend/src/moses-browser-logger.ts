@@ -21,8 +21,13 @@
 //                                 multi-domain ingress)
 //
 // At boot the snippet hits BLF-A's bootstrap endpoint to fetch its config
-// (per-chart enabled flag + ingest token + sample rate). When the env vars
-// are missing (built outside Moses, or chart-id stripped) it silently no-ops.
+// (per-chart enabled flag + ingest token + sample rate). When both env vars
+// are present it passes chart_id+deployment_id; when either is missing (built
+// outside Moses, or chart-id stripped) it instead passes a `loc` param
+// (origin+pathname) so the platform can resolve chart/deployment identity
+// server-side from the request URL — the snippet no longer self-disables on
+// missing ids. If the resolved chart has browser logging disabled, bootstrap
+// returns not-enabled and the snippet silently no-ops.
 //
 // CRASH-CAPTURE ORDERING (CHAT-il3y6): bootstrap is async (`await fetch`), but
 // the most valuable errors — a render-time crash in the synchronous code that
@@ -81,9 +86,6 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
   const env = readViteEnv();
   const chartId = env.VITE_MOSES_CHART_ID;
   const deploymentId = env.VITE_MOSES_DEPLOYMENT_ID;
-  if (!chartId || !deploymentId) {
-    return;
-  }
 
   // --- Hoisted state (must outlive the await) -------------------------------
   // `queue` collects events both before AND after bootstrap. Before bootstrap
@@ -190,11 +192,24 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
   }
 
   const apiBase = env.VITE_MOSES_API_BASE || "";
+  // Identity resolution: when the build baked in both ids, pass them directly.
+  // When either is missing, fall back to a `loc` param (origin+pathname) so the
+  // platform can resolve chart/deployment identity server-side from the request
+  // URL — apps built without the Vite ids still log. The per-chart enabled gate
+  // is enforced by bootstrap either way.
+  const bootstrapBase = apiBase + "/api/v1/browser-logs/bootstrap";
   const bootstrapUrl =
-    apiBase +
-    "/api/v1/browser-logs/bootstrap" +
-    "?chart_id=" + encodeURIComponent(chartId) +
-    "&deployment_id=" + encodeURIComponent(deploymentId);
+    chartId && deploymentId
+      ? bootstrapBase +
+        "?chart_id=" + encodeURIComponent(chartId) +
+        "&deployment_id=" + encodeURIComponent(deploymentId)
+      : bootstrapBase +
+        "?loc=" +
+        encodeURIComponent(
+          typeof window !== "undefined"
+            ? window.location.origin + window.location.pathname
+            : ""
+        );
 
   let cfg: BootstrapConfig | null = null;
   try {

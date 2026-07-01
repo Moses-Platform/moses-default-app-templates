@@ -50,10 +50,10 @@
       var apiBase = meta.getAttribute("data-api-base") || "";
       // Treat unsubstituted Go-template placeholders as "absent". main.go renders
       // empty strings when env vars are missing, but defend against the literal.
-      if (chartId.indexOf("{{") === 0 || deploymentId.indexOf("{{") === 0) {
-        return null;
-      }
-      if (!chartId || !deploymentId) return null;
+      // Missing ids no longer disable the logger: install() falls back to a
+      // `loc` param so the platform resolves identity server-side from the URL.
+      if (chartId.indexOf("{{") === 0) chartId = "";
+      if (deploymentId.indexOf("{{") === 0) deploymentId = "";
       return {
         chartId: chartId,
         deploymentId: deploymentId,
@@ -150,11 +150,25 @@
 
   function install(cfg) {
     var apiBase = cfg.apiBase || "";
+    // Identity resolution: when both ids are present, pass them directly. When
+    // either is missing, fall back to a `loc` param (origin+pathname) so the
+    // platform can resolve chart/deployment identity server-side from the
+    // request URL. The per-chart enabled gate is enforced by bootstrap either
+    // way. (fullstack-unified has no build step, so this runtime path is the
+    // only way it can log — do not reintroduce an early no-op on missing ids.)
+    var bootstrapBase = apiBase + "/api/v1/browser-logs/bootstrap";
     var bootstrapUrl =
-      apiBase +
-      "/api/v1/browser-logs/bootstrap" +
-      "?chart_id=" + encodeURIComponent(cfg.chartId) +
-      "&deployment_id=" + encodeURIComponent(cfg.deploymentId);
+      cfg.chartId && cfg.deploymentId
+        ? bootstrapBase +
+          "?chart_id=" + encodeURIComponent(cfg.chartId) +
+          "&deployment_id=" + encodeURIComponent(cfg.deploymentId)
+        : bootstrapBase +
+          "?loc=" +
+          encodeURIComponent(
+            typeof window !== "undefined"
+              ? window.location.origin + window.location.pathname
+              : ""
+          );
 
     // --- Hoisted state (must outlive the bootstrap .then) -------------------
     // `queue` collects events both before AND after bootstrap. Before bootstrap

@@ -231,16 +231,36 @@ describe('installBrowserLogger pre-bootstrap crash capture', () => {
     expect(events[0].message).toContain('crash #' + (TOTAL - 50))
   })
 
-  it('silently no-ops when chart/deployment env vars are absent (no listeners, no fetch)', async () => {
+  it('falls back to a loc-based bootstrap (not a no-op) when chart/deployment env vars are absent', async () => {
+    // The snippet no longer self-disables on missing baked ids: it bootstraps
+    // with a `loc` param (origin+pathname) so the platform resolves identity
+    // server-side from the request URL.
     vi.stubEnv('VITE_MOSES_CHART_ID', '')
     vi.stubEnv('VITE_MOSES_DEPLOYMENT_ID', '')
-    const fetchMock = vi.fn()
+    const { fetchMock, ingestCalls, releaseBootstrap } = makeFetchMock({
+      ok: true,
+      body: { enabled: true, token: 'tok', endpoint: '/api/v1/browser-logs/ingest' },
+    })
     vi.stubGlobal('fetch', fetchMock)
 
-    await installBrowserLogger()
-    fireWindowError('crash with no env')
+    const installed = installBrowserLogger()
+    // Listeners are attached synchronously even without baked ids.
+    fireWindowError('crash with no baked ids')
+    releaseBootstrap()
+    await installed
     await Promise.resolve()
 
-    expect(fetchMock).not.toHaveBeenCalled()
+    // Bootstrap was called with a loc param instead of chart_id/deployment_id.
+    const bootstrapUrl = String(fetchMock.mock.calls[0][0])
+    expect(bootstrapUrl).toContain('/api/v1/browser-logs/bootstrap')
+    expect(bootstrapUrl).toContain('loc=')
+    expect(bootstrapUrl).not.toContain('chart_id=')
+    expect(bootstrapUrl).toContain(
+      encodeURIComponent(window.location.origin + window.location.pathname)
+    )
+
+    // And the buffered crash still flushed via the resolved (loc) identity.
+    expect(ingestCalls.length).toBe(1)
+    expect(ingestCalls[0].events.length).toBe(1)
   })
 })
