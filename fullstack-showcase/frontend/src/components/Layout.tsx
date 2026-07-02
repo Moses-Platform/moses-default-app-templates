@@ -13,6 +13,7 @@ export default function Layout() {
     { path: '/auth-flow', label: 'Auth Flow', icon: '🔐' },
     { path: '/multi-tenancy', label: 'Multi-Tenancy', icon: '👥' },
     { path: '/api-examples', label: 'API Examples', icon: '💻' },
+    { path: '/platform-users', label: 'Platform Users', icon: '🪪' },
   ];
 
   return (

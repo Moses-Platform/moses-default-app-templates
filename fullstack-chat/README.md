@@ -18,6 +18,8 @@ A minimal Postgres-backed feed app whose sole purpose is to be a smoke-test for 
 
 See [`skills/chat-roundtrip-overview.md`](skills/chat-roundtrip-overview.md) for the full architectural walkthrough and the manual end-to-end test recipe.
 
+> **Building a real app on this template?** Run `./clean_out_template.sh` once — it strips the entries-feed demo while keeping every piece of Moses plumbing (webhook receiver, `/__moses/invoke` proxy, `src/moses/` integration modules, helm/nginx path contract). [`skills/usage.md`](skills/usage.md) has the KEEP/REPLACE/DELETE map and the env-var contract.
+
 ## Round-trip mechanics (CHAT-pswm.2/.8/.9)
 
 `fullstack-chat` is the canonical reference for the iframe-SDK + backend-proxy
@@ -164,8 +166,8 @@ it wanted to (e.g. to look up tickets), it would have to call
 
 ## Stack
 
-- **Frontend**: React 18 + Vite, single-page (no router). 7 vitest tests covering postMessage origin checks, status banner transitions, invoke shape, and the `moses_embed_open_chat` post-up envelope.
-- **Backend**: Go (stdlib `net/http`), Postgres via `lib/pq`. Handlers: `entries`, `webhook_chat`, `health`, `openapi`. Tests cover HMAC signature verification (including dual-slot rotation acceptance), timestamp clock-skew rejection, fail-closed behavior when no secret is configured, and entries validation.
+- **Frontend**: React 19 + Vite, single-page (no router). 22 vitest tests: 12 integration-contract tests in `src/moses/moses.test.tsx` (SDK invoke guard + error shaping, postMessage origin checks, `moses_embed_open_chat` envelope — these survive `clean_out_template.sh`) and 10 demo-UI tests in `App.test.tsx` (deleted by the cleanout).
+- **Backend**: Go (stdlib `net/http`), Postgres via `pgx/v5` (stdlib `database/sql` driver). Handlers: `entries` (demo), `webhook_chat`, `health`, `openapi`. Tests cover HMAC signature verification (including dual-slot rotation acceptance), verify-before-skew ordering, nonce replay rejection, appSlug claim checks, fail-closed behavior when no secret is configured, and entries validation.
 - **Helm**: multi-service chart (frontend + backend), Postgres declared in `dependencies.services`.
 - **OpenAPI** at `/api/openapi.json` declares the entries CRUD + webhook receiver so Moses' `WorkspaceToolService.discoverAndRegisterEndpoints` picks it up after deploy.
 
@@ -283,4 +285,4 @@ cd frontend && npm run dev
 
 ## License
 
-MIT — see `../LICENSE`.
+Apache-2.0 — see the repository-root `LICENSE`. Exceptions: `frontend/src/moses-browser-logger.ts` and the Go files under `backend/cmd/server/` that carry an explicit header (`validate_env.go`, `validate_env_test.go`, `main_test.go`, `moses_proxy_integration_test.go`) are licensed under the Business Source License 1.1 as stated in their headers.

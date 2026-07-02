@@ -71,8 +71,12 @@ export default function OverviewPage() {
             {mosesInfo.headers_present ? (
               <>
                 <div className="context-item">
-                  <span className="context-label">Tenant ID:</span>
-                  <code className="context-value">{mosesInfo.tenant_id || 'N/A'}</code>
+                  <span className="context-label">Tenant ID (self, deploy-pinned):</span>
+                  <code className="context-value">{mosesInfo.self_tenant_id || 'N/A'}</code>
+                </div>
+                <div className="context-item">
+                  <span className="context-label">Caller Tenant ID (header):</span>
+                  <code className="context-value">{mosesInfo.caller_tenant_id || 'N/A'}</code>
                 </div>
                 <div className="context-item">
                   <span className="context-label">User ID:</span>

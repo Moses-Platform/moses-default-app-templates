@@ -41,7 +41,11 @@ spec:
             - name: http
               containerPort: {{ .port }}
               protocol: TCP
-          {{- if $.Values.secrets }}
+          {{- /* Secrets (incl. the platform's moses-webhook-secret-* bridge)
+                 are BACKEND-ONLY. The frontend nginx serves static files and
+                 must never see webhook secrets / API keys — key off the same
+                 frontend-name convention as the service-discovery block. */}}
+          {{- if and $.Values.secrets (not (has .name (list "frontend" "web" "ui"))) }}
           envFrom:
             {{- if $.Values.secrets.secretName }}
             - secretRef:
@@ -89,7 +93,10 @@ spec:
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
-            {{- if $.Values.postgresql }}
+            {{- /* DB credentials are BACKEND-ONLY (same frontend-name
+                   convention as above): the nginx container never talks to
+                   Postgres and must not carry DB_PASSWORD/DATABASE_URL. */}}
+            {{- if and $.Values.postgresql (not (has .name (list "frontend" "web" "ui"))) }}
             {{- if $.Values.postgresql.enabled }}
             - name: DATABASE_HOST
               value: "{{ include "agent-deployed-app.fullname" $ }}-postgresql"

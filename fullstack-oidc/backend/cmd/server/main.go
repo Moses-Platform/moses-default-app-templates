@@ -4,16 +4,16 @@
 // Keycloak login while preserving the X-Moses-* trusted-header path for
 // pod-to-pod MCP / workspace-tool calls.
 //
-// The route surface is the demo: one PUBLIC route (/api/v1/public-info),
-// three PROTECTED routes (/api/v1/me, the per-user /api/v1/entries, and the
-// tenant-shared /api/v1/shared-notes), and one PROTECTED + ROLE-GATED route
-// (/api/v1/admin-area) that enforces an app role projected from the validated
-// token. entries (user space) vs shared-notes (tenant space) is the demo's
-// data-ownership contrast. /health and the OpenAPI spec are always public.
+// The kept route surface is /api/v1/me (PROTECTED session introspection).
+// Demo routes are registered by registerDemoRoutes (demo_routes.go) and
+// removed by clean_out_template.sh — see skills/usage.md for the
+// KEEP/REPLACE/DELETE contract. /health and the OpenAPI spec are always
+// public.
 package main
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"net/http"
 	"os"
@@ -77,9 +77,7 @@ func main() {
 		}
 	}
 
-	entriesHandler := handler.NewEntriesHandler(db)
-	sharedNotesHandler := handler.NewSharedNotesHandler(db)
-	mux := buildMux(basePath, oidcCfg.Enabled(), entriesHandler, sharedNotesHandler)
+	mux := buildMux(basePath, oidcCfg.Enabled(), db)
 
 	// Middleware order (outermost first):
 	//   Logging -> CORS -> MosesHeaders -> OIDCAuth -> mux
@@ -133,7 +131,7 @@ func main() {
 // /health and /api/openapi.json are mounted at BOTH the canonical root
 // and the base-path alias. See ../../README.md "deployed-app path
 // contract".
-func buildMux(basePath string, oidcEnabled bool, entriesHandler *handler.EntriesHandler, sharedNotesHandler *handler.SharedNotesHandler) *http.ServeMux {
+func buildMux(basePath string, oidcEnabled bool, db *sql.DB) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// Health — canonical (K8s probe bypasses the ingress) + alias.
@@ -150,26 +148,14 @@ func buildMux(basePath string, oidcEnabled bool, entriesHandler *handler.Entries
 		mux.HandleFunc(basePath+"/api/spec", handler.OpenAPI)
 	}
 
-	// API endpoints — registered ONCE under MOSES_BASE_PATH.
-	//   /api/v1/public-info   — PUBLIC  (declared in access.oidc.publicPaths)
-	//   /api/v1/me            — PROTECTED (OIDCAuth gates it on a session)
-	//   /api/v1/entries       — PROTECTED (USER space: per-user, private)
-	//   /api/v1/shared-notes  — PROTECTED (TENANT space: shared by the workspace)
-	//   /api/v1/admin-area    — PROTECTED + ROLE-GATED (oidc-admin role)
-	//
-	// The contrast between public-info and the rest is the whole demo:
-	// one route any visitor can read, the others gated by the vendored
-	// oidcauth middleware. entries vs shared-notes is the SECOND contrast:
-	// entries is owned per OIDC subject (private), shared-notes is owned per
-	// tenant (visible to the whole workspace — and to content agents post via
-	// workspace tools, which arrive under the agent's X-Moses-User-ID).
-	// admin-area goes one step further and enforces an app role projected from
-	// the token (see handler.AdminArea).
-	mux.HandleFunc(basePath+"/api/v1/public-info", handler.PublicInfo(oidcEnabled))
+	// Session introspection — OIDC plumbing, registered ONCE under
+	// MOSES_BASE_PATH. PROTECTED (OIDCAuth gates it on a session); the
+	// SPA's auth bootstrap reads it to learn who the user is.
 	mux.HandleFunc(basePath+"/api/v1/me", handler.Me)
-	mux.HandleFunc(basePath+"/api/v1/entries", entriesHandler.Entries)
-	mux.HandleFunc(basePath+"/api/v1/shared-notes", sharedNotesHandler.SharedNotes)
-	mux.HandleFunc(basePath+"/api/v1/admin-area", handler.AdminArea)
+
+	// Demo routes live in demo_routes.go so clean_out_template.sh can
+	// swap that single file for a stub.
+	registerDemoRoutes(mux, basePath, oidcEnabled, db)
 
 	return mux
 }

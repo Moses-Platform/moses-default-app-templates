@@ -1,0 +1,15 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Fullstack Unified API",
+    "version": "1.0.0",
+    "description": "UPDATE THIS — the served spec is the single source of truth for MCP tool registration. Add each real endpoint under paths, RELATIVE to servers[0].url."
+  },
+  "servers": [
+    {
+      "url": "/api/v1",
+      "description": "Canonical API base. MUST stay base-path-free: the platform's workspace-tool proxy prepends MOSES_BASE_PATH itself (CHAT-8qiu0). Paths below are relative to this base — the platform's openapi_parser folds servers[0].url + path into the registered endpoint path. Never list /health here (it would register a phantom tool)."
+    }
+  ],
+  "paths": {}
+}

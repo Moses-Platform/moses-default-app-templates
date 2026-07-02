@@ -31,6 +31,7 @@
     }
   },
   "skills": [
+    "skills/usage.md",
     "skills/oidc-overview.md",
     "skills/oidcauth-middleware.md",
     "skills/secrets-tutorial.md"
@@ -97,7 +98,6 @@
   "maintenance": {
     "renovate": {
       "schedule": "0 4 * * 1",
-      "configPath": "renovate.json",
       "context": "OIDC relying-party app with React frontend, Go backend, and PostgreSQL. Update npm packages, Go modules, Docker images, and Helm chart dependencies."
     },
     "logMonitor": {

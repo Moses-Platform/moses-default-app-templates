@@ -1,163 +1,126 @@
 # Moses API Integration - Agent Skill
 
-## Moses Header Middleware Pattern
+How a deployed app integrates with the Moses platform. Everything below
+mirrors the actual code in this template — copy from the referenced files,
+not from memory.
 
-All Moses-integrated apps should extract Moses headers to get tenant/user context:
+## Tenant identity: env-pinned, NOT header-derived (CHAT-pxeo.12)
+
+The backend's authoritative tenant comes from the `MOSES_TENANT_ID` env var
+the platform injects at deploy time (`internal/config/moses.go` →
+`config.SelfTenantID()`). The `X-Moses-Tenant-ID` request header is
+caller-context only (audit + the 403 cross-check) — it is ABSENT on
+browser-driven requests through the platform's user-facing app proxy, so an
+app that stores rows under the header value silently writes them under `""`.
 
 ```go
-// Backend example (internal/middleware/moses_headers.go)
-type MosesContext struct {
-    TenantID    string
-    UserID      string
-    ChartID     string
-    ToolID      string
-    RequestID   string
-    MCPSource   string
-    APIKeyID    string
+// GOOD — storage keys from the deploy-pinned env (via MosesContext):
+mc := middleware.GetMosesContext(r.Context())
+if enforceTenantMatch(w, mc) { // 403 cross-check helper, internal/handler/tenant.go
+    return
 }
+tenantID := mc.SelfTenantID // = config.SelfTenantID(), from MOSES_TENANT_ID env
 
-func MosesHeaders(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        mosesCtx := MosesContext{
-            TenantID:   r.Header.Get("X-Moses-Tenant-ID"),
-            UserID:     r.Header.Get("X-Moses-User-ID"),
-            ChartID:    r.Header.Get("X-Moses-Chart-ID"),
-            // ... extract other headers
-        }
-        ctx := context.WithValue(r.Context(), mosesContextKey, mosesCtx)
-        next.ServeHTTP(w, r.WithContext(ctx))
-    })
-}
+rows, err := db.QueryContext(r.Context(),
+    `SELECT id, title FROM notes WHERE tenant_id = $1`, tenantID)
+
+// BAD — header-derived storage tenant (forbidden: empty on browser requests,
+// caller-spoofable on direct ones):
+db.Query(ctx, query, r.Header.Get("X-Moses-Tenant-ID"))
 ```
 
-## OpenAPI Spec Requirements
+Always still filter every query by `tenant_id` — the pin changes WHERE the
+value comes from, not the requirement to scope.
 
-For automatic MCP tool generation, provide a complete OpenAPI spec:
+## Moses header middleware
 
-### File Location
-Place at one of 11 standard paths:
-- `/api/openapi.json` or `/api/openapi.yaml` (recommended)
-- `/swagger.json` or `/swagger.yaml`
-- `/openapi.json` or `/openapi.yaml`
-- `/api/spec`, `/api-docs`, `/docs/openapi.json`, `/api-doc`
+`internal/middleware/moses_headers.go` extracts all X-Moses-* headers into a
+`MosesContext` carrying BOTH `SelfTenantID` (env) and `CallerTenantID`
+(header). Downstream handlers read it via `middleware.GetMosesContext(ctx)`.
+Reuse that file as-is; do not re-derive tenant identity per handler.
 
-### Required Fields
+## OpenAPI spec requirements
+
+The platform probes `/api/openapi.json` (plus 10 other standard paths) after
+deploy and generates one MCP tool per operation: `workspace_{toolKey}_{operationId}`.
+
+Canonical shape (enforced by this template's `cmd/server` tests):
+
 ```json
 {
   "openapi": "3.0.3",
-  "info": { "title": "...", "version": "..." },
+  "servers": [{ "url": "/api/v1" }],
   "paths": {
-    "/api/v1/endpoint": {
-      "get": {
-        "operationId": "uniqueOperationId",  // REQUIRED for tool naming
-        "summary": "Short description",
-        "description": "Detailed explanation",
-        "tags": ["Category"],
-        "responses": { "200": { ... } }
-      }
+    "/capabilities": {
+      "get": { "operationId": "listCapabilities", "summary": "..." }
     }
   }
 }
 ```
 
-### Tool Naming Convention
-Moses generates tools as: `workspace_{toolKey}_{operationId}`
+- `servers` MUST be exactly `[{"url": "/api/v1"}]` and stay base-path-free —
+  the platform folds `servers[0].url + path` into the endpoint and prepends
+  `MOSES_BASE_PATH` itself; a base-path-aware or `/api/`-rooted entry
+  double-prefixes and every tool call 404s.
+- Path keys are RELATIVE to that base (`/capabilities`, not
+  `/api/v1/capabilities`).
+- Do NOT list `/health` — it would register a phantom workspace tool.
+- Every operation needs a unique `operationId` (it names the MCP tool).
 
-Example:
-- OpenAPI operationId: `getMosesInfo`
-- Tool registration key: `showcase`
-- Generated tool: `workspace_showcase_getMosesInfo`
+## Multi-service frontend→backend communication
 
-## Multi-Service Frontend→Backend Communication
+### nginx proxy (see `frontend/nginx.conf` — the real contract)
 
-When deploying frontend + backend as separate services:
+Root-relative traffic forwards onto the backend's `MOSES_BASE_PATH` mount
+(the backend registers its API ONCE under that prefix — root README path
+contract):
 
-### Frontend nginx.conf
 ```nginx
 location /api/ {
-    proxy_pass http://${BACKEND_SERVICE_HOST}:${BACKEND_SERVICE_PORT}/api/;
+    # ${MOSES_BASE_PATH_PREFIX} is "" standalone and "/apps/<t>/<slug>" on
+    # Moses — rendered by entrypoint.sh at container start.
+    proxy_pass http://${BACKEND_SERVICE_HOST}:${BACKEND_SERVICE_PORT}${MOSES_BASE_PATH_PREFIX}/api/;
     proxy_set_header Host $host;
-    proxy_pass_header X-Moses-Tenant-ID;  # Forward Moses headers
+    proxy_pass_header X-Moses-Tenant-ID;  # caller-context only, see above
     proxy_pass_header X-Moses-User-ID;
 }
 ```
 
-### Frontend Dockerfile entrypoint
-```bash
-#!/bin/sh
-envsubst '${BACKEND_SERVICE_HOST} ${BACKEND_SERVICE_PORT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
-exec nginx -g 'daemon off;'
-```
+For the sub-path mount itself (`/apps/<t>/<slug>/api/...`), entrypoint.sh
+renders a `location ^~ ${MOSES_BASE_PATH_PREFIX}/api/` block whose
+`proxy_pass` has **NO URI part** (CHAT-yfmwv) — the full prefixed path is
+forwarded unchanged to the backend's base-path-mounted routes. A URI part
+would strip the matched prefix and the backend would 404. Never hand-write a
+URI-part-only `proxy_pass http://backend/api/;` for sub-path traffic.
 
-### Helm values.yaml
-```yaml
-services:
-  - name: frontend
-    env:
-      BACKEND_SERVICE_HOST: "agent-deployed-app-backend"
-      BACKEND_SERVICE_PORT: "8080"
-  - name: backend
-    port: 8080
-```
+Frontend JS uses RELATIVE fetch paths only (`fetch('api/v1/...')`).
 
-Service DNS: `agent-deployed-app-backend.{namespace}.svc.cluster.local`
+### Service discovery
 
-## Tenant Isolation
+`BACKEND_SERVICE_HOST` / `BACKEND_SERVICE_PORT` are **auto-injected by the
+Helm chart** for frontend containers (`helm/templates/deployment.yaml`,
+"Auto-inject backend service discovery" block) — do NOT set them manually in
+values. entrypoint.sh carries shell-default fallbacks for standalone runs.
 
-All data operations MUST filter by tenant:
+## CORS: off by default, exact-origin allowlist opt-in
 
-```go
-// GOOD - Tenant-scoped query
-query := `SELECT * FROM resources WHERE id = $1 AND tenant_id = $2`
-db.Query(ctx, query, resourceID, mosesCtx.TenantID)
+`internal/middleware/cors.go`: no CORS headers are emitted at all unless
+`CORS_ALLOWED_ORIGINS` (comma-separated exact origins) is set. A matching
+origin is echoed back verbatim with `Vary: Origin`; a wildcard is never
+combined with credentials. A Moses-deployed app is same-origin behind the
+platform edge, so the default (no CORS) is correct for almost every app.
 
-// BAD - Cross-tenant data leak
-query := `SELECT * FROM resources WHERE id = $1`
-db.Query(ctx, query, resourceID)
-```
+## Health check
 
-## CORS Configuration
+`/health` is dual-mounted (canonical for the kubelet probe, base-path alias
+for sub-path callers) and returns a small JSON status —
+`internal/handler/health.go`. Keep it out of the OpenAPI spec.
 
-Allow Moses backend origin:
+## Stack notes
 
-```go
-func CORS(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        origin := r.Header.Get("Origin")
-        if env == "production" {
-            // Restrict to K8s service mesh
-            if origin != "" {
-                w.Header().Set("Access-Control-Allow-Origin", origin)
-            }
-        } else {
-            w.Header().Set("Access-Control-Allow-Origin", "*")
-        }
-        w.Header().Set("Access-Control-Allow-Headers", 
-            "Content-Type, Authorization, X-Moses-Tenant-ID, X-Moses-User-ID")
-        // ...
-    })
-}
-```
-
-## Health Check Best Practices
-
-Implement /health for deployment verification:
-
-```go
-func Health(w http.ResponseWriter, r *http.Request) {
-    response := map[string]string{
-        "status":  "healthy",
-        "service": "your-service-name",
-        "version": "1.0.0",
-    }
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(response)
-}
-```
-
-Moses deployment automation:
-1. The in-cluster image builder builds and pushes images
-2. Helm deploys with health probes
-3. Waits for readinessProbe to pass
-4. OpenAPI discovery (if API service)
-5. Generates MCP tools from operationIds
+- Backend: Go 1.25 (`go.mod` 1.25.10), `net/http` mux + **pgx v5**
+  (`jackc/pgx/v5/stdlib`) for PostgreSQL — not stdlib-only.
+- DB bootstrap: `internal/database/db.go` — retry loop with 28P01
+  (invalid_password) fail-fast; schema lives in `migrate_demo.go`.
+- Deployment automation: image build (Buildah, in-cluster) → Helm deploy →
+  readiness probes → OpenAPI discovery → MCP tool generation.

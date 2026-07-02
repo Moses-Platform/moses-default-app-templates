@@ -21,7 +21,6 @@ func setEnvMap(t *testing.T, m map[string]string) {
 func TestValidatePlatformEnv_ProdMode_AllPresent_NoExit(t *testing.T) {
 	setEnvMap(t, map[string]string{
 		envMosesDeployed:        "1",
-		envMosesAPIBase:         "https://moses.example.com",
 		envMosesTenantID:        "00000000-0000-0000-0000-000000000001",
 		envMosesChartID:         "00000000-0000-0000-0000-000000000002",
 		envMosesAppSlug:         "fullstack-chat",
@@ -37,6 +36,31 @@ func TestValidatePlatformEnv_ProdMode_AllPresent_NoExit(t *testing.T) {
 	}
 	if exitCalled {
 		t.Errorf("exit must NOT be called when all required vars are present")
+	}
+}
+
+// MOSES_API_BASE is NOT part of the required contract: the provisioner
+// omits the key entirely when the install surfaces no public URL, and
+// nothing in this template consumes it (only MOSES_INTERNAL_API_BASE is
+// used). Regression guard for the dropped prod-fatal requirement.
+func TestValidatePlatformEnv_ProdMode_APIBaseAbsent_StillValid(t *testing.T) {
+	t.Setenv("MOSES_API_BASE", "") // explicitly absent
+	setEnvMap(t, map[string]string{
+		envMosesDeployed:        "1",
+		envMosesTenantID:        "00000000-0000-0000-0000-000000000001",
+		envMosesChartID:         "00000000-0000-0000-0000-000000000002",
+		envMosesAppSlug:         "fullstack-chat",
+		envWebhookSecret:        "abc123",
+		envMosesInternalAPIBase: "http://moses-backend.moses.svc.cluster.local:8080",
+	})
+
+	exitCalled := false
+	exit := func(int) { exitCalled = true }
+	if ok := validatePlatformEnv(exit); !ok {
+		t.Errorf("expected validation to pass without MOSES_API_BASE")
+	}
+	if exitCalled {
+		t.Errorf("exit must NOT be called when only MOSES_API_BASE is absent")
 	}
 }
 
@@ -104,7 +128,6 @@ func TestValidatePlatformEnv_NoChatPromptAction_WebhookSecretNotRequired(t *test
     }`)
 	setEnvMap(t, map[string]string{
 		envMosesDeployed:        "1",
-		envMosesAPIBase:         "https://moses.example.com",
 		envMosesTenantID:        "00000000-0000-0000-0000-000000000001",
 		envMosesChartID:         "00000000-0000-0000-0000-000000000002",
 		envMosesAppSlug:         "fork-without-chat-prompt",
@@ -134,7 +157,6 @@ func TestValidatePlatformEnv_ChatPromptDeclared_WebhookSecretRequired(t *testing
     }`)
 	setEnvMap(t, map[string]string{
 		envMosesDeployed:        "1",
-		envMosesAPIBase:         "https://moses.example.com",
 		envMosesTenantID:        "00000000-0000-0000-0000-000000000001",
 		envMosesChartID:         "00000000-0000-0000-0000-000000000002",
 		envMosesAppSlug:         "fork-with-chat-prompt",
@@ -167,7 +189,6 @@ func TestValidatePlatformEnv_ChatPromptDeclared_InternalAPIBaseRequired(t *testi
     }`)
 	setEnvMap(t, map[string]string{
 		envMosesDeployed:        "1",
-		envMosesAPIBase:         "https://moses.example.com",
 		envMosesTenantID:        "00000000-0000-0000-0000-000000000001",
 		envMosesChartID:         "00000000-0000-0000-0000-000000000002",
 		envMosesAppSlug:         "fork-with-chat-prompt",
@@ -194,7 +215,6 @@ func TestValidatePlatformEnv_NoConfigFile_FallsBackToStrict(t *testing.T) {
 	t.Setenv("MOSES_APP_CONFIG_PATH", filepath.Join(t.TempDir(), "does-not-exist.json"))
 	setEnvMap(t, map[string]string{
 		envMosesDeployed: "1",
-		envMosesAPIBase:  "https://moses.example.com",
 		envMosesTenantID: "00000000-0000-0000-0000-000000000001",
 		envMosesChartID:  "00000000-0000-0000-0000-000000000002",
 		envMosesAppSlug:  "fullstack-chat",

@@ -1,68 +1,99 @@
 /**
- * MOSES ROUTING — two cases, do NOT conflate them:
+ * Moses BASE_PATH helper (CHAT-pbup).
  *
- * 1. API-fetch URLs (getAPIURL): built WITHOUT the base prefix and kept
- *    RELATIVE (no leading slash). Moses serves each app under a sub-path
- *    (e.g. /apps/<t>/<a>/); a relative path lets the browser resolve it
- *    against the mounted page, adding the sub-path exactly ONCE. A leading
- *    slash here would bypass the sub-path and break routing.
+ * CANONICAL SOURCE: shared/base-path/getBasePath.ts in the templates
+ * monorepo. Consuming templates vendor a byte-identical copy at
+ * src/utils/baseUrl.ts (no build-time path dependency on shared/).
+ * Re-sync after upstream changes with, from the monorepo root:
+ *   cp shared/base-path/getBasePath.ts <template>/src/utils/baseUrl.ts
+ * CI runs tools/check-vendored-base-path.sh and fails on drift.
  *
- * 2. URLs that EXPLICITLY include the base prefix (getBasePath — e.g. the
- *    /auth/* navigations in auth/silentSSO.ts) MUST be ABSOLUTE (leading
- *    slash). A path-relative URL that already carries the base gets the
- *    base prepended a SECOND time by relative resolution from a sub-route,
- *    producing the doubled /apps/<t>/<a>/apps/<t>/<a>/auth/... bug.
+ * CHAT-pbup contract: when the platform deploys this template, an
+ * entrypoint.sh script renders the runtime BASE_PATH into a meta tag in
+ * index.html (`<meta name="moses-base-path" content="/apps/<t>/<a>/">`).
+ * This helper reads that meta tag at runtime so the React Router basename
+ * + any link-href construction agree with the public URL the user sees.
+ *
+ * Standalone deploys (no platform) leave the placeholder unrendered, so
+ * the helper falls back to "/" — same behavior as before this epic.
+ *
+ * Vite's `base: './'` is unaffected: hashed asset filenames in the built
+ * HTML use relative URLs and resolve against the current page URL.
  */
+
+const META_NAME = 'moses-base-path';
+const PLACEHOLDER = '__MOSES_BASE_PATH__';
 
 /**
- * Get the base URL for API requests
- * In development: uses Vite proxy
- * In production: uses relative URLs (nginx proxy)
+ * getBasePath returns the BASE_PATH the app is mounted under right now.
+ *
+ * The deploy-time meta tag records the app's canonical Moses mount
+ * (/apps/<t>/<a>). The app is reachable both there AND — when an admin assigns
+ * a custom hostname — at that hostname's ROOT, so getBasePath checks the live
+ * URL: under the canonical mount -> the mount; otherwise -> "/".
+ * Returns "/" when standalone or when the placeholder hasn't been rendered.
+ *
+ * Cached after the first read — the mount does not change within a page load.
  */
-export function getBaseURL(): string {
-  return '';
-}
-
-export function getAPIURL(path: string): string {
-  const base = getBaseURL();
-  // Strip leading slashes so the result is always a relative path.
-  // See MOSES ROUTING comment at top of file.
-  const cleanPath = path.replace(/^\/+/, '');
-  return `${base}${cleanPath}`;
-}
-
-/**
- * CHAT-pbup: getBasePath returns the BASE_PATH the app is mounted under right
- * now — used as the BrowserRouter basename so internal <Link to="/foo">
- * resolves correctly. The <meta name="moses-base-path"> tag records the
- * canonical Moses mount (/apps/<t>/<a>); the app is reachable both there AND —
- * when an admin assigns a custom hostname — at that hostname's ROOT, so this
- * checks the live URL: under the canonical mount -> the mount; otherwise -> "/".
- * Falls back to "/" for standalone deploys.
- */
-let cachedBasePath: string | null = null;
+let cached: string | null = null;
 export function getBasePath(): string {
-  if (cachedBasePath !== null) return cachedBasePath;
+  if (cached !== null) return cached;
   if (typeof document !== 'undefined') {
-    const meta = document.querySelector('meta[name="moses-base-path"]');
+    const meta = document.querySelector(`meta[name="${META_NAME}"]`);
     const content = meta?.getAttribute('content') ?? '';
-    if (content && content !== '__MOSES_BASE_PATH__') {
-      const ensured = content.startsWith('/') ? content : `/${content}`;
-      const mount = ensured.length > 1 && ensured.endsWith('/') ? ensured.slice(0, -1) : ensured;
+    if (content && content !== PLACEHOLDER) {
+      const mount = ensureLeadingSlash(stripTrailingSlash(content));
       if (typeof window !== 'undefined' && window.location) {
         const p = window.location.pathname;
-        cachedBasePath = p === mount || p.startsWith(`${mount}/`) ? mount : '/';
+        cached = p === mount || p.startsWith(`${mount}/`) ? mount : '/';
       } else {
-        cachedBasePath = mount;
+        cached = mount;
       }
-      return cachedBasePath;
+      return cached;
     }
   }
-  cachedBasePath = '/';
-  return cachedBasePath;
+  // Legacy fallback for tests + window.__MOSES_BASE_URL__ injection.
+  if (typeof window !== 'undefined') {
+    const w = window as unknown as { __MOSES_BASE_URL__?: string };
+    if (w.__MOSES_BASE_URL__) {
+      cached = ensureLeadingSlash(stripTrailingSlash(w.__MOSES_BASE_URL__));
+      return cached;
+    }
+  }
+  // Vite env var fallback for build-time injection (rare; runtime preferred).
+  // Conversion through `unknown` because ImportMetaEnv doesn't list VITE_BASE_URL by default.
+  const importMetaAny = import.meta as unknown as { env?: { VITE_BASE_URL?: string } };
+  if (typeof import.meta !== 'undefined' && importMetaAny.env?.VITE_BASE_URL) {
+    cached = ensureLeadingSlash(stripTrailingSlash(importMetaAny.env.VITE_BASE_URL));
+    return cached;
+  }
+  cached = '/';
+  return cached;
 }
 
-/** resetBasePathCache is for tests that need to re-read the meta tag. */
+/**
+ * getBaseUrl is the legacy alias for getBasePath. Kept for backwards
+ * compatibility with templates / consumers that import the old name.
+ * @deprecated Use getBasePath instead.
+ */
+export function getBaseUrl(): string {
+  return getBasePath();
+}
+
+/**
+ * resetBasePathCache is for tests that need to re-read the meta tag.
+ */
 export function resetBasePathCache(): void {
-  cachedBasePath = null;
+  cached = null;
+}
+
+function ensureLeadingSlash(s: string): string {
+  return s.startsWith('/') ? s : `/${s}`;
+}
+
+function stripTrailingSlash(s: string): string {
+  if (s.length > 1 && s.endsWith('/')) {
+    return s.slice(0, -1);
+  }
+  return s;
 }

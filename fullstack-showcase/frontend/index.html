@@ -9,10 +9,9 @@
     <meta name="description" content="Interactive showcase of Moses platform capabilities" />
     <title>Moses Platform Showcase</title>
 
-    <!-- Distinctive display + mono webfonts; graceful fallback to the system stack. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <!-- No webfont CDN links (offline-friendly, no third-party callout):
+         theme.css font stacks lead with 'Sora'/'JetBrains Mono' but fall back
+         to the system stack, which is what renders here. -->
 
     <!-- No-flash theme init: set data-theme before first paint. -->
     <script>

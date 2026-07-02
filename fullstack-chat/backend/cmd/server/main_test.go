@@ -17,15 +17,15 @@ import (
 )
 
 // newTestMux builds the production router (buildMux from main.go). The
-// entries / webhook handlers are constructed with a nil *sql.DB — the route
-// tests below use a DELETE so the dispatch returns 405 (route registered)
-// before any handler dereferences the DB.
+// webhook handler gets a nil sink and the demo routes a nil *sql.DB — the
+// route tests below use a DELETE so the dispatch returns 405 (route
+// registered) before any handler dereferences the DB.
 func newTestMux(basePath string) *http.ServeMux {
 	return buildMux(
 		basePath,
-		handler.NewEntriesHandler(nil),
 		handler.NewChatWebhookHandler(nil),
 		mosesproxy.Config{InternalAPIBase: "http://unused.local", AppSlug: "fullstack-chat"},
+		nil,
 	)
 }
 

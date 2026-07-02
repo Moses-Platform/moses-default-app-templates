@@ -15,6 +15,13 @@ A production-ready Go HTTP service template for the Moses platform, demonstratin
 
 ## Quick Start
 
+### First step: clean out the demo
+
+The Item CRUD and platform-info endpoints are demo content. Starting a real
+app? Run `./clean_out_template.sh` once — it removes the demo code, keeps all
+Moses plumbing, and leaves a building, tested skeleton. Details (including a
+manual KEEP/REPLACE/DELETE table) in [skills/usage.md](skills/usage.md).
+
 ### Local Development
 
 ```bash
@@ -62,7 +69,7 @@ curl http://localhost:8080/health
    - OpenAPI spec is discovered at `/api/openapi.json`
    - MCP tools are generated from operationIds
 
-4. **Use MCP Tools**:
+4. **Use MCP Tools** (one per `operationId` in `api/openapi.json`):
    ```javascript
    // AI agents can now call:
    workspace_backend_template_listItems({})
@@ -71,35 +78,45 @@ curl http://localhost:8080/health
      description: "Created by AI agent"
    })
    workspace_backend_template_getItem({ id: "item-uuid" })
-   workspace_backend_template_healthCheck({})
+   // NOTE: /health is intentionally NOT in the spec — it would register a
+   // phantom tool. Probes hit it directly; agents don't need it.
    ```
 
 ## Project Structure
 
 ```
 backend-template/
-├── cmd/server/main.go              # HTTP server entry point
+├── cmd/server/
+│   ├── main.go                    # HTTP server entry point + buildMux
+│   ├── demo_routes.go             # Demo route registration (cleanout target)
+│   └── main_test.go               # Routing + OpenAPI contract tests
 ├── internal/
-│   ├── handler/                    # HTTP request handlers
+│   ├── config/
+│   │   └── moses.go               # SelfTenantID() from MOSES_TENANT_ID (CHAT-pxeo.12)
+│   ├── handler/                   # HTTP request handlers
 │   │   ├── health.go              # Health check endpoint
 │   │   ├── openapi.go             # OpenAPI spec serving
-│   │   └── items.go               # Item CRUD handlers
+│   │   ├── tenant.go              # Tenant 403 cross-check helpers (plumbing)
+│   │   ├── items.go               # DEMO: Item CRUD handlers
+│   │   └── platform.go            # DEMO: Moses Platform API usage
 │   ├── middleware/                 # HTTP middleware
 │   │   ├── moses_headers.go       # Moses platform integration
+│   │   ├── embedding.go           # CSP frame-ancestors policy
+│   │   ├── csrf.go                # Cross-site write guard (vendored)
 │   │   └── logging.go             # Request logging
-│   └── model/
-│       └── item.go                # Item model and store
+│   ├── model/
+│   │   └── item.go                # DEMO: Item model and in-memory store
+│   └── platform/
+│       └── client.go              # DEMO: Moses Platform API client
 ├── api/
+│   ├── api.go                     # //go:embed of the spec
 │   └── openapi.json               # OpenAPI 3.0.3 specification
 ├── helm/                           # Kubernetes deployment
-│   ├── Chart.yaml
-│   ├── values.yaml
-│   └── templates/
-│       ├── deployment.yaml
-│       ├── service.yaml
-│       └── _helpers.tpl
 ├── skills/
-│   └── usage.md                   # Agent skill documentation
+│   ├── usage.md                   # Agent skill documentation
+│   └── secrets-tutorial.md        # Declaring runtime secrets
+├── .template-clean/                # Clean twins used by clean_out_template.sh
+├── clean_out_template.sh           # One-shot demo cleanout (self-deleting)
 ├── Dockerfile                      # Multi-stage Docker build
 ├── go.mod                          # Go module definition
 ├── moses-app.config.json          # Moses deployment config
@@ -110,12 +127,13 @@ backend-template/
 
 | Method | Path | Description | MCP Tool Name |
 |--------|------|-------------|---------------|
-| GET | `/health` | Health check | `workspace_backend_template_healthCheck` |
+| GET | `/health` | Health check | N/A — deliberately not in the OpenAPI spec (a `/health` path would register a phantom tool) |
 | GET | `/api/openapi.json` | OpenAPI spec | N/A |
 | GET | `/api/spec` | OpenAPI spec (alias) | N/A |
 | GET | `/api/v1/items` | List all items | `workspace_backend_template_listItems` |
 | GET | `/api/v1/items/{id}` | Get item by ID | `workspace_backend_template_getItem` |
 | POST | `/api/v1/items` | Create new item | `workspace_backend_template_createItem` |
+| GET | `/api/v1/platform/info` | Demo Moses Platform API call | not in the spec (demo diagnostics) |
 
 ## Moses Platform Integration
 
@@ -177,11 +195,11 @@ This template serves the spec at both primary paths for maximum compatibility.
 
 Each `operationId` in the OpenAPI spec becomes an MCP tool:
 
-**OpenAPI Definition**:
+**OpenAPI Definition** (paths relative to `servers[0].url` = `/api/v1`):
 ```json
 {
   "paths": {
-    "/api/v1/items": {
+    "/items": {
       "get": {
         "operationId": "listItems",
         "summary": "List all items"
@@ -213,16 +231,20 @@ AI agents call the tool, Moses injects headers automatically, and your API recei
    }
    ```
 
-2. **Register route** in `cmd/server/main.go`:
+2. **Register route** in `cmd/server/demo_routes.go` (`registerDemoRoutes`,
+   called once from `buildMux`) — ALWAYS under the basePath prefix, or the
+   route is unreachable on a sub-path deploy:
    ```go
-   mux.HandleFunc("GET /api/v1/myresource", handler.HandleMyResource)
+   mux.HandleFunc("GET "+basePath+"/api/v1/myresource", handler.HandleMyResource)
    ```
 
-3. **Update OpenAPI** in `api/openapi.json`:
+3. **Update OpenAPI** in `api/openapi.json` — paths keys are RELATIVE to
+   `servers[0].url` (`/api/v1`). An `/api/`-rooted key double-prefixes and
+   fails the template's own `TestOpenAPISpec_CanonicalServersAndRelativePaths`:
    ```json
    {
      "paths": {
-       "/api/v1/myresource": {
+       "/myresource": {
          "get": {
            "operationId": "getMyResource",
            "summary": "Get my resource"
@@ -276,8 +298,16 @@ func AuthMiddleware(next http.Handler) http.Handler {
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | HTTP server port | `8080` |
-| `BASE_URL` | Public base URL | `http://localhost:8080` |
-| `NODE_ENV` | Environment (for compatibility) | `production` |
+| `MOSES_BASE_PATH` | Canonical sub-path prefix (`/apps/<tenant>/<slug>`); API routes are registered once under it (CHAT-8qiu0) | `""` (root) |
+| `BASE_URL` | DEPRECATED alias for `MOSES_BASE_PATH` — honored only when it is a path (`/...`), never a full URL. See the platform repo's DEPRECATIONS.md | unset |
+| `MOSES_TENANT_ID` | Deploy-pinned self tenant (authoritative storage key via `config.SelfTenantID()`). **Required on deployed pods** | `local-dev` sentinel |
+| `MOSES_DEPLOYED` | Set to `1` by the platform; makes `config.Validate()` fail-fast on missing `MOSES_TENANT_ID` | unset |
+| `MOSES_STRICT_TENANT_CHECK` | 403 cross-check when the caller's `X-Moses-Tenant-ID` disagrees with the pinned tenant | `true` |
+| `MOSES_EMBEDDING_FRAMING` | `moses-only` \| `public` \| `denied` — CSP frame-ancestors policy | `denied` (api template) |
+| `MOSES_EMBEDDING_ALLOWED_ANCESTORS` | CSP source list for `moses-only` framing | `'self'` |
+| `MOSES_EMBEDDING_REPORT_URI` | Optional CSP report-uri | unset |
+| `MOSES_PLATFORM_API_KEY` / `MOSES_PLATFORM_API_URL` | Injected when the `moses-platform` integration grant is approved (used by the demo platform client) | unset |
+| `NODE_ENV` | Set by the Helm chart for compatibility; the Go binary does not read it | `production` |
 
 Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tutorial.md).
 
@@ -318,7 +348,7 @@ The template includes Kubernetes-compatible health probes:
 
 ### Security Considerations
 
-1. **Tenant isolation**: Always filter by `mosesCtx.TenantID`
+1. **Tenant isolation**: Always filter by `mosesCtx.SelfTenantID` (env-pinned; never scope by the `X-Moses-Tenant-ID` header)
 2. **Input validation**: Validate all request parameters
 3. **Error handling**: Don't leak sensitive information in errors
 4. **HTTPS only**: Moses handles TLS termination

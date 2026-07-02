@@ -11,6 +11,13 @@ vendor/
 *.out
 *.test
 .env*
+# Locally-built binaries (a stale ~48MB binary must not be copied into the
+# build context / trigger COPY-layer invalidation).
+fullstack-unified
+server
+# Template clean-out machinery — must never reach images.
+.template-clean/
+clean_out_template.sh
 .vscode/
 .idea/
 *.swp

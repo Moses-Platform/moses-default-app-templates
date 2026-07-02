@@ -10,12 +10,9 @@
 FROM node:24-alpine AS builder
 WORKDIR /app
 
-COPY . .
-
-# Moses BLF-B build args. ARG scope is bounded to this stage.
-ARG VITE_MOSES_CHART_ID=""
-ARG VITE_MOSES_DEPLOYMENT_ID=""
-ARG VITE_MOSES_API_BASE=""
+# Manifests first: the npm-install layer is invalidated only when
+# package*.json changes, so source-only edits reuse the cached deps.
+COPY package*.json ./
 
 # CHAT-s6qf3: optional Moses in-cluster package cache (Nexus). Empty = upstream default.
 ARG NPM_REGISTRY=""
@@ -23,6 +20,13 @@ ARG NPM_REGISTRY=""
 # Install deps (registry-aware) in its own layer.
 RUN if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi \
     && npm install
+
+COPY . .
+
+# Moses BLF-B build args. ARG scope is bounded to this stage.
+ARG VITE_MOSES_CHART_ID=""
+ARG VITE_MOSES_DEPLOYMENT_ID=""
+ARG VITE_MOSES_API_BASE=""
 
 # Build with BLF-B vars in scope.
 RUN VITE_MOSES_CHART_ID="$VITE_MOSES_CHART_ID" \

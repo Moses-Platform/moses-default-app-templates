@@ -76,7 +76,7 @@ export default function MultiTenancyPage() {
           <div className="tenant-info">
             <div className="tenant-item">
               <span className="tenant-label">Current Tenant:</span>
-              <code className="tenant-value">{mosesInfo.tenant_id || 'N/A (standalone mode)'}</code>
+              <code className="tenant-value">{mosesInfo.self_tenant_id || 'N/A (standalone mode)'}</code>
             </div>
             <div className="tenant-item">
               <span className="tenant-label">User ID:</span>

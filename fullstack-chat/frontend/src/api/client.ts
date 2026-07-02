@@ -9,7 +9,7 @@
 // SCOPE NOTE: this app has exactly one non-stream server read — the entries
 // list below — so the typed client is read-only. The app's *write* path
 // (generating an entry) is NOT a REST mutation: it fires a Moses platform
-// action through the iframe SDK (window.moses.actions.invoke), an explicit
+// action through the iframe SDK via src/moses/invoke.ts, an explicit
 // on-click action handled imperatively in App.tsx. When a template adds a REST
 // write, add a `mutateAPI` helper here (see fullstack-showcase for the
 // canonical write shape) and a mutation hook in hooks.ts.

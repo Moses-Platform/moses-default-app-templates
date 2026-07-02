@@ -176,13 +176,20 @@ func readSessionCookie(r *http.Request, cfg Config) (*Session, error) {
 // --- OIDC handshake state cookie -------------------------------------
 
 // handshakeState bundles the data the callback handler needs to finish
-// the auth-code exchange: the CSRF `state` nonce, the PKCE code
-// verifier, and where to send the user afterwards.
+// the auth-code exchange: the CSRF `state` value, the OIDC `nonce`, the
+// PKCE code verifier, and where to send the user afterwards.
 type handshakeState struct {
 	State        string `json:"state"`
 	CodeVerifier string `json:"cv"`
 	ReturnTo     string `json:"rt"`
 	Prompt       string `json:"p"` // "none" for the silent-SSO attempt
+
+	// Nonce is the OIDC nonce sent on the authorization request and
+	// verified against the ID token's `nonce` claim at the callback. It
+	// binds the issued token to THIS handshake (replay protection),
+	// complementing `state` (which binds the callback to this browser)
+	// and PKCE (which binds the code to this client).
+	Nonce string `json:"nc"`
 }
 
 // setStateCookie writes the short-lived (10 min) handshake cookie. It is

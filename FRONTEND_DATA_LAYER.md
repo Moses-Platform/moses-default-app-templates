@@ -81,9 +81,9 @@ per-component refetch debouncers.
 Every template ships the same Moses-aligned design system. Build the app's identity by *extending* it — never rip it out or hardcode around it.
 
 **Files:**
-- `src/styles/theme.css` — the token system: emerald brand + coral accent, three-tier background hierarchy, **dark-default + `[data-theme="light"]`** (+ a `prefers-color-scheme` no-JS fallback), Sora (display) + JetBrains Mono (mono) + system body fonts, plus spacing/radius/shadow/motion tokens. Values mirror the platform `MOSES_COLOR_SYSTEM`.
+- `src/styles/theme.css` — the token system: emerald brand + coral accent, three-tier background hierarchy, **dark-default + `[data-theme="light"]`** (+ a `prefers-color-scheme` no-JS fallback), display/mono/body font stacks with system fallbacks, plus spacing/radius/shadow/motion tokens. Values mirror the platform `MOSES_COLOR_SYSTEM`. Templates load **no webfonts** (the Google-Fonts CDN `<link>`s were removed; sole exception: fullstack-oidc's pristine demo keeps them, and its clean-out drops them); stacks that name `Sora` / `JetBrains Mono` resolve to their system fallbacks unless an app self-hosts those fonts.
 - `src/App.css` — the global layer built on those tokens: typography, terminal-style `code`/`pre`, the dot-grid + glow atmosphere, the staggered page-load reveal, and the **unified button system** (`.btn`, `.btn-secondary`, `.btn-cta`, `.btn-ghost`, `.btn-danger`, `.btn-sm`, `.btn-icon`) plus form-field, badge, and table styles.
-- `src/components/ThemeToggle.tsx` — the dark/light toggle (writes `data-theme`, persists to `localStorage('moses-theme')`, `matchMedia`-guarded for jsdom/SSR). Paired with the **no-flash init script in `index.html`** (sets `data-theme` before first paint) and the Sora / JetBrains-Mono font `<link>`s.
+- `src/components/ThemeToggle.tsx` — the dark/light toggle (writes `data-theme`, persists to `localStorage('moses-theme')`, `matchMedia`-guarded for jsdom/SSR). Paired with the **no-flash init script in `index.html`** (sets `data-theme` before first paint).
 
 (Vanilla, non-React templates ship the equivalent in `static/style.css` + `static/index.html` with a vanilla toggle — same tokens, same `.btn` classes, same dark/light.)
 

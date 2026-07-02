@@ -1,5 +1,5 @@
 import { useAuth } from '../auth/useAuth';
-import { useAdminArea } from '../api/hooks';
+import { useAdminArea, usePublicInfo } from '../api/hooks';
 import './pages.css';
 
 /**
@@ -12,7 +12,9 @@ import './pages.css';
  * `refetch()`. No useEffect, no manual loading state.
  */
 export default function RolesPage() {
-  const { phase, me, info, signIn } = useAuth();
+  const { phase, me, signIn } = useAuth();
+  // Demo data, fetched by the demo page itself (not part of useAuth).
+  const { data: info } = usePublicInfo();
   const authenticated = phase === 'authenticated';
   const { data: probe, isFetching: probing, refetch } = useAdminArea(authenticated);
 

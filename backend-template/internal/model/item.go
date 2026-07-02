@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/moses-platform/backend-template/internal/config"
 )
 
 // Item represents a simple data entity for demonstration purposes
@@ -22,28 +24,35 @@ type ItemStore struct {
 	items []Item
 }
 
-// NewItemStore creates a new ItemStore with sample data
+// NewItemStore creates a new ItemStore with sample data.
+//
+// CHAT-pxeo.12: seed rows are tagged with the deploy-pinned self tenant
+// (config.SelfTenantID() — MOSES_TENANT_ID env, or the 'local-dev'
+// sentinel in a non-deployed run) so ListItems, which scopes by
+// SelfTenantID, actually returns them. An earlier version seeded
+// TenantID:"" which no request could ever see.
 func NewItemStore() *ItemStore {
 	now := time.Now()
+	seedTenant := config.SelfTenantID()
 	return &ItemStore{
 		items: []Item{
 			{
 				ID:          uuid.New().String(),
-				TenantID:    "",
+				TenantID:    seedTenant,
 				Name:        "Sample Item 1",
 				Description: "This is a sample item for demonstration",
 				CreatedAt:   now,
 			},
 			{
 				ID:          uuid.New().String(),
-				TenantID:    "",
+				TenantID:    seedTenant,
 				Name:        "Sample Item 2",
 				Description: "Another example item",
 				CreatedAt:   now,
 			},
 			{
 				ID:          uuid.New().String(),
-				TenantID:    "",
+				TenantID:    seedTenant,
 				Name:        "Sample Item 3",
 				Description: "A third sample item",
 				CreatedAt:   now,

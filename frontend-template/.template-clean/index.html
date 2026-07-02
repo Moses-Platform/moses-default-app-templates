@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- CHAT-pbup: BASE_PATH placeholder rewritten by entrypoint.sh at
+         container start. The src/utils/baseUrl.ts helper reads this meta
+         tag for React Router basename. Value is "/" for standalone deploys
+         or /apps/<tenant>/<app>/ when deployed through Moses. -->
+    <meta name="moses-base-path" content="__MOSES_BASE_PATH__" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>My App</title>
+
+    <!-- No external font CDNs: theme.css font stacks fall back to system
+         fonts, keeping the app self-contained (works air-gapped and under
+         strict CSPs). Self-host webfonts under public/ if you need them. -->
+
+    <!-- No-flash theme init: set data-theme before first paint. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('moses-theme');
+          if (t !== 'light' && t !== 'dark') {
+            t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          }
+          document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -18,7 +18,7 @@ func TestAuthorizeRedirectURL(t *testing.T) {
 	}
 	got := p.authorizeRedirectURL(
 		"https://app.example.com/apps/t/s/auth/callback",
-		"state-123", "challenge-abc", "")
+		"state-123", "challenge-abc", "nonce-456", "")
 
 	u, err := url.Parse(got)
 	if err != nil {
@@ -32,6 +32,7 @@ func TestAuthorizeRedirectURL(t *testing.T) {
 		"scope":                 "openid profile email",
 		"state":                 "state-123",
 		"code_challenge":        "challenge-abc",
+		"nonce":                 "nonce-456",
 		"code_challenge_method": "S256",
 	}
 	for k, want := range checks {
@@ -49,10 +50,13 @@ func TestAuthorizeRedirectURL_SilentPromptNone(t *testing.T) {
 		cfg:          Config{ClientID: "c"},
 		authorizeURL: "https://kc/auth",
 	}
-	got := p.authorizeRedirectURL("https://app/cb", "s", "ch", "none")
+	got := p.authorizeRedirectURL("https://app/cb", "s", "ch", "n", "none")
 	u, _ := url.Parse(got)
 	if u.Query().Get("prompt") != "none" {
 		t.Errorf("silent flow must carry prompt=none, got %q", u.Query().Get("prompt"))
+	}
+	if u.Query().Get("nonce") != "n" {
+		t.Errorf("silent flow must carry the nonce too, got %q", u.Query().Get("nonce"))
 	}
 }
 
@@ -243,7 +247,7 @@ func TestAuthorizeRedirectURL_UsesExternalHost(t *testing.T) {
 		t.Fatalf("discover: %v", err)
 	}
 
-	got := p.authorizeRedirectURL("https://app.example.com/cb", "st", "ch", "")
+	got := p.authorizeRedirectURL("https://app.example.com/cb", "st", "ch", "nc", "")
 	u, err := url.Parse(got)
 	if err != nil {
 		t.Fatalf("authorize URL not parseable: %v", err)
@@ -278,7 +282,7 @@ func TestVerifyIDToken_UsesExternalIssuer(t *testing.T) {
 	// Sanity: with keys nil, verifyIDToken short-circuits — and proves
 	// it does not accidentally try to validate against the internal
 	// issuer (which would also short-circuit, but for the wrong reason).
-	_, err := p.verifyIDToken(context.Background(), "irrelevant")
+	_, err := p.verifyIDToken(context.Background(), "irrelevant", "")
 	if err == nil {
 		t.Fatalf("verifyIDToken with no keys should error")
 	}

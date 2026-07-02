@@ -25,8 +25,9 @@ func decode(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
 	return m
 }
 
-// Me must surface the projected roles and compute is_app_admin from them.
-func TestMe_ProjectsRolesAndAdminFlag(t *testing.T) {
+// Me must surface the identity projection, including the roles the
+// middleware lifted from resource_access.<client>.roles.
+func TestMe_ProjectsIdentityAndRoles(t *testing.T) {
 	rec := httptest.NewRecorder()
 	Me(rec, withIdentity(oidcauth.Identity{
 		Authenticated: true,
@@ -40,8 +41,14 @@ func TestMe_ProjectsRolesAndAdminFlag(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	body := decode(t, rec)
-	if body["is_app_admin"] != true {
-		t.Errorf("is_app_admin = %v, want true (roles include oidc-admin)", body["is_app_admin"])
+	if body["authenticated"] != true {
+		t.Errorf("authenticated = %v, want true", body["authenticated"])
+	}
+	if body["subject"] != "user-1" || body["email"] != "u@example.com" {
+		t.Errorf("identity projection wrong: %v", body)
+	}
+	if body["source"] != "session" {
+		t.Errorf("source = %v, want session", body["source"])
 	}
 	roles, _ := body["roles"].([]any)
 	if len(roles) != 2 {
@@ -49,83 +56,16 @@ func TestMe_ProjectsRolesAndAdminFlag(t *testing.T) {
 	}
 }
 
-// A signed-in user with no admin role gets is_app_admin=false.
-func TestMe_NonAdminFlagFalse(t *testing.T) {
+// With no Identity on the context (as if the route were un-gated), Me
+// reports the zero identity rather than erroring — the middleware is
+// the gate, the handler just projects.
+func TestMe_ZeroIdentityWhenUngated(t *testing.T) {
 	rec := httptest.NewRecorder()
-	Me(rec, withIdentity(oidcauth.Identity{
-		Authenticated: true,
-		Source:        "session",
-		Subject:       "user-2",
-		Roles:         []string{"oidc-member"},
-	}))
-	if decode(t, rec)["is_app_admin"] != false {
-		t.Errorf("is_app_admin should be false for a non-admin user")
-	}
-}
-
-// AdminArea must 403 a signed-in user who lacks the oidc-admin role.
-func TestAdminArea_ForbidsNonAdmin(t *testing.T) {
-	rec := httptest.NewRecorder()
-	AdminArea(rec, withIdentity(oidcauth.Identity{
-		Authenticated: true,
-		Source:        "session",
-		Subject:       "user-3",
-		Roles:         []string{"oidc-member"},
-	}))
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403", rec.Code)
-	}
-	if decode(t, rec)["required_role"] != roleAdmin {
-		t.Errorf("403 body should name the required role")
-	}
-}
-
-// AdminArea must serve a user whose token carries the oidc-admin role.
-func TestAdminArea_AllowsAdmin(t *testing.T) {
-	rec := httptest.NewRecorder()
-	AdminArea(rec, withIdentity(oidcauth.Identity{
-		Authenticated: true,
-		Source:        "session",
-		Subject:       "user-4",
-		Roles:         []string{"oidc-admin"},
-	}))
+	Me(rec, httptest.NewRequest("GET", "/api/v1/me", nil))
 	if rec.Code != 200 {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
-	if decode(t, rec)["ok"] != true {
-		t.Errorf("admin response should report ok=true")
-	}
-}
-
-// The pod-to-pod header-trust path carries no app roles, so AdminArea
-// correctly 403s it — app-role authorization is a browser-session
-// concern, not a pod-to-pod one.
-func TestAdminArea_ForbidsHeaderTrustCaller(t *testing.T) {
-	rec := httptest.NewRecorder()
-	AdminArea(rec, withIdentity(oidcauth.Identity{
-		Authenticated: true,
-		Source:        "moses-headers",
-		Subject:       "pod-caller",
-		// Roles intentionally empty — header-trust carries none.
-	}))
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("header-trust caller status = %d, want 403", rec.Code)
-	}
-}
-
-// PublicInfo must report the OIDC flag and the declared role vocabulary
-// without requiring a session.
-func TestPublicInfo_ReportsRolesAndFlag(t *testing.T) {
-	rec := httptest.NewRecorder()
-	PublicInfo(true)(rec, httptest.NewRequest("GET", "/api/v1/public-info", nil))
-	if rec.Code != 200 {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	body := decode(t, rec)
-	if body["oidc_enabled"] != true {
-		t.Errorf("oidc_enabled = %v, want true", body["oidc_enabled"])
-	}
-	if known, _ := body["known_roles"].([]any); len(known) == 0 {
-		t.Errorf("known_roles should be non-empty")
+	if decode(t, rec)["authenticated"] != false {
+		t.Errorf("authenticated should be false for a bare context")
 	}
 }

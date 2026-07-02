@@ -9,10 +9,9 @@
     <meta name="description" content="Reference template demonstrating the Moses-Manager chat roundtrip" />
     <title>Fullstack Chat Roundtrip</title>
 
-    <!-- Distinctive display + mono webfonts; graceful fallback to the system stack. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <!-- No CDN webfonts: theme.css font stacks lead with optional faces
+         (Sora / JetBrains Mono) and fall back to the system stack, so the
+         app renders identically offline / air-gapped. -->
 
     <!-- No-flash theme init: set data-theme before first paint. -->
     <script>

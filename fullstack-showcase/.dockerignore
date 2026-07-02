@@ -6,3 +6,7 @@ dist/
 .DS_Store
 .env
 .env.local
+
+# Cleanout machinery — never ship in images (but DO keep in git)
+clean_out_template.sh
+.template-clean/

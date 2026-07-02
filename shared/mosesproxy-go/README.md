@@ -39,14 +39,17 @@ CI runs `tools/check-vendored-mosesproxy.sh` on every PR that touches
 either `shared/mosesproxy-go/**` or any vendored copy and fails if the
 bodies diverge (modulo the header).
 
-Then mount the handler in `main.go`, importing from your template's
-own module path:
+Then mount the handler in `main.go`, importing from **your own module
+path** (the copied directory lives inside your module, so the import is
+`<your module>/internal/mosesproxy`). The canonical reference — module
+`github.com/moses-platform/fullstack-chat`, whose module root is
+`backend/` — imports it as:
 
 ```go
 import (
     "net/http"
 
-    "github.com/moses-platform/moses-templates/fullstack-chat/backend/internal/mosesproxy"
+    "github.com/moses-platform/fullstack-chat/internal/mosesproxy"
 )
 
 func main() {

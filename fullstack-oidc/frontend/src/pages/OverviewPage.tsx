@@ -1,4 +1,5 @@
 import { useAuth } from '../auth/useAuth';
+import { usePublicInfo } from '../api/hooks';
 import {
   IdentityIcon,
   RolesIcon,
@@ -15,7 +16,10 @@ import './pages.css';
  * the integration before signing in.
  */
 export default function OverviewPage() {
-  const { info, phase, me } = useAuth();
+  const { phase, me } = useAuth();
+  // Demo data, fetched by the demo page itself — useAuth() is pure auth
+  // plumbing and deliberately does not carry public-info.
+  const { data: info } = usePublicInfo();
 
   return (
     <div className="page">

@@ -20,20 +20,8 @@
       "get": {
         "operationId": "listItems",
         "summary": "List all items",
-        "description": "Returns all items, automatically filtered by tenant when called via Moses WorkspaceToolProxy (X-Moses-Tenant-ID header). For local development without Moses headers, returns all items.",
+        "description": "Returns items scoped to the deploy-pinned self tenant (MOSES_TENANT_ID env var; 'local-dev' sentinel in non-deployed runs). The X-Moses-Tenant-ID request header is caller context only — audit plus the 403 cross-check — and never selects the storage tenant (CHAT-pxeo.12).",
         "tags": ["Items"],
-        "parameters": [
-          {
-            "name": "tenant_id",
-            "in": "query",
-            "description": "Optional tenant filter (informational - actual filtering uses X-Moses-Tenant-ID header)",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "List of items",
@@ -53,7 +41,7 @@
       "post": {
         "operationId": "createItem",
         "summary": "Create a new item",
-        "description": "Creates a new item. When called via Moses WorkspaceToolProxy, the item is automatically associated with the tenant from X-Moses-Tenant-ID header.",
+        "description": "Creates a new item tagged with the deploy-pinned self tenant (MOSES_TENANT_ID env var, NOT the request header). A request whose X-Moses-Tenant-ID header disagrees with the pinned tenant is rejected 403 tenant_mismatch unless MOSES_STRICT_TENANT_CHECK=false (CHAT-pxeo.12).",
         "tags": ["Items"],
         "requestBody": {
           "required": true,
@@ -101,6 +89,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Caller tenant mismatch (X-Moses-Tenant-ID disagrees with the deploy-pinned MOSES_TENANT_ID and MOSES_STRICT_TENANT_CHECK is enabled)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -109,7 +107,7 @@
       "get": {
         "operationId": "getItem",
         "summary": "Get item by ID",
-        "description": "Returns a single item by ID. When called via Moses WorkspaceToolProxy, enforces tenant isolation using X-Moses-Tenant-ID header.",
+        "description": "Returns a single item by ID. Tenant isolation is enforced against the deploy-pinned self tenant (MOSES_TENANT_ID env var): items outside it answer 404 (CHAT-pxeo.12).",
         "tags": ["Items"],
         "parameters": [
           {
@@ -162,7 +160,7 @@
           "tenant_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Tenant identifier (automatically set from X-Moses-Tenant-ID header)",
+            "description": "Tenant identifier (deploy-pinned from the MOSES_TENANT_ID env var, never taken from request headers)",
             "example": "123e4567-e89b-12d3-a456-426614174000"
           },
           "name": {

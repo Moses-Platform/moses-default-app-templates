@@ -77,8 +77,9 @@
         },
         "responses": {
           "200": { "description": "Recorded." },
-          "400": { "description": "Invalid JSON or out-of-skew timestamp." },
-          "401": { "description": "Signature mismatch." }
+          "400": { "description": "Invalid JSON, out-of-skew timestamp, or replayed nonce." },
+          "401": { "description": "Signature mismatch." },
+          "403": { "description": "appSlug claim does not match MOSES_APP_SLUG." }
         },
         "x-moses-internal-only": true
       }
@@ -98,7 +99,7 @@
       "ChatCompletionPayload": {
         "type": "object",
         "properties": {
-          "v":               { "type": "integer", "const": 1 },
+          "v":               { "type": "integer", "enum": [1] },
           "conversationId":  { "type": "string" },
           "actionId":        { "type": "string" },
           "appSlug":         { "type": "string" },

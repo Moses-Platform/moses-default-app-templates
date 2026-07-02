@@ -1,0 +1,56 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Fullstack Chat App API",
+    "version": "1.0.0",
+    "description": "TODO: describe your API. Every path you add here is auto-discovered by Moses' workspace-tools wedge after deploy and becomes callable by Moses Manager / agents. The webhook receiver below is platform plumbing — keep it as long as the app declares a chat_prompt action."
+  },
+  "servers": [
+    { "url": "/api/v1", "description": "Canonical API base. MUST stay base-path-free: the platform's workspace-tool proxy prepends MOSES_BASE_PATH itself (CHAT-8qiu0)." }
+  ],
+  "paths": {
+    "/webhooks/chat-complete": {
+      "post": {
+        "summary": "Moses-Manager chat completion webhook receiver",
+        "description": "Moses fires this when the AI turn started by a chat_prompt action terminates. HMAC-SHA256 signature in X-Moses-Signature must match the per-app shared secret configured at install.",
+        "operationId": "chatCompletionWebhook",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ChatCompletionPayload" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Recorded." },
+          "400": { "description": "Invalid JSON, out-of-skew timestamp, or replayed nonce." },
+          "401": { "description": "Signature mismatch." },
+          "403": { "description": "appSlug claim does not match MOSES_APP_SLUG." }
+        },
+        "x-moses-internal-only": true
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChatCompletionPayload": {
+        "type": "object",
+        "properties": {
+          "v":               { "type": "integer", "enum": [1] },
+          "conversationId":  { "type": "string" },
+          "actionId":        { "type": "string" },
+          "appSlug":         { "type": "string" },
+          "finalMessageId":  { "type": "string" },
+          "finalText":       { "type": "string" },
+          "model":           { "type": "string" },
+          "latencyMs":       { "type": "integer" },
+          "finishReason":    { "type": "string", "enum": ["stop", "length", "error", "credential_unset"] },
+          "timestamp":       { "type": "string", "format": "date-time" },
+          "nonce":           { "type": "string" }
+        },
+        "required": ["v", "conversationId", "appSlug"]
+      }
+    }
+  }
+}

@@ -26,9 +26,13 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "tenant_id": {
+                    "self_tenant_id": {
                       "type": "string",
-                      "description": "Tenant UUID from X-Moses-Tenant-ID header"
+                      "description": "Deploy-pinned tenant UUID from the MOSES_TENANT_ID env (authoritative storage tenant, CHAT-pxeo.12)"
+                    },
+                    "caller_tenant_id": {
+                      "type": "string",
+                      "description": "Caller tenant UUID from X-Moses-Tenant-ID header (audit/caller-context only)"
                     },
                     "user_id": {
                       "type": "string",
@@ -124,6 +128,29 @@
           },
           "404": {
             "description": "Capability not found"
+          }
+        }
+      }
+    },
+    "/users": {
+      "get": {
+        "operationId": "getUsers",
+        "summary": "List tenant users via the Moses Platform API",
+        "description": "Proxies the Moses Platform API using the MOSES_PLATFORM_API_KEY integration grant. Gracefully degrades to an empty list with a message when the grant is not configured.",
+        "tags": ["Users"],
+        "responses": {
+          "200": {
+            "description": "Tenant users (possibly empty when the platform integration is not configured)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsersResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Platform API error (detail logged server-side, generic envelope returned)"
           }
         }
       }
@@ -254,10 +281,6 @@
             "format": "uuid",
             "description": "Note UUID"
           },
-          "tenant_id": {
-            "type": "string",
-            "description": "Tenant ID from Moses context"
-          },
           "title": {
             "type": "string",
             "description": "Note title"
@@ -275,7 +298,45 @@
             "format": "date-time"
           }
         },
-        "required": ["id", "tenant_id", "title", "content"]
+        "required": ["id", "title", "content"]
+      },
+      "PlatformUser": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "User UUID"
+          },
+          "email": {
+            "type": "string",
+            "description": "User email"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Display name"
+          },
+          "role": {
+            "type": "string",
+            "description": "Tenant role"
+          }
+        },
+        "required": ["id", "email"]
+      },
+      "UsersResponse": {
+        "type": "object",
+        "properties": {
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlatformUser"
+            }
+          },
+          "message": {
+            "type": "string",
+            "description": "Present when the platform integration is not configured (graceful degradation)"
+          }
+        },
+        "required": ["users"]
       },
       "NoteInput": {
         "type": "object",

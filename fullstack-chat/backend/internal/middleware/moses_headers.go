@@ -38,7 +38,10 @@ func MosesHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// GetMosesContext retrieves Moses context from request context
+// GetMosesContext retrieves Moses context from request context. This is the
+// standard header-extraction surface shared across templates — handlers may
+// consume it (e.g. for audit logging or caller-context checks) even though
+// no handler in the demo does yet.
 func GetMosesContext(ctx context.Context) MosesContext {
 	if mosesCtx, ok := ctx.Value(mosesContextKey).(MosesContext); ok {
 		return mosesCtx

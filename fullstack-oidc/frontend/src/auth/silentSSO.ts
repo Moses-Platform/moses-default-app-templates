@@ -47,8 +47,11 @@ function silentCheckURL(): string {
   const base = getBasePath();
   const prefix = base === '/' ? '/' : base + '/';
   // return_to is the post-probe landing inside the iframe; it must be a
-  // same-origin relative path. We reuse the SPA index — the marker
-  // query param is what we read, not the page content.
+  // same-origin relative path. `silent-result` is NOT a registered SPA
+  // route — it deliberately lands on the SPA's 404 page inside the
+  // HIDDEN iframe. That is fine (and cheap): onLoad below reads only the
+  // ?silent_sso=ok|failed marker off the iframe's URL, never the page
+  // content, and the iframe is removed immediately after.
   const returnTo = encodeURIComponent(`${base === '/' ? '/' : base + '/'}silent-result`);
   return `${prefix}auth/silent-check?return_to=${returnTo}`;
 }

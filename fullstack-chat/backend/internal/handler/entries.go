@@ -1,65 +1,19 @@
-// Package handler implements the chat-roundtrip REST surface for the
-// fullstack-chat template.
+// DEMO FILE — this handler exists only for the entries-feed demo and is
+// removed by clean_out_template.sh. The shared plumbing it relies on lives
+// in respond.go (writeJSON/writeError) and tenant.go (enforceTenantMatch),
+// which survive the cleanout.
 package handler
 
 import (
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/moses-platform/fullstack-chat/internal/config"
 )
-
-// envStrictTenantCheck gates the 403 cross-check on write handlers
-// (CHAT-pxeo.12). Default true; flip to "false" / "0" to disable in a
-// hot-fix scenario.
-const envStrictTenantCheck = "MOSES_STRICT_TENANT_CHECK"
-
-// strictTenantCheckEnabled reports whether the cross-check is on. Default
-// true so accidentally-misconfigured workloads fail loudly.
-func strictTenantCheckEnabled() bool {
-	v := strings.TrimSpace(os.Getenv(envStrictTenantCheck))
-	if v == "" {
-		return true
-	}
-	switch strings.ToLower(v) {
-	case "0", "false", "no", "off":
-		return false
-	}
-	return true
-}
-
-// callerTenantHeader returns the X-Moses-Tenant-ID header value from the
-// request. It is caller context (workspace-tool / audit) — NOT the
-// authoritative tenant for storage. Storage keys come from
-// config.SelfTenantID().
-func callerTenantHeader(r *http.Request) string {
-	return strings.TrimSpace(r.Header.Get("X-Moses-Tenant-ID"))
-}
-
-// enforceTenantMatch returns true and writes a 403 response when the
-// caller-supplied header tenant disagrees with our deploy-pinned self
-// tenant. Caller MUST stop processing on a true return. Body intentionally
-// omits the actual UUIDs so we never leak tenant ids cross-context.
-func enforceTenantMatch(w http.ResponseWriter, r *http.Request) bool {
-	if !strictTenantCheckEnabled() {
-		return false
-	}
-	caller := callerTenantHeader(r)
-	if caller == "" {
-		return false // no caller context to cross-check
-	}
-	if caller == config.SelfTenantID() {
-		return false
-	}
-	writeError(w, http.StatusForbidden, "E_TENANT_MISMATCH", "tenant_mismatch")
-	return true
-}
 
 // Entry is one row in the user-visible feed.
 type Entry struct {
@@ -144,7 +98,6 @@ func (h *EntriesHandler) create(w http.ResponseWriter, r *http.Request) {
 	if enforceTenantMatch(w, r) {
 		return
 	}
-	tenantID := config.SelfTenantID()
 
 	var body createBody
 	dec := json.NewDecoder(r.Body)
@@ -172,6 +125,12 @@ func (h *EntriesHandler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// CHAT-pxeo.12: storage key resolved from env AFTER validation — the
+	// sync.Once cache must not be poisoned by validation-only unit tests
+	// that run before tenant_test.go's lazy-init test (see the ordering
+	// note there).
+	tenantID := config.SelfTenantID()
+
 	var e Entry
 	err := h.DB.QueryRowContext(r.Context(),
 		`INSERT INTO entries (tenant_id, text, source)
@@ -194,19 +153,3 @@ func validSource(s string) bool {
 	}
 	return false
 }
-
-func writeJSON(w http.ResponseWriter, status int, body any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
-}
-
-func writeError(w http.ResponseWriter, status int, code, message string) {
-	writeJSON(w, status, map[string]any{
-		"error": message,
-		"code":  code,
-	})
-}
-
-// errMissingDB is exported for tests that exercise nil-DB defenses.
-var errMissingDB = errors.New("database not configured")

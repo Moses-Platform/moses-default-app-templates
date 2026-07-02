@@ -6,3 +6,8 @@ dist/
 .DS_Store
 .env
 .env.local
+# One-shot cleanout tooling — must never reach images. (The docker build
+# contexts are frontend/ and backend/, which these root-level paths are
+# already outside of; listed here for any root-context build.)
+clean_out_template.sh
+.template-clean/

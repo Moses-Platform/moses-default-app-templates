@@ -74,6 +74,10 @@ spec:
               mountPath: /var/lib/postgresql/data
       volumes:
         - name: data
+          # EPHEMERAL DATA: emptyDir lives and dies with the pod — every
+          # postgres pod restart/reschedule wipes the demo feed. That is
+          # fine for this roundtrip smoke-test template; switch to a
+          # PersistentVolumeClaim before storing anything you want to keep.
           emptyDir: {}
 ---
 apiVersion: v1

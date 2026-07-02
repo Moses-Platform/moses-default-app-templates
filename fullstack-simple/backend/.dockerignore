@@ -18,3 +18,10 @@ vendor/
 .idea/
 *.swp
 *.swo
+
+# Locally-built binaries (avoid copying a stale binary into the build context)
+server
+
+# Template clean-out machinery — must never reach images.
+.template-clean/
+clean_out_template.sh

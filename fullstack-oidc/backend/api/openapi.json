@@ -30,7 +30,7 @@
       "get": {
         "operationId": "getMe",
         "summary": "Return the authenticated identity",
-        "description": "Protected route. Returns the principal resolved by the OIDCAuth middleware — either from a validated session cookie or from trusted X-Moses-* pod-to-pod headers. Includes the roles projected from resource_access.<client>.roles and a server-computed is_app_admin flag.",
+        "description": "Protected route. Returns the principal resolved by the OIDCAuth middleware — either from a validated session cookie or from trusted X-Moses-* pod-to-pod headers. Includes the roles projected from resource_access.<client>.roles; role-based authorization decisions are made server-side by the handlers that need them (see /admin-area).",
         "responses": {
           "200": {
             "description": "The authenticated identity",
@@ -213,10 +213,6 @@
             "type": "array",
             "items": { "type": "string" },
             "description": "resource_access.<client>.roles projected by Moses onto the ID token."
-          },
-          "is_app_admin": {
-            "type": "boolean",
-            "description": "Server-computed: true when roles includes oidc-admin."
           }
         }
       },

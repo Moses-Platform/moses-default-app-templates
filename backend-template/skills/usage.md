@@ -1,8 +1,41 @@
 # Backend Template - Agent Skill
 
-## First Steps
+## First step: clean out the demo
 
-Update `moses-app.config.json` with your app's identity before committing:
+This template ships working demo code (an Item CRUD + a platform-info
+endpoint) so its plumbing is exercised end-to-end. Before building your real
+app, remove the demo in one shot:
+
+```bash
+./clean_out_template.sh
+```
+
+The script deletes the demo files, swaps in minimal clean replacements from
+`.template-clean/`, then deletes itself. The result still builds and passes
+`go vet ./... && go test ./...`.
+
+If your clone has no script (older clone), strip manually per this table:
+
+| Action | Path | Why |
+|---|---|---|
+| KEEP | `cmd/server/main.go` | Server bootstrap: base-path contract, middleware chain, graceful shutdown |
+| KEEP | `internal/handler/health.go`, `internal/handler/openapi.go` | /health + /api/openapi.json (dual-mounted, platform contract) |
+| KEEP | `internal/handler/tenant.go` | `strictTenantCheckEnabled` / `enforceTenantMatch` — the 403 tenant cross-check plumbing (CHAT-pxeo.12) |
+| KEEP | `internal/handler/tenant_test.go` | Locks the cross-check behavior |
+| KEEP | `internal/middleware/` (all files) | Moses headers, CSRF guard (vendored — do not edit), embedding headers, logging |
+| KEEP | `internal/config/moses.go` (+ test) | `SelfTenantID()` / `Validate()` — env-pinned tenant identity |
+| KEEP | `api/api.go`, `helm/`, `Dockerfile`, `go.mod`, `go.sum` | Spec embed, deployment, build |
+| REPLACE | `cmd/server/demo_routes.go` | Twin: empty `registerDemoRoutes` stub — your route registration hook |
+| REPLACE | `cmd/server/main_test.go` | Twin: contract-only tests (health/openapi mounts + spec shape) |
+| REPLACE | `api/openapi.json` | Twin: `"paths": {}` with the canonical `servers: [{"url": "/api/v1"}]` kept |
+| REPLACE | `moses-app.config.json` (+ with-secrets example) | Twin: identical plumbing, demo `integrations` block removed |
+| DELETE | `internal/handler/items.go`, `internal/handler/items_tenant_test.go` | Demo Item CRUD |
+| DELETE | `internal/model/` | Demo in-memory store |
+| DELETE | `internal/handler/platform.go`, `internal/platform/` | Demo Moses Platform API call (needed the `integrations` grant) |
+
+## App identity
+
+Update `moses-app.config.json` before committing:
 
 ```json
 {
@@ -12,52 +45,57 @@ Update `moses-app.config.json` with your app's identity before committing:
 }
 ```
 
-The `name` field becomes the Helm release name and MCP tool prefix. The `docker`, `service`, and `validation` sections are pre-configured — only change them if you modify the project structure.
+`name` becomes the Helm release name and the MCP tool prefix. The `docker`,
+`service`, and `validation` sections are pre-configured — only change them if
+you modify the project structure.
 
-## Overview
+## Environment-variable contract
 
-The Moses Backend Template is a production-ready Go HTTP service template demonstrating best practices for Moses platform integration. It showcases:
+Everything the code reads from env, and where:
 
-- **OpenAPI-first design** for automatic MCP tool generation
-- **Moses header middleware** for tenant isolation and request tracking
-- **Stdlib-only implementation** (no external dependencies except uuid)
-- **Health probes** compatible with Kubernetes liveness/readiness checks
-- **Multi-stage Docker builds** for minimal container size
+| Env var | Read in | Purpose |
+|---|---|---|
+| `PORT` | `cmd/server/main.go` | HTTP listen port (default `8080`) |
+| `MOSES_BASE_PATH` | `cmd/server/main.go` | Canonical sub-path prefix (`/apps/<tenant>/<slug>`); API routes are registered ONCE under it (CHAT-8qiu0) |
+| `BASE_URL` | `cmd/server/main.go` | DEPRECATED alias for `MOSES_BASE_PATH`; honored only when it looks like a path (`/...`). See the platform repo's DEPRECATIONS.md |
+| `MOSES_TENANT_ID` | `internal/config/moses.go` | Deploy-pinned self tenant — the ONLY storage/lookup tenant key. Required when deployed |
+| `MOSES_DEPLOYED` | `internal/config/moses.go` | `1` on platform-deployed pods; makes `config.Validate()` fail-fast when `MOSES_TENANT_ID` is missing |
+| `MOSES_STRICT_TENANT_CHECK` | `internal/handler/tenant.go` | Default `true`: 403 when a request's `X-Moses-Tenant-ID` disagrees with the pinned tenant. `false`/`0`/`no`/`off` disables |
+| `MOSES_EMBEDDING_FRAMING` | `internal/middleware/embedding.go` | `moses-only` \| `public` \| `denied` (default `denied` for this api template) |
+| `MOSES_EMBEDDING_ALLOWED_ANCESTORS` | `internal/middleware/embedding.go` | CSP frame-ancestors source list for `moses-only` |
+| `MOSES_EMBEDDING_REPORT_URI` | `internal/middleware/embedding.go` | Optional CSP report-uri |
+| `MOSES_PLATFORM_API_KEY` / `MOSES_PLATFORM_API_URL` | `internal/platform/client.go` (demo — deleted by cleanout) | Injected by the platform when the `moses-platform` integration grant is approved |
+| `EXAMPLE_API_KEY` / `EXAMPLE_ENCRYPTION_KEY` | nothing (documented in `skills/secrets-tutorial.md`) | Example external/generated secrets — see the with-secrets example config |
 
-## Project Structure
+## Tenancy model (CHAT-pxeo.12) — read this before writing handlers
 
+Self-identification is **env-pinned**, never header-driven:
+
+- **Storage/lookup tenant** = `config.SelfTenantID()` (from `MOSES_TENANT_ID`,
+  injected at deploy; `local-dev` sentinel in local runs). Exposed on the
+  request as `mosesCtx.SelfTenantID`.
+- **`X-Moses-Tenant-ID` header** = caller context ONLY (`mosesCtx.CallerTenantID`).
+  Use it for audit logs and the 403 cross-check — never as a data scope.
+- There is no `mosesCtx.TenantID` field and no "no headers → no filtering"
+  mode; browser requests through the platform proxy carry no Moses headers at
+  all, and they still get tenant-scoped data via `SelfTenantID`.
+
+```go
+func MyHandler(w http.ResponseWriter, r *http.Request) {
+    mosesCtx := middleware.GetMosesContext(r)
+    if enforceTenantMatch(w, mosesCtx) { // 403 on caller mismatch (writes)
+        return
+    }
+    rows := store.GetByTenant(mosesCtx.SelfTenantID) // storage scope: env-pinned
+    log.Printf("[%s] user=%s caller_tenant=%s",
+        mosesCtx.RequestID, mosesCtx.UserID, mosesCtx.CallerTenantID) // audit
+    ...
+}
 ```
-backend-template/
-├── cmd/server/main.go           # HTTP server entry point
-├── internal/
-│   ├── handler/                 # HTTP request handlers
-│   │   ├── health.go           # Health check endpoint
-│   │   ├── openapi.go          # OpenAPI spec serving
-│   │   └── items.go            # CRUD handlers for Item resource
-│   ├── middleware/              # HTTP middleware
-│   │   ├── moses_headers.go    # Moses platform header extraction
-│   │   └── logging.go          # Request logging
-│   └── model/                   # Data models
-│       └── item.go             # Item model and in-memory store
-├── api/
-│   └── openapi.json            # OpenAPI 3.0.3 specification
-├── helm/                        # Kubernetes deployment
-│   ├── Chart.yaml
-│   ├── values.yaml
-│   └── templates/
-│       ├── deployment.yaml
-│       ├── service.yaml
-│       └── _helpers.tpl
-├── Dockerfile                   # Multi-stage Docker build
-├── go.mod                       # Go module definition
-└── moses-app.config.json       # Moses deployment configuration
-```
 
-## Adding New Endpoints
+## Adding a new endpoint
 
-### 1. Define the Handler
-
-Create or update a handler file in `internal/handler/`:
+### 1. Handler in `internal/handler/`
 
 ```go
 // internal/handler/myresource.go
@@ -66,60 +104,49 @@ package handler
 import (
     "encoding/json"
     "net/http"
+
     "github.com/moses-platform/backend-template/internal/middleware"
 )
 
 func HandleMyResource(w http.ResponseWriter, r *http.Request) {
-    // Extract Moses context
     mosesCtx := middleware.GetMosesContext(r)
-    tenantID := mosesCtx.TenantID
-
-    // Your business logic here
-    result := map[string]string{
-        "message": "Hello from tenant: " + tenantID,
-    }
-
+    result := map[string]string{"tenant": mosesCtx.SelfTenantID}
     w.Header().Set("Content-Type", "application/json")
     w.WriteHeader(http.StatusOK)
     json.NewEncoder(w).Encode(result)
 }
 ```
 
-### 2. Register the Route
+### 2. Register the route — ALWAYS under basePath
 
-Add the route in `cmd/server/main.go`:
+Routes are registered in `cmd/server/demo_routes.go` (`registerDemoRoutes`,
+called once from `buildMux`). The basePath prefix is mandatory — without it
+the route is unreachable on a sub-path deploy:
 
 ```go
-mux.HandleFunc("GET /api/v1/myresource", handler.HandleMyResource)
+mux.HandleFunc("GET "+basePath+"/api/v1/myresource", handler.HandleMyResource)
 ```
 
-### 3. Update OpenAPI Spec
+Do NOT re-register under the bare path; `/health` and `/api/openapi.json`
+dual-mounting is already handled in `buildMux`.
 
-Add the endpoint to `api/openapi.json`:
+### 3. Update `api/openapi.json` — paths RELATIVE to servers[0].url
+
+`servers` is exactly `[{"url": "/api/v1"}]` and paths keys are relative to
+it. The platform folds `servers[0].url + path` into the tool endpoint, so an
+`/api/`-rooted key double-prefixes (the template's own
+`TestOpenAPISpec_CanonicalServersAndRelativePaths` fails it), and `/health`
+must never be listed (phantom tool):
 
 ```json
 {
   "paths": {
-    "/api/v1/myresource": {
+    "/myresource": {
       "get": {
         "operationId": "getMyResource",
         "summary": "Get my resource",
-        "description": "Retrieves the resource with tenant filtering",
-        "tags": ["MyResource"],
         "responses": {
-          "200": {
-            "description": "Resource retrieved successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "message": {"type": "string"}
-                  }
-                }
-              }
-            }
-          }
+          "200": { "description": "OK" }
         }
       }
     }
@@ -127,182 +154,59 @@ Add the endpoint to `api/openapi.json`:
 }
 ```
 
-CRITICAL: The `operationId` becomes the MCP tool name: `workspace_backend_template_getMyResource`
+The `operationId` becomes the MCP tool name:
+`workspace_<your-app-name>_getMyResource`.
 
-## Moses Header Middleware
+### 4. Test it
 
-The Moses platform automatically injects headers when calling workspace tool APIs:
+Add a route test in `cmd/server/main_test.go`; `TestOpenAPISpec_MuxConsistency`
+already fails if the spec and mux drift apart.
 
-| Header | Description | Example |
-|--------|-------------|---------|
-| `X-Moses-Tenant-ID` | Multi-tenant isolation ID | `550e8400-e29b-41d4-a716-446655440000` |
-| `X-Moses-User-ID` | User who initiated the call | `123e4567-e89b-12d3-a456-426614174000` |
-| `X-Moses-Chart-ID` | Project/workspace ID | `789e0123-e45b-67cd-e890-123456789abc` |
-| `X-Moses-Tool-ID` | Workspace tool deployment ID | `def01234-5678-90ab-cdef-0123456789ab` |
-| `X-Moses-Request-ID` | Unique request trace ID | `req_abc123def456` |
-| `X-Moses-MCP-Source` | MCP call source | `claude-code`, `moses-manager` |
-| `X-Moses-API-Key-ID` | API key ID (optional) | `key_xyz789` |
+## Moses header reference
 
-### Using Moses Context
+Headers injected by the platform's WorkspaceToolProxy on MCP-driven calls
+(absent on browser-driven requests — never rely on them for scoping):
 
-```go
-import "github.com/moses-platform/backend-template/internal/middleware"
+| Header | MosesContext field | Purpose |
+|--------|--------------------|---------|
+| `X-Moses-Tenant-ID` | `CallerTenantID` | Caller's tenant — audit + 403 cross-check only |
+| `X-Moses-User-ID` | `UserID` | User who initiated the call |
+| `X-Moses-Chart-ID` | `ChartID` | Project/workspace ID |
+| `X-Moses-Tool-ID` | `ToolID` | Workspace tool deployment ID |
+| `X-Moses-Request-ID` | `RequestID` | Request trace ID — use in logs |
+| `X-Moses-MCP-Source` | `MCPSource` | `claude-code`, `moses-manager`, ... |
+| `X-Moses-API-Key-ID` | `APIKeyID` | API key ID (optional, audit) |
 
-func MyHandler(w http.ResponseWriter, r *http.Request) {
-    mosesCtx := middleware.GetMosesContext(r)
+`SelfTenantID` is NOT header-derived — it is populated from env by the
+middleware on every request.
 
-    // Enforce tenant isolation
-    if mosesCtx.TenantID == "" {
-        // Local development - no filtering
-    } else {
-        // Production - filter by tenant
-        items := store.GetByTenant(mosesCtx.TenantID)
-    }
-
-    // Use request ID for logging
-    log.Printf("[%s] Processing request for user %s",
-        mosesCtx.RequestID, mosesCtx.UserID)
-}
-```
-
-## Building and Testing
-
-### Local Development
+## Building and testing
 
 ```bash
-# Run locally
-go run cmd/server/main.go
-
-# Test health endpoint
+go run cmd/server/main.go          # local run (local-dev tenant sentinel)
 curl http://localhost:8080/health
+curl http://localhost:8080/api/openapi.json
 
-# Test items endpoint
-curl http://localhost:8080/api/v1/items
+go vet ./... && go test ./...      # the validation gate Moses runs too
 
-# Test with Moses headers (simulate platform call)
-curl -H "X-Moses-Tenant-ID: test-tenant-123" \
-     -H "X-Moses-User-ID: test-user-456" \
-     http://localhost:8080/api/v1/items
+docker build -t my-app:latest .
+docker run -p 8080:8080 my-app:latest
 ```
 
-### Docker Build
+## Deploy to Moses
 
-```bash
-# Build image
-docker build -t backend-template:latest .
+1. Commit to a Git repository and register it via the Moses Apps page.
+2. Moses clones, builds in-cluster, deploys via Helm, discovers the spec at
+   `/api/openapi.json` (alias `/api/spec`), and generates MCP tools from the
+   operationIds.
 
-# Run container
-docker run -p 8080:8080 backend-template:latest
+## Best practices
 
-# Test in container
-curl http://localhost:8080/health
-```
-
-### Deploy to Moses
-
-1. Commit your changes to a Git repository
-2. Register as a workspace tool in Moses UI
-3. Moses will:
-   - Clone the repository
-   - Build Docker image in-cluster
-   - Deploy using Helm chart
-   - Discover OpenAPI spec at `/api/openapi.json`
-   - Generate MCP tools from operationIds
-
-## OpenAPI Discovery
-
-Moses probes 11 standard paths for OpenAPI specs:
-- `/api/openapi.json` (primary)
-- `/api/spec` (alias)
-- `/openapi.json`
-- `/swagger.json`
-- `/api/v1/openapi.json`
-- `/docs/openapi.json`
-- And 5 more alternates
-
-This template serves specs at both `/api/openapi.json` and `/api/spec` for maximum compatibility.
-
-## MCP Tool Generation
-
-Each `operationId` in the OpenAPI spec becomes an MCP tool:
-
-**OpenAPI operationId**: `listItems`
-**Generated MCP tool**: `workspace_backend_template_listItems`
-
-AI agents can call these tools directly:
-```javascript
-// Agent calls this via MCP
-workspace_backend_template_listItems({})
-
-// Moses injects headers automatically
-// GET /api/v1/items
-// X-Moses-Tenant-ID: <user's tenant>
-// X-Moses-User-ID: <user's ID>
-```
-
-## Best Practices
-
-1. **Always use Moses context**: Filter by `tenantID` for multi-tenant isolation
-2. **Keep OpenAPI in sync**: Update `api/openapi.json` when adding endpoints
-3. **Use meaningful operationIds**: They become MCP tool names
-4. **Health checks must be fast**: Respond in < 5 seconds for K8s probes
-5. **Log with request IDs**: Use `mosesCtx.RequestID` for request tracing
-6. **Graceful shutdown**: Handle SIGTERM for zero-downtime deployments
-
-## Extending the Template
-
-### Add Database Support
-
-```go
-// Replace in-memory store with PostgreSQL
-import (
-    "github.com/jackc/pgx/v5/pgxpool"
-)
-
-pool, err := pgxpool.New(context.Background(), os.Getenv("DATABASE_URL"))
-```
-
-### Add Authentication
-
-```go
-// Add JWT validation middleware
-func AuthMiddleware(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        token := r.Header.Get("Authorization")
-        // Validate JWT...
-        next.ServeHTTP(w, r)
-    })
-}
-```
-
-### Add More Resources
-
-1. Create model in `internal/model/`
-2. Create handler in `internal/handler/`
-3. Register routes in `cmd/server/main.go`
-4. Update `api/openapi.json` with new paths
-5. Rebuild and redeploy
-
-## Troubleshooting
-
-### Health Check Failing
-- Verify `/health` responds within 5 seconds
-- Check container logs: `kubectl logs <pod-name>`
-- Ensure PORT env variable is set correctly (8080)
-
-### OpenAPI Not Discovered
-- Verify file exists at `/app/api/openapi.json` in container
-- Check OpenAPI is valid JSON: `jq . api/openapi.json`
-- View Moses logs for discovery errors
-
-### Tenant Filtering Not Working
-- Ensure `X-Moses-Tenant-ID` header is being injected
-- Check middleware is registered: `h = middleware.MosesHeaders(h)`
-- Verify handler calls `GetMosesContext(r)`
-
-## Resources
-
-- **Moses Documentation**: [moses-manager.eu/docs](https://moses-manager.eu/docs)
-- **Go HTTP Server**: [pkg.go.dev/net/http](https://pkg.go.dev/net/http)
-- **OpenAPI Spec**: [spec.openapis.org/oas/v3.0.3](https://spec.openapis.org/oas/v3.0.3.html)
-- **Kubernetes Probes**: [kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
+1. Scope every data access by `mosesCtx.SelfTenantID`; call
+   `enforceTenantMatch` first in write handlers.
+2. Keep `api/openapi.json` in sync with the mux — the tests enforce it.
+3. Use meaningful operationIds; they become MCP tool names.
+4. `/health` must answer fast (< 5s) — it backs the K8s probes.
+5. Log with `mosesCtx.RequestID` for cross-service tracing.
+6. External secrets go in `moses-app.config.json → secrets.external[]` —
+   see `skills/secrets-tutorial.md`; never hardcode them.

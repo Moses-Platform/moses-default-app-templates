@@ -79,10 +79,11 @@ type Config struct {
 	// /__moses/invoke endpoint, at the cost of a coordinated SDK
 	// change.
 	//
-	// OFF BY DEFAULT for v1. The SDK shipped by CHAT-pswm.2 does NOT
-	// currently set the header. Once the SDK is updated to send it,
-	// flip this on in template main() and treat the gate as part of
-	// the contract.
+	// The field remains false by default in the struct for backward
+	// compatibility, but the SDK (CHAT-pswm.9+) always sends the
+	// header and the canonical template wiring sets this to true in
+	// main(). Treat the gate as part of the contract for any template
+	// that mounts the proxy.
 	RequireRequestedWith bool
 }
 

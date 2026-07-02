@@ -72,11 +72,15 @@ export default function IdentityPage() {
           <dd>{via === 'silent-sso' ? 'Silently (prompt=none)' : 'Existing session cookie'}</dd>
           <dt>App admin?</dt>
           <dd>
-            {me.is_app_admin ? (
+            {me.roles.includes('oidc-admin') ? (
               <span className="badge badge-role">yes</span>
             ) : (
               <span className="badge badge-public">no</span>
-            )}
+            )}{' '}
+            <span className="empty-note">
+              (display only — the SERVER-side role check lives on{' '}
+              <code>/api/v1/admin-area</code>, see Roles &amp; Access)
+            </span>
           </dd>
         </dl>
         {note && (

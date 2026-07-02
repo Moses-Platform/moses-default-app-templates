@@ -6,7 +6,7 @@ Self-contained, fully runnable application templates for the [Moses Platform](ht
 
 | Template | Type | Description |
 |----------|------|-------------|
-| **frontend-template** | frontend | React 18 + Vite + TypeScript served via nginx. Health check, Helm chart, single container. |
+| **frontend-template** | frontend | React 19 (+ React Compiler) + Vite + TypeScript served via nginx. Health check, Helm chart, single container. |
 | **backend-template** | api | Go stdlib HTTP server with OpenAPI spec, health endpoint, and MCP auto-discovery. |
 | **fullstack-simple** | hybrid | Separate React frontend (nginx) + Go backend containers. Nginx proxies API calls. |
 | **fullstack-unified** | hybrid | Single Go binary serving static frontend via `go:embed` + API endpoints. Simplest fullstack pattern. |
@@ -35,7 +35,57 @@ Templates are automatically cloned into each Moses tenant via the built-in Moses
 - **Full app, Go serves static files (1 container)**: `fullstack-unified`
 - **Full app, separate frontend + backend (2 containers)**: `fullstack-simple`
 - **Educational demo with database**: `fullstack-showcase`
+- **App that talks to Moses Manager (platform actions, chat prompts, completion webhooks)**: `fullstack-chat`
 - **App that authenticates real users via OIDC**: `fullstack-oidc`
+
+## Cleaning out the demo
+
+Every template is a *runnable demo* of the Moses integration surface — and
+every template ships a one-shot script that strips the demo so you can build a
+real app on the remaining plumbing:
+
+```bash
+./clean_out_template.sh   # run ONCE, from the template root
+```
+
+**Agents: run this FIRST** when building a real application from a freshly
+provisioned template. Starting from the cleaned state is far cheaper than
+untangling demo handlers, demo pages, and Moses-marketing copy by hand later.
+
+How it works:
+
+- The script `rm`s the pure-demo files (demo handlers, models, pages,
+  components, demo tests, demo skill files) and then copies **clean twins**
+  from the template's `.template-clean/` directory over every file that mixed
+  plumbing with demo content (route registration stubs, a `"paths": {}`
+  OpenAPI spec, a placeholder `App.tsx` / `index.html`, a trimmed
+  `moses-app.config.json`, contract-only tests).
+- It is **one-shot and self-deleting**: at the end it removes
+  `.template-clean/` and itself. It is safe to re-run after a partial
+  failure (`rm -f` / `cp -f` only), makes no network calls, runs no git
+  commands, and writes nothing outside the template directory.
+- **What is kept** is exactly the Moses platform plumbing: the path contract
+  (see "The deployed-app path contract" below), the `/health` +
+  `/api/openapi.json` dual mounts, X-Moses middleware, CSRF guard,
+  browser-logger, nginx/entrypoint CSP handling, Helm chart, and
+  `moses-app.config.json`. Each template's `skills/usage.md` opens with a
+  **KEEP / REPLACE / DELETE table** listing the affected paths and the
+  template's env-var contract.
+- **What is removed** is everything demo-only. The cleaned template still
+  builds and passes its remaining tests (`tests/test_clean_out.sh` enforces
+  this in CI for all seven templates).
+- The machinery never reaches images: every Docker build context that could
+  see it excludes `clean_out_template.sh` + `.template-clean/` via
+  `.dockerignore` (parity-tested).
+
+**Manual fallback** (older clones without the script): follow the
+KEEP / REPLACE / DELETE table at the top of the template's `skills/usage.md`
+and strip the DELETE list by hand, replacing the REPLACE entries with minimal
+stubs.
+
+After cleaning, the script prints the follow-ups: set your app's identity in
+`moses-app.config.json`, add real routes where the demo route stub points,
+update `api/openapi.json` paths, and re-run the validation commands.
 
 ## Adding Custom Templates
 
@@ -51,7 +101,7 @@ Required fields in `moses-app.config.json`:
 
 ## Moses-aware vs legacy templates
 
-All 6 default templates ship as **Moses-aware** — they declare
+All 7 default templates ship as **Moses-aware** — they declare
 `templateApiVersion: "moses-manager.eu/v1"` in `moses-app.config.json` and serve
 under the runtime `MOSES_BASE_PATH` natively, emitting
 `Content-Security-Policy: frame-ancestors` themselves per the `embedding`
@@ -112,7 +162,7 @@ gives each surface exactly one correct address:
    calls the API there too — so a single registration serves both callers. Do
    **not** also mount the API canonically; the old copy-pasted
    `registerAPI(prefix)` closure that registered every route twice (canonical +
-   prefixed) has been removed from all six templates.
+   prefixed) has been removed from all seven templates.
 2. **`/health` at the root `/health`.** K8s liveness/readiness probes call the
    pod IP directly, bypassing the ingress. Templates additionally mount
    `{MOSES_BASE_PATH}/health` (one trivial extra handler) so an app that
@@ -135,7 +185,7 @@ gives each surface exactly one correct address:
    `/api/` pass-through, so standalone deploys are unchanged).
 
 This is the *current* reality, not a plan: the workspace-tool proxy calls the
-app API under `MOSES_BASE_PATH` (platform fix CHAT-uzu24), all six templates
+app API under `MOSES_BASE_PATH` (platform fix CHAT-uzu24), all seven templates
 register the API once under `MOSES_BASE_PATH` (CHAT-8qiu0), and the frontend
 nginx forwards the prefix to the backend unchanged (CHAT-yfmwv).
 
@@ -231,17 +281,55 @@ proxy limits must change in lock-step (nginx `proxy-body-size` in
 
 ## Test surface
 
-The repo ships a smoke test for the nginx entrypoint logic:
+The repo ships three repo-level test scripts (all run in CI via
+`.github/workflows/build-and-test.yml`, alongside per-module `go vet`/`go
+test` and per-frontend `npm run lint`/`npm test`/`npm run build`):
 
 ```bash
 ./tests/test_nginx_entrypoint.sh
 ```
 
-It renders each Moses-aware template's `nginx.conf` template under several
+Renders each Moses-aware template's `nginx.conf` template under several
 `MOSES_EMBEDDING_FRAMING` combinations and asserts the resulting CSP +
 `X-Frame-Options` headers match the framing matrix. Requires `envsubst`
 (part of `gettext` on most distros).
 
+```bash
+./tests/test_template_parity.sh
+```
+
+Codifies the cross-template uniformity rules: Helm chart naming, app-config
+placeholders and reserved slugs, README presence, Go/Docker base-image
+version parity, Dockerfile hardening and reproducibility, no literal
+credentials in values files, `.dockerignore` coverage per declared build
+context, and the clean-out machinery (script present + executable,
+`.template-clean/` present, machinery excluded from root build contexts).
+
+```bash
+./tests/test_clean_out.sh
+```
+
+Copies every template to a temp dir outside the repo, runs its
+`clean_out_template.sh`, and asserts the clean-out contract: exit 0, the
+machinery self-deletes, any Go module inside still builds standalone
+(`GOWORK=off go build ./...`), and key kept plumbing files
+(`moses-app.config.json`, `helm/Chart.yaml`) survive.
+
+The `tools/check-vendored-*.sh` gates (csrf, browser-logger, mosesproxy,
+base-path) additionally keep each template's vendored copies in sync with
+the canonical `shared/` sources; they run in their own path-filtered
+workflows.
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE)
+
+**Exceptions** (files that carry their own license headers — do not
+re-license or strip them): `shared/browser-logger/index.ts` and its
+vendored copies (`*/src/moses-browser-logger.ts` plus the vanilla-JS port
+`fullstack-unified/static/moses-browser-logger.js`), and four
+`fullstack-chat` Go files (`backend/cmd/server/validate_env.go`,
+`validate_env_test.go`, `main_test.go`,
+`moses_proxy_integration_test.go`, plus the `main_test.go` twin under
+`.template-clean/`) are licensed under the Business Source License 1.1
+(BSL-1.1), as marked in their headers.

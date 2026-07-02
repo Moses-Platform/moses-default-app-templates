@@ -12,16 +12,16 @@ This showcase application demonstrates Moses platform capabilities:
 ## Architecture
 
 ### Frontend
-- **Tech**: React 18 + TypeScript + Vite
+- **Tech**: React 19 + TypeScript + Vite 7 (React Compiler enabled), TanStack Query data layer
 - **Deployment**: nginx:alpine with entrypoint.sh for env var substitution
-- **Routing**: SPA with react-router-dom, 6 pages
+- **Routing**: SPA with react-router-dom, 7 routes
 - **API Proxy**: nginx proxies `/api/*` to backend service
 
 ### Backend
-- **Tech**: Go 1.22 with stdlib (no external dependencies for HTTP)
-- **Deployment**: alpine:3.19 runtime
-- **Endpoints**: /health, /api/v1/moses-info, /api/v1/capabilities, /api/v1/capabilities/{id}
-- **Middleware**: Moses headers extraction, CORS, logging
+- **Tech**: Go 1.25 with net/http + pgx v5 (PostgreSQL)
+- **Deployment**: alpine:3.21 runtime
+- **Endpoints**: /health, /api/v1/moses-info, /api/v1/capabilities, /api/v1/capabilities/{id}, /api/v1/notes (Postgres CRUD), /api/v1/users (platform API)
+- **Middleware**: Moses headers extraction, CSRF rejection, CORS allowlist (off by default), logging
 
 ### Multi-Service Helm
 - **Frontend Service**: agent-deployed-app-frontend:8080
@@ -61,5 +61,7 @@ Each page explains a Moses platform component:
 | /api/v1/moses-info | GET | Current Moses context from headers |
 | /api/v1/capabilities | GET | List all Moses capabilities |
 | /api/v1/capabilities/{id} | GET | Get single capability details |
+| /api/v1/notes[/{id}] | GET/POST/DELETE | Tenant-scoped notes CRUD (PostgreSQL) |
+| /api/v1/users | GET | Tenant users via Moses Platform API (graceful degradation) |
 
-All endpoints return JSON. The moses-info endpoint shows deployment mode and extracts all X-Moses-* headers.
+All endpoints return JSON. The moses-info endpoint shows deployment mode and the self (env-pinned) vs caller (header) tenant split.

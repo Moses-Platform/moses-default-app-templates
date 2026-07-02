@@ -1,47 +1,82 @@
 # Frontend Template - Agent Customization Guide
 
-## What This Template Provides
+## First step: clean out the demo
 
-A production-ready React + TypeScript + Vite frontend application with:
+This template ships demo pages (Home/About/404 marketing content) so its
+plumbing is exercised end-to-end. Before building your real app, remove the
+demo in one shot:
 
-- Correct subpath deployment configuration (`base: './'`)
-- SPA routing with React Router
-- nginx production server with health checks
-- Moses UI design tokens and 4px spacing grid
-- Multi-stage Docker build with optimization
-- Helm chart for Kubernetes deployment
-
-## File Structure
-
+```bash
+./clean_out_template.sh
 ```
-frontend-template/
-├── src/
-│   ├── components/     # Reusable UI components
-│   │   └── Layout.tsx  # Page shell (header, footer)
-│   ├── pages/          # Route pages
-│   │   ├── HomePage.tsx
-│   │   ├── AboutPage.tsx
-│   │   └── NotFoundPage.tsx
-│   ├── utils/          # Helper functions
-│   │   └── baseUrl.ts  # Moses subpath handling
-│   ├── App.tsx         # Route configuration
-│   ├── App.css         # Global styles + design tokens
-│   └── main.tsx        # React entry point
-├── public/
-│   └── favicon.svg     # Moses branding icon
-├── helm/               # Kubernetes deployment
-│   ├── Chart.yaml
-│   ├── values.yaml
-│   └── templates/
-├── Dockerfile          # Multi-stage build
-├── nginx.conf          # Production web server
-├── vite.config.ts      # Build configuration (CRITICAL: base: './')
-├── package.json        # Dependencies
-└── moses-app.config.json  # Moses platform metadata
+
+The script deletes the demo pages, swaps in minimal clean replacements from
+`.template-clean/`, then deletes itself. The result still passes
+`npm run lint && npm test && npm run build`.
+
+If your clone has no script (older clone), strip manually per this table:
+
+| Action | Path | Why |
+|---|---|---|
+| KEEP | `src/main.tsx` | Router basename from the base-path meta, QueryClientProvider, browser-logger install |
+| KEEP | `src/utils/baseUrl.ts` (+ test) | `getBasePath()` — the CHAT-pbup base-path contract |
+| KEEP | `src/moses-browser-logger.ts` (+ test) | Vendored (BLF-B) — do NOT edit; drift-gated against `shared/` |
+| KEEP | `src/api/queryClient.ts` | Shared QueryClient defaults (staleTime 30s, no focus refetch) |
+| KEEP | `src/components/ThemeToggle.tsx`, `src/components/Layout.css` | Theme switch + shell styles |
+| KEEP | `src/styles/theme.css` | Design tokens (dark default + `[data-theme="light"]`) |
+| KEEP | `nginx.conf`, `entrypoint.sh`, `Dockerfile`, `helm/`, `public/` | Deploy plumbing: CSP framing, sub-path rewrite, base-path meta render |
+| REPLACE | `src/App.tsx` | Twin: one placeholder Home route inside the kept `Layout` |
+| REPLACE | `src/components/Layout.tsx` | Twin: generic header title |
+| REPLACE | `src/App.css` | Twin: same global styles minus demo-page class hooks |
+| REPLACE | `index.html` | Twin: generic title; keeps `moses-base-path` meta + no-flash theme script |
+| REPLACE | `src/api/client.ts` | Twin: transport only (fetchAPI/fetchText/mutateAPI/mutateAPINoContent) — demo `getHealth` read removed |
+| REPLACE | `src/api/hooks.ts`, `src/api/queryKeys.ts` | Twins: empty hook/key factories with the canonical shapes documented |
+| REPLACE | `moses-app.config.json` | Twin: demo "About" quickAction removed |
+| DELETE | `src/pages/` (all pages + css) | Demo marketing pages |
+
+## Environment-variable contract
+
+Everything the template reads, and where:
+
+| Variable | Read in | Purpose |
+|---|---|---|
+| `MOSES_BASE_PATH` | `entrypoint.sh` (runtime) | Sub-path mount (`/apps/<t>/<a>/`); rendered into the `moses-base-path` meta tag and the nginx sub-path rewrite block |
+| `MOSES_EMBEDDING_FRAMING` | `entrypoint.sh` (runtime) | `moses-only` (default) \| `public` \| `denied` — CSP `frame-ancestors`; `denied` also emits `X-Frame-Options: DENY` |
+| `MOSES_EMBEDDING_ALLOWED_ANCESTORS` | `entrypoint.sh` (runtime) | Explicit CSP source list for `moses-only` (overrides the parity default) |
+| `MOSES_EMBEDDING_REPORT_URI` | `entrypoint.sh` (runtime) | Optional CSP report-uri |
+| `MOSES_DOMAIN` | `entrypoint.sh` (runtime) | Platform domain used to extend the default `moses-only` ancestors list |
+| `VITE_MOSES_CHART_ID` | `moses-browser-logger.ts` (build-time, Dockerfile ARG) | Browser-log reporter target chart; logger is a silent no-op when absent |
+| `VITE_MOSES_DEPLOYMENT_ID` | `moses-browser-logger.ts` (build-time, Dockerfile ARG) | Browser-log reporter deployment identity |
+| `VITE_MOSES_API_BASE` | `moses-browser-logger.ts` (build-time, Dockerfile ARG) | Log-ingest endpoint base |
+| `VITE_BASE_URL` | `src/utils/baseUrl.ts` (build-time, rare) | Legacy build-time base-path fallback; runtime meta tag is preferred |
+| `NPM_REGISTRY` | `Dockerfile` (build ARG) | Optional in-cluster npm mirror (CHAT-s6qf3) |
+
+There is no `/api` backend in this template — it is a static SPA served by
+nginx. `nginx.conf` serves `/health` directly for K8s probes.
+
+## Non-negotiable plumbing rules
+
+1. **Router basename is required.** `main.tsx` does
+   `<BrowserRouter basename={getBasePath()}>`; the ingress does NOT strip the
+   `/apps/<t>/<a>` prefix. Never remove it.
+2. **Internal links use `<Link to="...">`** (react-router). A raw
+   `<a href="/about">` escapes the app mount and hits the platform router.
+3. **Fetch paths are relative** (`'api/v1/...'`, never `'/api/...'`) so they
+   resolve under the sub-path.
+4. **`vite.config.ts` keeps `base: './'`** — relative asset URLs.
+5. **React Compiler is enabled** (babel-plugin-react-compiler in
+   `vite.config.ts`, React 19). Do NOT add manual
+   `useMemo`/`useCallback`/`React.memo` for plain in-component render values —
+   the compiler auto-memoizes; write the plain value/function.
+6. **Server state via TanStack Query** (`src/api/`): reads are `useQuery`,
+   writes are `useMutation` + key invalidation. No `useEffect`-fetch, no
+   manual refetch after mutations.
+7. **Vendored files** (`src/moses-browser-logger.ts`) stay byte-identical to
+   the repo's `shared/` copy — the drift gate fails otherwise.
 
 ## How to Customize
 
-### 1. Update App Metadata
+### 1. App identity
 
 Edit `moses-app.config.json`:
 
@@ -53,9 +88,7 @@ Edit `moses-app.config.json`:
 }
 ```
 
-### 2. Add New Pages
-
-Create a new page in `src/pages/`:
+### 2. Add pages + routes
 
 ```typescript
 // src/pages/MyPage.tsx
@@ -65,7 +98,6 @@ function MyPage() {
   return (
     <div className="my-page">
       <h1>My New Page</h1>
-      <p>Content goes here</p>
     </div>
   )
 }
@@ -73,233 +105,95 @@ function MyPage() {
 export default MyPage
 ```
 
-Add route in `src/App.tsx`:
+Register in `src/App.tsx`:
 
 ```typescript
 import MyPage from './pages/MyPage'
 
-// Add to Routes:
+// Add to <Routes> (paths are basename-relative):
 <Route path="/my-page" element={<MyPage />} />
 ```
 
-### 3. Customize Design Tokens
+### 3. Design tokens
 
-Moses design tokens are in `src/App.css`:
+Tokens live in `src/styles/theme.css` (NOT App.css): emerald brand, three-tier
+backgrounds, dark default + `[data-theme="light"]` override. Keep spacing on
+the 4px grid (`var(--spacing-4)` etc.) and WCAG 2.1 AA contrast. Global
+element styles/utilities (`.btn`, forms, tables) are in `src/App.css`.
 
-```css
-:root {
-  --color-primary: #4F46E5;      /* Change primary color */
-  --color-bg: #F9FAFB;           /* Background color */
-  --color-surface: #FFFFFF;      /* Card/panel backgrounds */
-  --color-text: #111827;         /* Main text */
-  --spacing-4: 16px;             /* 4px spacing grid */
+No external font CDNs — the font stacks fall back to system fonts. Self-host
+webfonts under `public/` if you need them.
+
+### 4. Data layer (reads + writes)
+
+```typescript
+// src/api/client.ts — typed read, RELATIVE path
+export interface Thing { id: string; name: string }
+export const getThings = (signal?: AbortSignal) =>
+  fetchAPI<Thing[]>('api/v1/things', signal)
+
+// src/api/queryKeys.ts — central key factory
+export const queryKeys = {
+  things: ['things'] as const,
+}
+
+// src/api/hooks.ts — components consume hooks, never fetch()
+export function useThings() {
+  return useQuery({ queryKey: queryKeys.things, queryFn: ({ signal }) => getThings(signal) })
 }
 ```
 
-**IMPORTANT**: Keep spacing in multiples of 4px to match Moses UI standards.
+Mutations invalidate their read keys (`qc.invalidateQueries({ queryKey: queryKeys.things })`).
 
-### 4. Add Components
+### 5. App-absolute URLs (sharing etc.)
 
-Create reusable components in `src/components/`:
-
-```typescript
-// src/components/Button.tsx
-import './Button.css'
-
-interface ButtonProps {
-  label: string
-  onClick: () => void
-}
-
-function Button({ label, onClick }: ButtonProps) {
-  return (
-    <button className="moses-button" onClick={onClick}>
-      {label}
-    </button>
-  )
-}
-
-export default Button
-```
-
-### 5. Subpath Deployment
-
-The app is pre-configured for Moses subpath deployment (`/apps/{tenant}/{slug}/`).
-
-Vite config already has `base: './'` - DO NOT change this.
-
-For absolute URLs (sharing, etc.), use the baseUrl utility:
+`getBasePath()` returns `/` (root) or `/apps/<t>/<a>` (no trailing slash) —
+join accordingly:
 
 ```typescript
-import { getBaseUrl } from './utils/baseUrl'
+import { getBasePath } from './utils/baseUrl'
 
-const shareUrl = `${getBaseUrl()}my-page`
+const base = getBasePath()
+const shareUrl = `${base === '/' ? '' : base}/my-page`
 ```
 
-### 6. Health Checks
-
-The nginx config provides `/health` endpoint for Kubernetes probes.
-
-If you add an API backend, implement health checks:
-
-```typescript
-// Example Express.js
-app.get('/health', (req, res) => {
-  res.status(200).send('healthy')
-})
-```
-
-### 7. Building
-
-Local development:
+### 6. Build, test, deploy
 
 ```bash
 npm install
-npm run dev
-# Visit http://localhost:5173
-```
+npm run dev        # http://localhost:5173
+npm run lint       # tsc --noEmit (the Moses validation gate)
+npm test           # vitest
+npm run build      # production dist/
 
-Production build:
-
-```bash
-npm run build
-# Creates optimized dist/ directory
-```
-
-Docker build:
-
-```bash
 docker build -t my-app:latest .
+docker run -p 8080:8080 my-app:latest   # nginx listens on 8080
 ```
 
-### 8. Deployment to Moses
+Deploy: commit to Git, register via the Moses Apps page; Moses builds
+in-cluster and serves the app at `/apps/{tenant}/{slug}/`.
 
-Once customized:
+## Security headers (what nginx actually sends)
 
-1. Commit changes to Git repository
-2. Register with Moses via the Apps page
-3. Agents will build and deploy automatically
-4. Access at `https://{domain}/apps/{tenant}/{slug}/`
-
-## Moses Integration Points
-
-### Design System
-
-Use Moses CSS variables for consistency:
-
-- Typography: Follow `MOSES_UI_UX_STANDARDS.md` font scale
-- Colors: Semantic color palette for primary, success, warning, error
-- Spacing: 4px grid system (`var(--spacing-4)`, etc.)
-- Accessibility: WCAG 2.1 AA contrast ratios
-
-### Security Headers
-
-nginx.conf includes:
-
-- `X-Frame-Options: SAMEORIGIN` - Allows iframe in Moses Apps page
-- `X-Content-Type-Options: nosniff` - Prevents MIME type sniffing
-- `X-XSS-Protection: 1; mode=block` - XSS protection
-
-### Caching Strategy
-
-Static assets cached for 1 year (`expires 1y`).
-
-HTML files served with no-cache to ensure updates.
-
-### Resource Limits
-
-Helm chart sets resource requests/limits:
-
-- CPU: 100m request, 200m limit
-- Memory: 128Mi request, 256Mi limit
-
-Adjust in `helm/values.yaml` if needed (stay within namespace quota).
-
-## Common Patterns
-
-### API Integration
-
-Add API calls in services:
-
-```typescript
-// src/services/api.ts
-// MOSES ROUTING: Default MUST be relative (no leading '/') for subpath deployment.
-// Your app is deployed at a subpath; absolute paths bypass the app's ingress (404).
-const API_BASE = import.meta.env.VITE_API_URL || 'api'
-
-export async function fetchData() {
-  const response = await fetch(`${API_BASE}/data`)
-  return response.json()
-}
-```
-
-### State Management
-
-For complex state, add Zustand:
-
-```bash
-npm install zustand
-```
-
-```typescript
-// src/stores/appStore.ts
-import { create } from 'zustand'
-
-interface AppState {
-  count: number
-  increment: () => void
-}
-
-export const useAppStore = create<AppState>((set) => ({
-  count: 0,
-  increment: () => set((state) => ({ count: state.count + 1 })),
-}))
-```
-
-### Forms
-
-Use controlled components:
-
-```typescript
-const [value, setValue] = useState('')
-
-<input
-  value={value}
-  onChange={(e) => setValue(e.target.value)}
-  className="form-input"
-/>
-```
+- `Content-Security-Policy: frame-ancestors ...` — rendered at container
+  start from `MOSES_EMBEDDING_FRAMING` / `MOSES_EMBEDDING_ALLOWED_ANCESTORS`
+  (default `moses-only`); `denied` additionally sends `X-Frame-Options: DENY`.
+- `X-Content-Type-Options: nosniff`.
+- `X-XSS-Protection` is deliberately NOT sent (deprecated/no-op; CSP is the
+  mechanism). The repo's parity test enforces this.
 
 ## Troubleshooting
 
-**Issue**: Routes return 404 in production
+**Routes 404 in production** — nginx falls back to `index.html`
+(`try_files`); check the sub-path rewrite block rendered by `entrypoint.sh`
+(`MOSES_BASE_PATH`).
 
-**Fix**: nginx.conf has `try_files $uri $uri/ /index.html` - all routes fall back to index.html for SPA routing.
+**Assets 404** — keep `base: './'` in `vite.config.ts`.
 
----
+**Links jump out of the app** — you used `<a href="/...">`; use
+`<Link to="/...">`.
 
-**Issue**: Assets fail to load with 404
+**App not healthy after deploy** — `/health` is served by nginx at root;
+probes bypass the ingress.
 
-**Fix**: Ensure `vite.config.ts` has `base: './'` (relative paths).
-
----
-
-**Issue**: App not accessible after deployment
-
-**Fix**: Check health endpoint responds at `/health`. Kubernetes probes will fail if missing.
-
----
-
-**Issue**: Styles not applying
-
-**Fix**: Import CSS files in component: `import './Component.css'`
-
-## Next Steps
-
-1. Customize `moses-app.config.json` with your app details
-2. Update design tokens in `src/App.css`
-3. Add your pages to `src/pages/`
-4. Build and test locally
-5. Deploy via Moses platform
-
-This template is production-ready. Customize it to fit your application's needs while maintaining Moses platform integration.
+**Styles missing** — import the CSS in the component: `import './X.css'`.

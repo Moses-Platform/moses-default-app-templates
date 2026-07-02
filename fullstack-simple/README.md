@@ -4,8 +4,11 @@ Two-container Moses template: a React + Vite SPA served by nginx, and a Go API b
 
 ## Layout
 
+Starting real work on a fresh clone? Run `./clean_out_template.sh` once to strip the demo endpoints/UI while keeping all Moses plumbing — see `skills/usage.md` for the full KEEP / REPLACE / DELETE map.
+
 ```
 fullstack-simple/
+├── clean_out_template.sh     # one-shot demo strip (self-deletes; twins in .template-clean/)
 ├── moses-app.config.json     # appType: hybrid, 2 docker images
 ├── helm/                     # agent-deployed-app chart, services[] array
 │   ├── Chart.yaml            # name: agent-deployed-app, v1.0.0
@@ -22,7 +25,7 @@ fullstack-simple/
 │   ├── src/                  # React 19 + TypeScript + Vite
 │   └── index.html            # contains <meta name="moses-base-path" content="__MOSES_BASE_PATH__">
 └── backend/
-    ├── Dockerfile            # multi-stage: golang:1.24-alpine → alpine:3.19, non-root
+    ├── Dockerfile            # multi-stage: golang:1.25.10-alpine → alpine:3.21, non-root
     ├── api/
     │   ├── api.go            # //go:embed openapi.json
     │   └── openapi.json      # OpenAPI 3.x spec → MCP tool autoreg
@@ -59,7 +62,7 @@ The frontend nginx proxies `/api/*` → `http://${BACKEND_SERVICE_HOST}:${BACKEN
 
 ## Optional Redis sidecar
 
-Set `redis.enabled: true` in `values.yaml`. The chart provisions a Valkey 8-alpine StatefulSet and the deployment template auto-injects `REDIS_HOST`, `REDIS_PORT`, `REDIS_ADDR` env vars into every container. Agents should NEVER hardcode the service name — it derives from `{fullname}-redis`.
+Set `redis.enabled: true` in `values.yaml`. The chart provisions a Valkey 8-alpine Deployment (`helm/templates/redis.yaml`) and the deployment template auto-injects `REDIS_HOST`, `REDIS_PORT`, `REDIS_ADDR` env vars into every container. Agents should NEVER hardcode the service name — it derives from `{fullname}-redis`.
 
 ## Running locally (without Moses)
 
@@ -108,7 +111,7 @@ Self-maintenance is enabled via the Moses UI toggle (the wrench on the app card)
 ## Conventions enforced by `tests/test_template_parity.sh`
 
 - Helm chart name is **`agent-deployed-app`** v1.0.0 (must match the platform's expected chart).
-- All Go modules use `go 1.24`; all Go Dockerfiles use `golang:1.24-alpine`.
+- All Go modules use `go 1.25.10`; all Go Dockerfiles use `golang:1.25.10-alpine` (runtime `alpine:3.21`).
 - All backend Dockerfiles run as a non-root `appuser` (uid 1000) with HEALTHCHECK.
 - No `"name": "my-app"` placeholder in `moses-app.config.json` (must be a per-template instance name).
 - No literal credentials in `helm/values.yaml` — use `__MOSES_GENERATE_PASSWORD__` for any password Moses should generate.

@@ -1,18 +1,21 @@
 /**
- * Fullstack Chat Roundtrip — reference template demonstrating the app↔Moses-Manager
- * round-trip with all chat surfaces wired up.
+ * Fullstack Chat Roundtrip — DEMO UI for the app↔Moses-Manager round-trip.
+ * clean_out_template.sh replaces this file with a minimal placeholder; the
+ * integration reference code it consumes lives in src/moses/ (invoke.ts +
+ * hostMessages.ts) and SURVIVES the cleanout — build on those modules.
  *
  * MOSES ROUTING (CHAT-pswm.2/.8/.9 — canonical reference impl):
  *   - Calls to THIS APP's backend use relative paths: `fetch('api/v1/entries')`.
  *     They route through the app's nginx proxy to our Go backend. The entries
  *     list (non-stream server state) lives in TanStack Query (api/hooks.ts).
- *   - Calls to MOSES platform actions go through `window.moses.actions.invoke`,
- *     supplied by the iframe SDK loaded in index.html. The SDK POSTs to
- *     `/__moses/invoke` on this app's OWN backend (same-origin under the
- *     iframe's nginx subpath); the backend's mosesproxy-go handler forwards
- *     pod-to-pod to moses-backend with the user's JWT preserved. The
- *     iframe never contacts moses-backend directly — see iframe_sdk_handler.go
- *     for the SDK source and shared/mosesproxy-go/proxy.go for the proxy.
+ *   - Calls to MOSES platform actions go through src/moses/invoke.ts →
+ *     `window.moses.actions.invoke`, supplied by the iframe SDK loaded in
+ *     index.html. The SDK POSTs to `/__moses/invoke` on this app's OWN
+ *     backend (same-origin under the iframe's nginx subpath); the backend's
+ *     mosesproxy-go handler forwards pod-to-pod to moses-backend with the
+ *     user's JWT preserved. The iframe never contacts moses-backend directly
+ *     — see iframe_sdk_handler.go for the SDK source and
+ *     shared/mosesproxy-go/proxy.go for the proxy.
  *
  * DATA-LAYER SCOPE (FRONTEND_DATA_LAYER.md):
  *   - Non-stream data (the entries list) is migrated to TanStack Query.
@@ -21,26 +24,18 @@
  *     channel, not a data fetch). The completion postMessage invalidates the
  *     entries query so the feed reconciles immediately.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEntries } from './api/hooks';
 import { queryKeys } from './api/queryKeys';
+import {
+  announceOpenChat,
+  useMosesChatComplete,
+  type CompletionMessage,
+} from './moses/hostMessages';
+import { conversationIdOf, invokeAction, shapeInvokeError } from './moses/invoke';
 import ThemeToggle from './components/ThemeToggle';
 import './App.css';
-
-type CompletionMessage = {
-  type: 'moses_embed_chat_complete';
-  v: 1;
-  conversationId: string;
-  preview?: string;
-  finishReason?: 'stop' | 'length' | 'error' | 'credential_unset';
-};
-
-// moses_embed_open_chat (v1) is iframe → host-shell. The app posts it to
-// `window.parent` after a successful chat_prompt invoke so the host can
-// (a) open the global chat sidebar pinned to the new conversation, and
-// (b) register the conversationId so it can later forward
-// `auto_response_ready` WS events back here as `moses_embed_chat_complete`.
 
 type StatusBanner =
   | { kind: 'idle' }
@@ -66,35 +61,22 @@ export default function App() {
     void queryClient.invalidateQueries({ queryKey: queryKeys.entries });
   }, [queryClient]);
 
-  // postMessage listener: opens host's chat sidebar for this conversation,
-  // and reflects completion events into the status banner. This is a push
-  // channel from the host shell, not a data fetch — it stays imperative.
-  useEffect(() => {
-    function onMessage(e: MessageEvent) {
-      if (e.origin !== window.location.origin) return;
-      const data = e.data;
-      if (typeof data !== 'object' || data === null) return;
-
-      if (data.type === 'moses_embed_chat_complete') {
-        const msg = data as CompletionMessage;
-        if (msg.v !== 1 || typeof msg.conversationId !== 'string') return;
-        setStatus({
-          kind: 'complete',
-          conversationId: msg.conversationId,
-          preview: msg.preview,
-          reason: msg.finishReason,
-        });
-        // Reconcile the feed immediately on completion (faster than the
-        // steady-state refetch interval).
-        refreshEntries();
-      }
-      // moses_embed_open_chat is host-shell-bound (the host opens its own
-      // sidebar). The app neither sends nor consumes it directly; it's
-      // listed here for documentation and for tests that assert non-handling.
-    }
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
-  }, [refreshEntries]);
+  // Host-shell completion push channel (origin-checked in the hook):
+  // reflect completion events into the status banner and reconcile the feed
+  // immediately (faster than the steady-state refetch interval).
+  const onComplete = useCallback(
+    (msg: CompletionMessage) => {
+      setStatus({
+        kind: 'complete',
+        conversationId: msg.conversationId,
+        preview: msg.preview,
+        reason: msg.finishReason,
+      });
+      refreshEntries();
+    },
+    [refreshEntries],
+  );
+  useMosesChatComplete(onComplete);
 
   async function onGenerate() {
     const trimmed = topic.trim();
@@ -105,62 +87,21 @@ export default function App() {
     setBusy(true);
     setStatus({ kind: 'invoking' });
     try {
-      // CHAT-pswm.9 — fire the chat_prompt via the iframe SDK
-      // (loaded by index.html from /api/v1/sdk/iframe-sdk.js).
-      // The SDK POSTs to /__moses/invoke on this app's own backend,
-      // which forwards pod-to-pod to moses-backend with the user's
-      // JWT preserved. If the SDK script failed to load (offline,
-      // gateway misconfig, or the proxy backend is down), `window.moses`
-      // is undefined and we surface a clear error instead of a TypeError.
-      const invoke = window.moses?.actions?.invoke;
-      if (typeof invoke !== 'function') {
-        throw new Error(
-          'Moses SDK not loaded — /api/v1/sdk/iframe-sdk.js failed to fetch. ' +
-            'Is the iframe served via the Moses platform?',
-        );
-      }
-      const result = await invoke(ACTION_ID, { topic: trimmed });
-      const conversationId =
-        (result as { result?: { conversationId?: string } } | undefined)?.result?.conversationId;
-      setStatus(
-        conversationId
-          ? { kind: 'awaiting', conversationId }
-          : { kind: 'awaiting', conversationId: '(unknown)' },
-      );
-      // Tell the host shell about this conversation so it (a) opens the
-      // global chat sidebar pinned to this conversationId, and (b) forwards
-      // the eventual `auto_response_ready` WS event back to us as a
-      // `moses_embed_chat_complete` postMessage. Without this announce step
-      // the host has no record of which conversations belong to this iframe.
-      if (conversationId && window.parent && window.parent !== window) {
-        try {
-          window.parent.postMessage(
-            {
-              type: 'moses_embed_open_chat',
-              v: 1,
-              conversationId,
-              app: APP_SLUG,
-            },
-            window.location.origin,
-          );
-        } catch (err) {
-          // Cross-origin posts will throw — non-fatal; the query refetch still works.
-          console.warn('[fullstack-chat] moses_embed_open_chat post failed', err);
-        }
+      // CHAT-pswm.9 — fire the chat_prompt via the iframe SDK (guarded +
+      // typed in src/moses/invoke.ts).
+      const result = await invokeAction(ACTION_ID, { topic: trimmed });
+      const conversationId = conversationIdOf(result);
+      setStatus({ kind: 'awaiting', conversationId: conversationId ?? '(unknown)' });
+      // Announce the conversation up to the host shell (sidebar pin +
+      // completion-event forwarding) — see src/moses/hostMessages.ts.
+      if (conversationId) {
+        announceOpenChat(conversationId, APP_SLUG);
       }
       // Optimistically refresh: MM may complete fast.
       window.setTimeout(() => refreshEntries(), 1_000);
     } catch (err) {
-      // The SDK reshapes the platform's structured 4xx envelope so .hint
-      // (e.g. CHAT-mux7 action_not_activated) lands on the error object
-      // directly. Prefer hint > message so the user sees the actionable
-      // remediation rather than a status-code-prefixed JSON blob.
-      const e = err as { hint?: string; message?: string; status?: number };
-      const fallback =
-        typeof e?.status === 'number'
-          ? `invoke failed (${e.status}): ${e.message ?? 'unknown error'}`
-          : e?.message ?? 'invoke failed';
-      setStatus({ kind: 'error', message: e?.hint ?? fallback });
+      // hint > status-prefixed fallback — see shapeInvokeError.
+      setStatus({ kind: 'error', message: shapeInvokeError(err) });
     } finally {
       setBusy(false);
     }

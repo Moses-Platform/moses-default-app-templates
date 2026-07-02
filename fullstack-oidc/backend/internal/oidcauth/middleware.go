@@ -303,6 +303,7 @@ func (m *Middleware) startAuth(w http.ResponseWriter, r *http.Request, prompt, r
 	}
 
 	state := randomURLToken(24)
+	nonce := randomURLToken(24)
 	verifier := newCodeVerifier()
 	challenge := codeChallengeS256(verifier)
 
@@ -318,6 +319,7 @@ func (m *Middleware) startAuth(w http.ResponseWriter, r *http.Request, prompt, r
 		CodeVerifier: verifier,
 		ReturnTo:     returnTo,
 		Prompt:       prompt,
+		Nonce:        nonce,
 	}
 	if err := setStateCookie(w, m.cfg, hs); err != nil {
 		http.Error(w, "oidc state error", http.StatusInternalServerError)
@@ -325,7 +327,7 @@ func (m *Middleware) startAuth(w http.ResponseWriter, r *http.Request, prompt, r
 	}
 
 	redirectURI := m.absoluteURL(r, routeCallback)
-	authURL := m.provider.authorizeRedirectURL(redirectURI, state, challenge, prompt)
+	authURL := m.provider.authorizeRedirectURL(redirectURI, state, challenge, nonce, prompt)
 	http.Redirect(w, r, authURL, http.StatusFound)
 }
 
@@ -379,7 +381,10 @@ func (m *Middleware) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims, err := m.provider.verifyIDToken(r.Context(), tok.IDToken)
+	// Verify signature + iss/aud/exp AND the OIDC nonce: the token's
+	// `nonce` claim must echo the value startAuth stored in the HMAC
+	// state cookie, binding this token to this handshake.
+	claims, err := m.provider.verifyIDToken(r.Context(), tok.IDToken, hs.Nonce)
 	if err != nil {
 		log.Printf("oidcauth: id_token verification failed: %v", err)
 		http.Error(w, "id token invalid", http.StatusUnauthorized)
@@ -401,6 +406,12 @@ func (m *Middleware) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 // handleLogout clears the session cookie and performs a Keycloak
 // RP-initiated logout, sending the user back to the app root.
+//
+// This is deliberately an UN-GATED GET (industry-common for RP-initiated
+// logout links). The worst a forced/CSRF'd navigation here achieves is
+// logging the victim OUT — an annoyance, not a privilege gain — and the
+// Keycloak end-session endpoint independently prompts/validates via
+// client_id + registered post_logout_redirect_uri.
 func (m *Middleware) handleLogout(w http.ResponseWriter, r *http.Request) {
 	clearSessionCookie(w, m.cfg)
 

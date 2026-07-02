@@ -2,13 +2,15 @@
   // ── MOSES ROUTING ──────────────────────────────────────────────────────
   // This file uses the pattern:  fetch(base + '/api/v1/...')
   //
-  // `base` is resolved from the <base href="..."> tag injected by the
-  // Moses static-serve layer. It already contains the full origin AND the
-  // tenant/chart subpath, e.g. "https://host/apps/tenant/chart".
+  // index.html hardcodes <base href="./">, so the browser resolves
+  // document.querySelector('base').href to the FULL absolute URL of the
+  // current page's directory — origin AND tenant/chart subpath included,
+  // e.g. "https://host/apps/tenant/chart/". Nothing injects the tag at
+  // serve time; the relative "./" is what makes it deployment-agnostic.
   //
-  // The leading '/' that follows `base` is safe ONLY because `base`
-  // includes the full origin+subpath — the browser treats the result as
-  // an absolute URL, NOT a root-relative path.
+  // The leading '/' that follows `base` is safe ONLY because `base` is an
+  // absolute URL after resolution — the result is an absolute URL, NOT a
+  // root-relative path.
   //
   // If you add new fetch calls you MUST use the same pattern:
   //   CORRECT:  fetch(base + '/my/endpoint')
@@ -25,9 +27,9 @@
       ['Port', (data.env && data.env.port) || '—'],
       ['Base URL', (data.env && data.env.base_url) || '/'],
     ];
-    if (data.moses && data.moses.tenant_id) {
-      rows.push(['Tenant', data.moses.tenant_id]);
-    }
+    // NOTE: the backend never emits moses.tenant_id (CHAT-w6gt — tenant
+    // UUIDs stay out of response bodies, enforced by json:"-" + test), so
+    // don't render one here.
     el.textContent = '';
     rows.forEach(function (r) {
       var row = document.createElement('div');

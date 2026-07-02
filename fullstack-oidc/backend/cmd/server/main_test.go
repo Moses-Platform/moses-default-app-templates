@@ -9,7 +9,7 @@ import (
 // buildMux must mount /health at the canonical root regardless of
 // base path (the K8s probe bypasses the ingress).
 func TestBuildMux_HealthCanonical(t *testing.T) {
-	mux := buildMux("/apps/t/s", false, nil, nil)
+	mux := buildMux("/apps/t/s", false, nil)
 
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/health", nil))
@@ -23,7 +23,7 @@ func TestBuildMux_HealthCanonical(t *testing.T) {
 
 // /health is also reachable under the base-path alias.
 func TestBuildMux_HealthBasePathAlias(t *testing.T) {
-	mux := buildMux("/apps/t/s", false, nil, nil)
+	mux := buildMux("/apps/t/s", false, nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/apps/t/s/health", nil))
 	if rec.Code != 200 {
@@ -34,7 +34,7 @@ func TestBuildMux_HealthBasePathAlias(t *testing.T) {
 // The OpenAPI spec is served at the canonical root for platform
 // discovery.
 func TestBuildMux_OpenAPICanonical(t *testing.T) {
-	mux := buildMux("", false, nil, nil)
+	mux := buildMux("", false, nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/openapi.json", nil))
 	if rec.Code != 200 {
@@ -45,9 +45,24 @@ func TestBuildMux_OpenAPICanonical(t *testing.T) {
 	}
 }
 
+// The session-introspection route /api/v1/me is registered under
+// MOSES_BASE_PATH. Reaching it with no Identity in context (no OIDCAuth
+// in front of the bare mux) yields the zero identity, not an error.
+func TestBuildMux_MeRegistered(t *testing.T) {
+	mux := buildMux("/apps/t/s", true, nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/apps/t/s/api/v1/me", nil))
+	if rec.Code != 200 {
+		t.Errorf("me status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"authenticated":false`) {
+		t.Errorf("me body = %q, want the zero identity (authenticated:false)", rec.Body.String())
+	}
+}
+
 // public-info is served under MOSES_BASE_PATH and reports the OIDC flag.
 func TestBuildMux_PublicInfo(t *testing.T) {
-	mux := buildMux("/apps/t/s", true, nil, nil)
+	mux := buildMux("/apps/t/s", true, nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/apps/t/s/api/v1/public-info", nil))
 	if rec.Code != 200 {
@@ -63,7 +78,7 @@ func TestBuildMux_PublicInfo(t *testing.T) {
 // the route un-gated) must 403 — AdminArea independently enforces the
 // app role, it does not trust the middleware alone.
 func TestBuildMux_AdminAreaRegistered(t *testing.T) {
-	mux := buildMux("/apps/t/s", true, nil, nil)
+	mux := buildMux("/apps/t/s", true, nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/apps/t/s/api/v1/admin-area", nil))
 	if rec.Code != 403 {

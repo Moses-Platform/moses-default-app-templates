@@ -14,6 +14,9 @@ const testQueryClient = new QueryClient({ defaultOptions: { queries: { retry: fa
 // verifies the component tree renders; real fetches belong in dedicated
 // integration tests, not this one.
 vi.mock('./api/client', () => ({
+  // Keep non-fetch exports the components import (UserList uses
+  // getErrorMessage) — vi.mock replaces the WHOLE module.
+  getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   getMosesInfo: vi.fn().mockResolvedValue(null),
   getCapabilities: vi.fn().mockResolvedValue([]),
   getCapability: vi.fn().mockResolvedValue(null),

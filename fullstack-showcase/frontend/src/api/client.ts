@@ -8,7 +8,11 @@
 // unmount / key change / refetch supersession.
 
 export interface MosesInfo {
-  tenant_id: string;
+  // CHAT-pxeo.12: the backend distinguishes the deploy-pinned storage
+  // tenant (self_tenant_id, from the MOSES_TENANT_ID env) from the
+  // caller-context header value (caller_tenant_id, X-Moses-Tenant-ID).
+  self_tenant_id: string;
+  caller_tenant_id: string;
   user_id: string;
   chart_id: string;
   tool_id: string;

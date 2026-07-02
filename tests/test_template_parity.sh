@@ -30,7 +30,7 @@ fail() {
 
 # Templates and their per-folder paths. Frontend-only templates have no
 # backend; the assertions below skip the missing paths gracefully.
-TEMPLATES="frontend-template backend-template fullstack-simple fullstack-unified fullstack-showcase"
+TEMPLATES="frontend-template backend-template fullstack-simple fullstack-unified fullstack-showcase fullstack-chat fullstack-oidc"
 
 # ---------------------------------------------------------------------------
 # 1. Helm Chart.yaml uniformity. The platform's deploy pipeline expects
@@ -109,7 +109,7 @@ done
 #    in the same PR (see rule #5 below).
 # ---------------------------------------------------------------------------
 EXPECTED_GO_MAJOR_MINOR="1.25.10"
-for gm in $(find . -maxdepth 4 -name go.mod -not -path './node_modules/*' 2>/dev/null); do
+for gm in $(find . -maxdepth 4 -name go.mod -not -path './node_modules/*' -not -path '*/.template-clean/*' 2>/dev/null); do
   declared=$(awk '/^go [0-9]/ { print $2 }' "$gm")
   if [ "$declared" = "$EXPECTED_GO_MAJOR_MINOR" ]; then
     pass "go.mod: $gm → go $declared"
@@ -127,7 +127,7 @@ done
 EXPECTED_GOLANG_TAG="golang:1.25.10-alpine"
 EXPECTED_ALPINE_TAG="alpine:3.21"
 
-for df in $(find . -maxdepth 4 -name Dockerfile -not -path './node_modules/*' 2>/dev/null); do
+for df in $(find . -maxdepth 4 -name Dockerfile -not -path './node_modules/*' -not -path '*/.template-clean/*' 2>/dev/null); do
   # Only check FROM lines that reference golang.
   if grep -qE '^FROM golang:' "$df"; then
     if grep -qE "^FROM $EXPECTED_GOLANG_TAG" "$df"; then
@@ -225,7 +225,7 @@ done
 #    browsers — Chrome 78+ ignores it; Firefox never implemented it).
 #    Content-Security-Policy is the source of truth for framing/XSS.
 # ---------------------------------------------------------------------------
-for nc in $(find . -maxdepth 5 -name nginx.conf -not -path './node_modules/*' 2>/dev/null); do
+for nc in $(find . -maxdepth 5 -name nginx.conf -not -path './node_modules/*' -not -path '*/.template-clean/*' 2>/dev/null); do
   if grep -qiE 'X-XSS-Protection' "$nc"; then
     line=$(grep -niE 'X-XSS-Protection' "$nc" | head -1)
     # Allow comments that mention WHY it's omitted; only fail on actual
@@ -242,7 +242,7 @@ done
 
 # ---------------------------------------------------------------------------
 # 10. moses-app.config.json declares `templateApiVersion: "moses-manager.eu/v1"` —
-#     all 5 templates must be Moses-aware so the platform's Helm value
+#     all 7 templates must be Moses-aware so the platform's Helm value
 #     injection (basePath / embedding.*) takes effect.
 # ---------------------------------------------------------------------------
 for t in $TEMPLATES; do
@@ -269,8 +269,8 @@ done
 #     moses-default-app-templates/") means it will be added there.
 #
 #     Checked over EVERY config file in the repo (incl. the with-secrets
-#     examples), not just the TEMPLATES list — fullstack-chat and
-#     fullstack-oidc are not in it.
+#     examples), not just the TEMPLATES list, so future templates are
+#     covered before they are added to the list.
 # ---------------------------------------------------------------------------
 RESERVED="backend-template frontend-template fullstack-chat fullstack-oidc fullstack-showcase fullstack-simple fullstack-unified"
 for cfg in */moses-app.config.json */moses-app.config.with-secrets.example.json; do
@@ -338,6 +338,87 @@ for f in (cfg.get("docker") or {}).get("files") or []:
   done
 else
   echo "SKIP: rule 12 (dockerignore contexts) needs python3"
+fi
+
+# ---------------------------------------------------------------------------
+# 13. clean_out_template.sh must exist at each template root and be
+#     executable. Every template ships the one-shot demo clean-out script
+#     (see root README § "Cleaning out the demo"); a missing or
+#     non-executable script breaks the "run it FIRST" agent workflow.
+# ---------------------------------------------------------------------------
+for t in $TEMPLATES; do
+  s="$t/clean_out_template.sh"
+  if [ ! -f "$s" ]; then
+    fail "clean_out_template.sh: missing at $s"
+    continue
+  fi
+  if [ -x "$s" ]; then
+    pass "clean_out_template.sh: $s exists and is executable"
+  else
+    fail "clean_out_template.sh: $s is not executable (chmod +x it)"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# 14. .template-clean/ twin directory must exist at each template root.
+#     The clean-out script copies these clean replacements over mixed
+#     plumbing+demo files; without the twins the script has nothing to
+#     restore and the cleaned template would lose load-bearing plumbing.
+# ---------------------------------------------------------------------------
+for t in $TEMPLATES; do
+  d="$t/.template-clean"
+  if [ -d "$d" ]; then
+    pass ".template-clean: $d exists"
+  else
+    fail ".template-clean: $d is missing"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# 15. The clean-out machinery (clean_out_template.sh + .template-clean/)
+#     must never reach a built image. For every declared Docker build
+#     context (moses-app.config.json docker.files[].context — same
+#     extraction as rule 12) whose context root IS the template root, the
+#     context-root .dockerignore must exclude both machinery paths.
+#     Sub-directory contexts (frontend/, backend/) physically cannot see
+#     the template-root machinery, so they are exempt.
+# ---------------------------------------------------------------------------
+if command -v python3 >/dev/null 2>&1; then
+  for t in $TEMPLATES; do
+    cfg="$t/moses-app.config.json"
+    [ -f "$cfg" ] || continue
+    contexts=$(python3 -c '
+import json, sys
+cfg = json.load(open(sys.argv[1]))
+for f in (cfg.get("docker") or {}).get("files") or []:
+    ctx = f.get("context")
+    if ctx:
+        print(ctx)
+' "$cfg") || { fail "cleanout dockerignore: could not parse $cfg"; continue; }
+    tpl_root=$(cd "$t" && pwd)
+    for ctx in $contexts; do
+      ctx_dir=$(cd "$t/$ctx" 2>/dev/null && pwd) || { fail "cleanout dockerignore: context dir $t/$ctx missing"; continue; }
+      # Only contexts that include the template root can leak the machinery.
+      [ "$ctx_dir" = "$tpl_root" ] || continue
+      di="$ctx_dir/.dockerignore"
+      if [ ! -f "$di" ]; then
+        fail "cleanout dockerignore: missing at $di (context \"$ctx\" in $cfg)"
+        continue
+      fi
+      if grep -qE '^clean_out_template\.sh$' "$di"; then
+        pass "cleanout dockerignore: $di excludes clean_out_template.sh"
+      else
+        fail "cleanout dockerignore: $di must contain a clean_out_template.sh line"
+      fi
+      if grep -qE '^\.template-clean/?$' "$di"; then
+        pass "cleanout dockerignore: $di excludes .template-clean/"
+      else
+        fail "cleanout dockerignore: $di must contain a .template-clean/ line"
+      fi
+    done
+  done
+else
+  echo "SKIP: rule 15 (cleanout dockerignore) needs python3"
 fi
 
 # ---------------------------------------------------------------------------

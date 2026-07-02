@@ -9,6 +9,12 @@ middleware** (`backend/internal/oidcauth/`) — a self-contained,
 stdlib-only OIDC relying-party implementation that any other app can
 copy.
 
+> **Building a real app from this template?** Run `./clean_out_template.sh`
+> ONCE first — it strips the demo (entries, shared-notes, admin-area,
+> public-info + the seven demo pages) and leaves the full OIDC plumbing
+> (oidcauth, /api/v1/me, auth pill, silent SSO, helm, config) intact and
+> green. Details + a manual KEEP/REPLACE/DELETE table: `skills/usage.md`.
+
 ## What this demonstrates
 
 App-owned OIDC is a four-link chain. This template makes every link
@@ -33,9 +39,12 @@ Concretely the app shows:
   PROTECTED + ROLE-GATED route — so a viewer can SEE the integration.
 - **Roles**: the user's `resource_access.<client>.roles` projection,
   surfaced in the UI and enforced server-side on `/api/v1/admin-area`.
-- **Dual mode**: OIDC enforced on protected paths, while the existing
-  `X-Moses-*` trusted-header path keeps working for pod-to-pod MCP /
-  workspace-tool calls.
+- **Dual mode**: OIDC enforced on protected paths, while the `X-Moses-*`
+  trusted-header path keeps working for pod-to-pod MCP / workspace-tool
+  calls — but ONLY when the request also carries the
+  `X-Moses-Gateway-Auth` marker matching `MOSES_GATEWAY_AUTH_SECRET`.
+  Without that env var the header-trust path is disabled entirely
+  (fail-safe). See "OIDC env contract" below.
 - **Silent SSO**: an already-logged-into-Moses user is authenticated
   with no visible login page (`prompt=none`, hidden iframe).
 - **Two data spaces, side by side**: the **user space** (`entries`, scoped by
@@ -98,22 +107,26 @@ private.**
 
 ```
 fullstack-oidc/
+├── clean_out_template.sh         one-shot demo strip (see skills/usage.md)
+├── .template-clean/              clean twins the script copies into place
 ├── backend/
 │   ├── api/openapi.json          OpenAPI spec (embedded via go:embed)
 │   ├── cmd/server/main.go        wires oidcauth into the HTTP server
+│   ├── cmd/server/demo_routes.go demo route wiring (stripped by the script)
 │   └── internal/
 │       ├── oidcauth/             ★ the vendored OIDC middleware
 │       ├── config/               deploy-pinned tenant identity
-│       ├── database/             PostgreSQL connection + schema
-│       ├── handler/              health, openapi, me, admin-area, entries, shared
+│       ├── database/             db.go (connect/retry) + migrate_demo.go (demo schema)
+│       ├── handler/              me (kept) + demo_handlers, entries, shared (demo)
 │       └── middleware/           moses-headers, cors, logging
 ├── frontend/
 │   └── src/
-│       ├── auth/                 useAuth hook + silentSSO helper + api client
+│       ├── auth/                 useAuth provider + silentSSO helper
+│       ├── api/                  fetch client + TanStack Query hooks
 │       ├── components/Layout.tsx app shell + sidebar nav + auth pill
-│       └── pages/                the seven demo pages
-├── helm/                         multi-service chart (+ oidc Secret)
-├── skills/                       agent skill docs
+│       └── pages/                the seven demo pages (stripped by the script)
+├── helm/                         multi-service chart (+ oidc cookie Secret)
+├── skills/                       agent skill docs (usage, middleware, secrets)
 └── moses-app.config.json         declares access.oidc + access.roles
 ```
 
@@ -126,28 +139,52 @@ that template's own module path. No third-party Go dependencies. See
 
 ## OIDC env contract
 
-The platform injects these into the backend pod (see `helm/values.yaml`
-`moses.oidc` and `helm/templates/oidc-secret.yaml`):
+The Moses platform delivers the seven `MOSES_OIDC_*` handshake values
+(issuer, internal issuer, client id, client secret, audience,
+protected/public paths) in a **platform-managed Kubernetes Secret**
+whose name it appends to the chart's `secrets.secretNames[]` list; the
+deployment template mounts every entry via `envFrom`, so the values
+arrive as plain env vars. They are **NOT chart values** — see the
+comment block in `helm/values.yaml` under `moses.oidc`.
+
+The chart's own `-oidc` Secret (`helm/templates/oidc-secret.yaml`)
+carries exactly ONE key: the session-cookie HMAC key
+(`MOSES_OIDC_COOKIE_SECRET`), kept stable across `helm upgrade`. The
+confidential client secret is no longer stored there.
 
 | Var | Purpose |
 |-----|---------|
 | `MOSES_OIDC_ISSUER` | external issuer URL — browser redirects, `iss` |
 | `MOSES_OIDC_INTERNAL_ISSUER` | in-cluster issuer — JWKS, token exchange |
 | `MOSES_OIDC_CLIENT_ID` | confidential client id |
-| `MOSES_OIDC_CLIENT_SECRET` | confidential client secret (K8s Secret) |
+| `MOSES_OIDC_CLIENT_SECRET` | confidential client secret (platform Secret) |
 | `MOSES_OIDC_AUDIENCE` | expected `aud` (defaults to client id) |
 | `MOSES_OIDC_PROTECTED_PATHS` | gated path prefixes |
 | `MOSES_OIDC_PUBLIC_PATHS` | always-public path prefixes |
-| `MOSES_OIDC_COOKIE_SECRET` | session-cookie HMAC key (K8s Secret) |
-
-The two sensitive values (client secret, cookie HMAC key) come from the
-`-oidc` Secret rendered by `helm/templates/oidc-secret.yaml` and are
-consumed via `secretKeyRef` — they are never plaintext in the
-Deployment manifest.
+| `MOSES_OIDC_COOKIE_SECRET` | session-cookie HMAC key (chart `-oidc` Secret) |
+| `MOSES_GATEWAY_AUTH_SECRET` | **arms the X-Moses-\* header-trust path.** Unset ⇒ pod-to-pod header trust is DISABLED entirely (workspace-tool calls fall through to OIDC and get 401). The platform proxy sends the matching `X-Moses-Gateway-Auth` header. |
+| `MOSES_INTERAPP_SECRET` | per-tenant HS256 key for inter-app trust tokens (unset ⇒ inter-app path disabled) |
+| `MOSES_APP_SLUG` | this app's slug — `iss`/`aud` of inter-app tokens |
+| `MOSES_PUBLIC_URL` / `MOSES_PUBLIC_URLS` | external origin(s) used to build `redirect_uri` |
 
 When the OIDC vars are absent the middleware runs in **pass-through
-mode** — public routes and the header-trust path still work; browser
-requests are not redirected.
+mode** — public routes and the (marker-gated) header-trust path still
+work; browser requests are not redirected.
+
+### ⚠️ Session lifetime is capped at the ID-token `exp`
+
+The BFF session cookie expires at the SOONER of the ID token's `exp`
+and 8 h (`oidcauth/middleware.go` `sessionFromClaims`) — a stolen
+cookie must not outlive its token. With Keycloak's default **Access
+Token Lifespan of ~5 minutes** (ID tokens share it), the session dies
+~5 minutes after login: XHRs start returning 401, and the SPA's
+one-shot silent-SSO guard (`useAuth`'s `silentTried`) means there is NO
+automatic re-probe — the user must trigger `refresh()` (which re-runs
+silent SSO) or reload the page. For a usable session length, raise the
+realm/client **Access Token Lifespan** in Keycloak (e.g. 8 h for this
+BFF pattern — the browser never holds the token, so the usual
+short-access-token rationale does not apply), and/or call
+`useAuth().refresh()` from your 401 handling path.
 
 ## Config — `moses-app.config.json`
 
@@ -157,7 +194,7 @@ requests are not redirected.
   "roles": ["oidc-admin", "oidc-member"],
   "oidc": {
     "mode": "moses-oidc",
-    "protectedPaths": ["/api/v1/me", "/api/v1/entries", "/api/v1/admin-area"],
+    "protectedPaths": ["/api/v1/me", "/api/v1/entries", "/api/v1/shared-notes", "/api/v1/admin-area"],
     "publicPaths": ["/api/v1/public-info", "/health", "/api/openapi.json"]
   }
 }

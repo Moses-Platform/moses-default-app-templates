@@ -3,6 +3,7 @@ package oidcauth
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -392,6 +393,158 @@ func TestHandler_SilentCheckErrorRedirectsGracefully(t *testing.T) {
 	loc := rec.Header().Get("Location")
 	if !strings.Contains(loc, "silent_sso=failed") {
 		t.Errorf("silent-fail redirect Location = %q, want silent_sso=failed marker", loc)
+	}
+}
+
+// --- OIDC nonce (end-to-end handshake) --------------------------------
+
+// nonceTestIdP stands up a single httptest server acting as issuer for
+// BOTH discovery hops plus the JWKS and token endpoints, so the full
+// /auth/login -> /auth/callback handshake runs offline. mintClaims lets
+// each test shape the ID token the "IdP" returns for the code exchange.
+func nonceTestIdP(t *testing.T, signer *testSigner, mintClaims func() map[string]any) (*Middleware, *httptest.Server) {
+	t.Helper()
+
+	var issuer string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/.well-known/openid-configuration"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"issuer": "` + issuer + `",
+				"authorization_endpoint": "` + issuer + `/authorize",
+				"token_endpoint": "` + issuer + `/token",
+				"jwks_uri": "` + issuer + `/certs",
+				"end_session_endpoint": "` + issuer + `/logout"
+			}`))
+		case strings.HasSuffix(r.URL.Path, "/certs"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(signer.jwksJSON())
+		case strings.HasSuffix(r.URL.Path, "/token"):
+			idToken := signer.sign(t, mintClaims())
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"at","id_token":"` + idToken + `","expires_in":300,"token_type":"Bearer"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	issuer = srv.URL
+
+	cfg := Config{
+		Issuer:         issuer,
+		InternalIssuer: issuer,
+		ClientID:       "app-client",
+		ClientSecret:   "secret",
+		BasePath:       "",
+		CookieSecret:   testSecret,
+		SecureCookie:   false,
+	}
+	m := New(cfg)
+	// Route the middleware's provider through the test server's client.
+	m.provider.httpClient = srv.Client()
+	return m, srv
+}
+
+// runNonceHandshake drives /auth/login, lifts state + nonce out of the
+// redirect + cookie, then drives /auth/callback with the given nonce
+// transform applied to the ID token the IdP mints.
+func runNonceHandshake(t *testing.T, mutateNonce func(reqNonce string) any) *httptest.ResponseRecorder {
+	t.Helper()
+	signer := newTestSigner(t)
+
+	// authNonce is captured from the authorize redirect below, BEFORE the
+	// token endpoint mints the ID token — the claims func closes over it.
+	var m *Middleware
+	var authNonce string
+	claims := func() map[string]any {
+		c := map[string]any{
+			"iss": m.cfg.Issuer,
+			"aud": "app-client",
+			"sub": "user-n",
+			"exp": time.Now().Add(time.Hour).Unix(),
+			"iat": time.Now().Unix(),
+		}
+		if v := mutateNonce(authNonce); v != nil {
+			c["nonce"] = v
+		}
+		return c
+	}
+	m, _ = nonceTestIdP(t, signer, claims)
+	h := m.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+
+	// Step 1: /auth/login -> 302 to the IdP carrying state + nonce, and a
+	// state cookie binding them to this browser.
+	loginRec := httptest.NewRecorder()
+	h.ServeHTTP(loginRec, httptest.NewRequest("GET", "/auth/login", nil))
+	if loginRec.Code != http.StatusFound {
+		t.Fatalf("/auth/login status = %d, want 302", loginRec.Code)
+	}
+	authURL, err := url.Parse(loginRec.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("authorize Location not parseable: %v", err)
+	}
+	state := authURL.Query().Get("state")
+	authNonce = authURL.Query().Get("nonce")
+	if authNonce == "" {
+		t.Fatalf("authorize redirect carries no nonce: %q", authURL.String())
+	}
+	stateCookie := readSetCookie(t, loginRec, m.cfg.stateCookieName())
+
+	// The state cookie must carry the SAME nonce the IdP was sent.
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(&http.Cookie{Name: m.cfg.stateCookieName(), Value: stateCookie.Value})
+	hs, err := readStateCookie(req, m.cfg)
+	if err != nil {
+		t.Fatalf("readStateCookie: %v", err)
+	}
+	if hs.Nonce == "" || hs.Nonce != authNonce {
+		t.Fatalf("state-cookie nonce %q != authorize-request nonce %q", hs.Nonce, authNonce)
+	}
+
+	// Step 2: /auth/callback with the code. The token endpoint mints an
+	// ID token whose nonce claim is controlled by mutateNonce.
+	cb := httptest.NewRequest("GET", "/auth/callback?code=the-code&state="+url.QueryEscape(state), nil)
+	cb.AddCookie(&http.Cookie{Name: m.cfg.stateCookieName(), Value: stateCookie.Value})
+	cbRec := httptest.NewRecorder()
+	h.ServeHTTP(cbRec, cb)
+	return cbRec
+}
+
+// A token echoing the request nonce completes the handshake: 302 + a
+// session cookie.
+func TestHandler_Callback_NonceEchoedSucceeds(t *testing.T) {
+	rec := runNonceHandshake(t, func(reqNonce string) any { return reqNonce })
+	if rec.Code != http.StatusFound {
+		t.Fatalf("callback status = %d, want 302 (body=%q)", rec.Code, rec.Body.String())
+	}
+	c := readSetCookie(t, rec, Config{ClientID: "app-client"}.sessionCookieName())
+	if c.Value == "" {
+		t.Errorf("callback did not set a session cookie")
+	}
+}
+
+// A token carrying a DIFFERENT nonce (replayed / cross-handshake token)
+// must be rejected: 401, no session cookie.
+func TestHandler_Callback_NonceMismatchRejected(t *testing.T) {
+	rec := runNonceHandshake(t, func(string) any { return "a-different-nonce" })
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("nonce-mismatch callback status = %d, want 401", rec.Code)
+	}
+	sessName := Config{ClientID: "app-client"}.sessionCookieName()
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == sessName && c.Value != "" {
+			t.Errorf("nonce mismatch must not establish a session")
+		}
+	}
+}
+
+// A token with NO nonce claim, when one was sent on the authorization
+// request, must also be rejected — a dropped nonce is no binding at all.
+func TestHandler_Callback_NonceMissingRejected(t *testing.T) {
+	rec := runNonceHandshake(t, func(string) any { return nil })
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("missing-nonce callback status = %d, want 401", rec.Code)
 	}
 }
 

@@ -14,7 +14,6 @@ import (
 	"github.com/moses-platform/backend-template/internal/config"
 	"github.com/moses-platform/backend-template/internal/handler"
 	"github.com/moses-platform/backend-template/internal/middleware"
-	"github.com/moses-platform/backend-template/internal/model"
 )
 
 func main() {
@@ -48,7 +47,7 @@ func main() {
 		// log output, which must NOT become a route prefix.
 		if alias != "" && strings.HasPrefix(alias, "/") {
 			basePath = alias
-			log.Printf("NOTE: BASE_URL is deprecated; please set MOSES_BASE_PATH instead. See DEPRECATIONS.md")
+			log.Printf("NOTE: BASE_URL is deprecated; please set MOSES_BASE_PATH instead. See the platform repo's DEPRECATIONS.md (moses-platform-prep)")
 		}
 	}
 	// observability-only: full URL for log lines below.
@@ -57,11 +56,8 @@ func main() {
 		displayURL = fmt.Sprintf("http://localhost:%s", port)
 	}
 
-	// Initialize in-memory item store
-	itemStore := model.NewItemStore()
-
 	// Create router with all routes registered (see buildMux).
-	mux := buildMux(basePath, itemStore)
+	mux := buildMux(basePath)
 
 	// Apply middleware chain: logging -> embedding -> moses_headers.
 	// withEmbeddingHeaders emits Content-Security-Policy: frame-ancestors
@@ -92,7 +88,7 @@ func main() {
 		log.Printf("Base URL: %s (basePath=%q)", displayURL, basePath)
 		log.Printf("Health check: %s/health", displayURL)
 		log.Printf("OpenAPI spec: %s/api/openapi.json", displayURL)
-		log.Printf("API endpoints: %s%s/api/v1/items", displayURL, basePath)
+		logDemoEndpoints(displayURL, basePath)
 
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed to start: %v", err)
@@ -134,7 +130,7 @@ func main() {
 //     {basePath}/api/openapi.json — discovery uses the canonical path; the
 //     base-path alias keeps it reachable when the app is mounted under
 //     MOSES_BASE_PATH (CHAT-yfmwv).
-func buildMux(basePath string, itemStore *model.ItemStore) *http.ServeMux {
+func buildMux(basePath string) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// Health check — canonical for the K8s probe, plus the base-path alias
@@ -154,13 +150,9 @@ func buildMux(basePath string, itemStore *model.ItemStore) *http.ServeMux {
 		mux.HandleFunc("GET "+basePath+"/api/spec", handler.ServeOpenAPI)
 	}
 
-	// API endpoints — registered ONCE under MOSES_BASE_PATH.
-	itemHandler := handler.NewItemHandler(itemStore)
-	platformHandler := handler.NewPlatformHandler()
-	mux.HandleFunc("GET "+basePath+"/api/v1/items", itemHandler.ListItems)
-	mux.HandleFunc("GET "+basePath+"/api/v1/items/{id}", itemHandler.GetItem)
-	mux.HandleFunc("POST "+basePath+"/api/v1/items", itemHandler.CreateItem)
-	mux.HandleFunc("GET "+basePath+"/api/v1/platform/info", platformHandler.PlatformInfo)
+	// API endpoints — registered ONCE under MOSES_BASE_PATH, in
+	// demo_routes.go (replaced with a stub by ./clean_out_template.sh).
+	registerDemoRoutes(mux, basePath)
 
 	return mux
 }

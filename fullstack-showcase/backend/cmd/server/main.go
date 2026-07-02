@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"net/http"
 	"os"
@@ -51,10 +52,6 @@ func main() {
 		log.Fatalf("CHAT-pxeo.12 tenant migration failed: %v", err)
 	}
 
-	// Create handlers
-	notesHandler := handler.NewNotesHandler(db)
-	usersHandler := handler.NewUsersHandler()
-
 	// CHAT-pbup / CHAT-8qiu0: read MOSES_BASE_PATH (canonical) with BASE_URL as
 	// the deprecated alias. API routes are registered ONCE under this prefix
 	// (see buildMux). basePath is "" (root) or "/foo/bar" (no trailing slash).
@@ -68,7 +65,7 @@ func main() {
 	}
 
 	// Create router with all routes registered (see buildMux).
-	mux := buildMux(basePath, notesHandler, usersHandler)
+	mux := buildMux(basePath, db)
 
 	// Apply middleware
 	var h http.Handler = mux
@@ -136,7 +133,7 @@ func main() {
 //     {basePath}/api/openapi.json — the platform's discovery hook uses the
 //     canonical path; the base-path alias keeps it reachable through the
 //     frontend nginx, which forwards the prefix unchanged (CHAT-yfmwv).
-func buildMux(basePath string, notesHandler *handler.NotesHandler, usersHandler *handler.UsersHandler) *http.ServeMux {
+func buildMux(basePath string, db *sql.DB) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// Health check — canonical for the K8s probe, plus the base-path alias.
@@ -155,13 +152,9 @@ func buildMux(basePath string, notesHandler *handler.NotesHandler, usersHandler 
 		mux.HandleFunc(basePath+"/api/spec", handler.OpenAPI)
 	}
 
-	// API endpoints — registered ONCE under MOSES_BASE_PATH.
-	mux.HandleFunc(basePath+"/api/v1/moses-info", handler.MosesInfo)
-	mux.HandleFunc(basePath+"/api/v1/capabilities", handler.ListCapabilities)
-	mux.HandleFunc(basePath+"/api/v1/capabilities/", handler.GetCapability)
-	mux.HandleFunc(basePath+"/api/v1/notes", notesHandler.Notes)
-	mux.HandleFunc(basePath+"/api/v1/notes/", notesHandler.Notes)
-	mux.HandleFunc(basePath+"/api/v1/users", usersHandler.Users)
+	// Demo API endpoints — registered ONCE under MOSES_BASE_PATH, all in
+	// demo_routes.go so clean_out_template.sh can swap that single file.
+	registerDemoRoutes(mux, basePath, db)
 
 	return mux
 }

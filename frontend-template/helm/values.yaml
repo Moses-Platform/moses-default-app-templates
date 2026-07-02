@@ -11,7 +11,8 @@ moses:
   # pipeline at deploy time when the moses-app.config.json declares
   # templateApiVersion: "moses-manager.eu/v1". When unset (legacy / standalone) the
   # template falls back to "/" basePath and the appType-default framing
-  # policy. See ../README.md and DEPRECATIONS.md for the migration window.
+  # policy. See ../README.md and the platform repo's DEPRECATIONS.md
+  # (moses-platform-prep) for the migration window.
   basePath: "/"
   embedding:
     framing: ""           # empty -> template's appType default ("moses-only" for frontend, "denied" for api)
@@ -45,7 +46,8 @@ resources:
 # Environment variables
 # BASE_URL (deprecated alias) and MOSES_BASE_PATH (canonical) are set
 # automatically when deployed via Moses. Both carry the same value during
-# the N-2 deprecation window — see DEPRECATIONS.md. New templates should
+# the N-2 deprecation window — see the platform repo's DEPRECATIONS.md
+# (moses-platform-prep). New templates should
 # read MOSES_BASE_PATH; legacy ones read BASE_URL.
 # Use either in your app for absolute paths: <link href="${MOSES_BASE_PATH}styles.css">
 env:

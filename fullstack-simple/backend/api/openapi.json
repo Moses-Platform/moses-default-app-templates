@@ -29,8 +29,8 @@
                     "uptime": { "type": "string" },
                     "moses": {
                       "type": "object",
+                      "description": "Echo of Moses request-context headers. tenant_id is intentionally ABSENT (CHAT-w6gt: tenant UUIDs stay out of response bodies).",
                       "properties": {
-                        "tenant_id": { "type": "string" },
                         "user_id": { "type": "string" },
                         "chart_id": { "type": "string" },
                         "request_id": { "type": "string" }

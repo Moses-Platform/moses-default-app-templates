@@ -27,12 +27,11 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 }
 
-// newTestMux builds the production router (buildMux from main.go). The notes
-// handler is constructed with a nil *sql.DB; the route tests below only
-// exercise the DB-free capability / moses-info endpoints, so the DB is never
-// dereferenced.
+// newTestMux builds the production router (buildMux from main.go) with a
+// nil *sql.DB; the route tests below only exercise the DB-free capability /
+// moses-info endpoints, so the DB is never dereferenced.
 func newTestMux(basePath string) *http.ServeMux {
-	return buildMux(basePath, handler.NewNotesHandler(nil), handler.NewUsersHandler())
+	return buildMux(basePath, nil)
 }
 
 // CHAT-8qiu0: the API is registered ONCE, under MOSES_BASE_PATH. When no

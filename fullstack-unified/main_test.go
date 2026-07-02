@@ -155,9 +155,10 @@ func TestRenderIndex_SubstitutesMosesConfig(t *testing.T) {
 }
 
 // TestRenderIndex_EmptyContextStillRendersTag verifies that when the env
-// vars are absent the meta tag is still emitted (with empty data-* values),
-// because the snippet's readConfig() short-circuits on missing IDs and that
-// branch is the one we rely on for "built outside Moses" no-op behaviour.
+// vars are absent the meta tag is still emitted (with empty data-* values).
+// The snippet then falls back to a location-derived `loc` param (the
+// platform resolves identity server-side) — empty values must therefore
+// still render as a well-formed tag, not vanish.
 func TestRenderIndex_EmptyContextStillRendersTag(t *testing.T) {
 	loadIndexTemplate()
 	if indexTemplate == nil {

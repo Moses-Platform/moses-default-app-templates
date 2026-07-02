@@ -1,5 +1,12 @@
 /**
- * Moses BASE_PATH helper.
+ * Moses BASE_PATH helper (CHAT-pbup).
+ *
+ * CANONICAL SOURCE: shared/base-path/getBasePath.ts in the templates
+ * monorepo. Consuming templates vendor a byte-identical copy at
+ * src/utils/baseUrl.ts (no build-time path dependency on shared/).
+ * Re-sync after upstream changes with, from the monorepo root:
+ *   cp shared/base-path/getBasePath.ts <template>/src/utils/baseUrl.ts
+ * CI runs tools/check-vendored-base-path.sh and fails on drift.
  *
  * CHAT-pbup contract: when the platform deploys this template, an
  * entrypoint.sh script renders the runtime BASE_PATH into a meta tag in

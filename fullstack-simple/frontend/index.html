@@ -8,10 +8,8 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Fullstack Simple</title>
 
-    <!-- Distinctive display + mono webfonts; graceful fallback to the system stack. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <!-- No CDN webfonts: deployed apps must be self-contained (CSP/offline).
+         theme.css font stacks lead with system fonts. -->
 
     <!-- No-flash theme init: set data-theme before first paint. -->
     <script>

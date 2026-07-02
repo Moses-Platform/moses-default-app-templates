@@ -357,6 +357,42 @@ func TestValidateClaims(t *testing.T) {
 			t.Errorf("exp within leeway should pass: %v", err)
 		}
 	})
+
+	// OIDC Core 3.1.3.7 rule 11: nonce binding of the ID token to the
+	// authorization request.
+	t.Run("nonce match", func(t *testing.T) {
+		c := base()
+		c.Nonce = "n-123"
+		if err := validateClaims(c, verifyOptions{expectedNonce: "n-123", now: nowFn}); err != nil {
+			t.Errorf("matching nonce should pass: %v", err)
+		}
+	})
+
+	t.Run("nonce mismatch", func(t *testing.T) {
+		c := base()
+		c.Nonce = "n-other"
+		if err := validateClaims(c, verifyOptions{expectedNonce: "n-123", now: nowFn}); err == nil {
+			t.Errorf("expected nonce-mismatch error")
+		}
+	})
+
+	t.Run("nonce expected but claim missing", func(t *testing.T) {
+		// An IdP that drops the nonce provides no replay binding —
+		// missing is as fatal as a mismatch.
+		if err := validateClaims(base(), verifyOptions{expectedNonce: "n-123", now: nowFn}); err == nil {
+			t.Errorf("expected missing-nonce error")
+		}
+	})
+
+	t.Run("no nonce expected skips the check", func(t *testing.T) {
+		// A flow that sent no nonce must not reject a token that carries
+		// one (or none) — the check is only armed by expectedNonce.
+		c := base()
+		c.Nonce = "unsolicited"
+		if err := validateClaims(c, verifyOptions{now: nowFn}); err != nil {
+			t.Errorf("empty expectedNonce should skip the check: %v", err)
+		}
+	})
 }
 
 func TestAudSlice_UnmarshalBothShapes(t *testing.T) {

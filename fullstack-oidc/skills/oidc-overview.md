@@ -80,14 +80,22 @@ answers *what may you do* (the projected roles). `/api/v1/admin-area`
 requires the `oidc-admin` role — a signed-in user without it gets a
 clean 403, not a 401.
 
-## Dual mode — the header path still works
+## Dual mode — the header path still works (marker-gated)
 
-The `oidcauth` middleware preserves the existing `X-Moses-*` trusted
-header path: a pod-to-pod call carrying `X-Moses-User-ID` (set by the
-platform proxy on the in-cluster hop) bypasses OIDC entirely. This keeps
-the OpenAPI workspace-tool surface working without an OIDC session.
-The header path carries **no app roles** — pod-to-pod callers are
-authorized by the platform, so `/api/v1/admin-area` correctly 403s them.
+The `oidcauth` middleware preserves the `X-Moses-*` trusted header path
+for pod-to-pod calls — but it is NOT header-presence alone. A request
+bypasses OIDC only when it carries BOTH `X-Moses-User-ID` AND the
+`X-Moses-Gateway-Auth` marker whose value matches the pod's
+`MOSES_GATEWAY_AUTH_SECRET` env (constant-time compare, set by the
+platform's workspace-tool proxy on the in-cluster hop). **When
+`MOSES_GATEWAY_AUTH_SECRET` is unset the entire header-trust path is
+disabled** (fail-safe) — pod-to-pod calls then fall through to the OIDC
+session path and 401. If workspace-tool calls into this app suddenly
+401, check that env var first.
+
+The header path carries only explicitly-granted agent roles (delivered
+as `X-Moses-Roles` under the marker); an un-roled pod-to-pod caller is
+correctly 403'd by `/api/v1/admin-area`.
 
 ## Data scoping — user space vs tenant space (read this before designing tables)
 

@@ -78,7 +78,6 @@
   "maintenance": {
     "renovate": {
       "schedule": "0 4 * * 1",
-      "configPath": "renovate.json",
       "context": "Unified Go binary serving static frontend + API. Frontend is embedded at build time. Update both Go modules and any frontend dependencies in the embedded assets."
     },
     "logMonitor": {

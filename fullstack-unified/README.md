@@ -6,8 +6,11 @@ Pick this when you want zero deployment ceremony and your frontend is small enou
 
 ## Layout
 
+Starting real work on a fresh clone? Run `./clean_out_template.sh` once to strip the demo endpoint/UI while keeping all Moses plumbing — see `skills/usage.md` for the full KEEP / REPLACE / DELETE map.
+
 ```
 fullstack-unified/
+├── clean_out_template.sh     # one-shot demo strip (self-deletes; twins in .template-clean/)
 ├── moses-app.config.json     # appType: hybrid, 1 docker image
 ├── helm/                     # agent-deployed-app chart, single-service
 │   ├── Chart.yaml            # name: agent-deployed-app, v1.0.0
@@ -15,9 +18,11 @@ fullstack-unified/
 │   └── templates/
 │       ├── deployment.yaml
 │       └── service.yaml
-├── Dockerfile                # multi-stage: golang:1.24-alpine → alpine:3.19, non-root
+├── Dockerfile                # multi-stage: golang:1.25.10-alpine → alpine:3.21, non-root
 ├── go.mod
 ├── main.go                   # //go:embed static/*  +  //go:embed api/openapi.json
+├── demo_routes.go            # demo endpoints only — replaced by an empty stub on clean-out
+├── cors.go                   # opt-in CORS allowlist (CORS_ALLOWED_ORIGINS; off by default)
 ├── main_test.go
 ├── api/
 │   └── openapi.json          # OpenAPI 3.x spec → MCP tool autoreg
@@ -70,7 +75,7 @@ To update the spec: edit `api/openapi.json`, then rebuild the binary. There is n
 | `MOSES_CHART_ID`, `MOSES_DEPLOYMENT_ID`, `MOSES_API_BASE` | Rendered into `<meta name="moses-config">` for the embedded browser logger. |
 | `BASE_URL` | Deprecated alias for `MOSES_BASE_PATH`. Will be removed N-2 minor releases after `MOSES_BASE_PATH` shipped. |
 
-CSP framing is rendered by `withEmbeddingHeaders()` middleware in `main.go` (~line 229) — same matrix as the frontend templates' `entrypoint.sh`.
+CSP framing is rendered by the `withEmbeddingHeaders()` middleware in `main.go` — same matrix as the frontend templates' `entrypoint.sh`. Cross-origin API access is off by default; opt in via `CORS_ALLOWED_ORIGINS` (comma-separated exact origins, see `cors.go`).
 
 ## Running locally (without Moses)
 
@@ -107,4 +112,4 @@ Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tu
 
 ## Conventions enforced by `tests/test_template_parity.sh`
 
-Same as fullstack-simple: chart name `agent-deployed-app` v1.0.0, Go 1.24, non-root + HEALTHCHECK in Dockerfile, no `"name": "my-app"` placeholder, no literal credentials in `helm/values.yaml`.
+Same as fullstack-simple: chart name `agent-deployed-app` v1.0.0, Go 1.25.10 (`golang:1.25.10-alpine` → `alpine:3.21`), non-root + HEALTHCHECK in Dockerfile, no `"name": "my-app"` placeholder, no literal credentials in `helm/values.yaml`.

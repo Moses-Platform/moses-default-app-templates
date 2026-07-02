@@ -110,10 +110,13 @@ services:
       pullPolicy: IfNotPresent
     port: 8080
     replicas: 1
+    # Keep in lockstep with moses-app.config.json services.backend.resources
+    # — the platform reads the config; these values apply on standalone
+    # `helm install`.
     resources:
       limits:
-        cpu: "200m"
-        memory: "256Mi"
+        cpu: "500m"
+        memory: "512Mi"
       requests:
         cpu: "100m"
         memory: "128Mi"

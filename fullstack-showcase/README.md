@@ -28,9 +28,9 @@ A fullstack application showcasing Moses platform features including MCP tools, 
 │                                                               │
 │  ┌──────────────────────┐      ┌──────────────────────┐    │
 │  │  Frontend Service    │      │  Backend Service     │    │
-│  │  (nginx:alpine)      │─────▶│  (Go + stdlib)       │    │
+│  │  (nginx:alpine)      │─────▶│  (Go + pgx v5)       │    │
 │  │  Port: 8080           │      │  Port: 8080          │    │
-│  │  - React 18 SPA      │      │  - OpenAPI endpoints │    │
+│  │  - React 19 SPA      │      │  - OpenAPI endpoints │    │
 │  │  - nginx proxy       │      │  - Moses headers     │    │
 │  │  - Health: /health   │      │  - Health: /health   │    │
 │  └──────────────────────┘      └──────────────────────┘    │
@@ -47,17 +47,18 @@ A fullstack application showcasing Moses platform features including MCP tools, 
 ```
 
 ### Frontend Stack
-- **Framework**: React 18 + TypeScript
-- **Build**: Vite 5
-- **Routing**: react-router-dom (6 pages)
+- **Framework**: React 19 + TypeScript (React Compiler enabled via `babel-plugin-react-compiler`)
+- **Build**: Vite 7
+- **Data layer**: TanStack Query (`src/api/` — client + hooks + queryKeys factory)
+- **Routing**: react-router-dom (7 pages)
 - **Server**: nginx with runtime env var substitution
-- **Styling**: Moses design tokens (4px grid, Inter font, indigo primary)
+- **Styling**: Moses design tokens (4px grid, system font stack, indigo primary)
 
 ### Backend Stack
-- **Language**: Go 1.22
-- **Dependencies**: stdlib only (net/http)
-- **Runtime**: alpine:3.19
-- **Middleware**: Moses headers, CORS, logging
+- **Language**: Go 1.25 (go.mod `1.25.10`)
+- **Dependencies**: net/http mux + pgx v5 (`jackc/pgx/v5/stdlib`) for PostgreSQL
+- **Runtime**: alpine:3.21
+- **Middleware**: Moses headers, CSRF rejection, CORS allowlist (off by default), logging
 - **API**: OpenAPI 3.0.3 spec at `/api/openapi.json`
 
 ### Communication Pattern
@@ -141,11 +142,13 @@ When an agent completes work via `moses_agent_submit_completed`:
    - Environment variable injection
 4. **Health Verification**: Both services must pass probes
 5. **OpenAPI Discovery**: Backend endpoints probed
-6. **MCP Tools Generated**:
-   - `workspace_showcase_healthCheck`
+6. **MCP Tools Generated** (one per OpenAPI operationId — `/health` is
+   deliberately NOT in the spec, so no phantom health tool is registered):
    - `workspace_showcase_getMosesInfo`
    - `workspace_showcase_listCapabilities`
    - `workspace_showcase_getCapability`
+   - `workspace_showcase_getUsers`
+   - `workspace_showcase_listNotes` / `createNote` / `getNote` / `deleteNote`
 
 ### Via Workspace Tools Pipeline
 
@@ -177,55 +180,74 @@ https://moses-manager.eu/{tenant-id}/apps/{chart-id}/fullstack-showcase/
 
 ```
 fullstack-showcase/
-├── moses-app.config.json          # V2 config: hybrid app, 2 docker files
+├── moses-app.config.json          # V2 config: hybrid app, 2 docker files, postgres dep
+├── moses-app.config.with-secrets.example.json  # secrets.external[] example
+├── clean_out_template.sh          # One-shot demo strip (see skills/usage.md)
+├── .template-clean/               # Clean twins the script copies over mixed files
 ├── backend/
-│   ├── Dockerfile                 # Multi-stage Go build
-│   ├── go.mod                     # Go 1.22, stdlib only
-│   ├── cmd/server/main.go         # HTTP server entry point
+│   ├── Dockerfile                 # Multi-stage Go build (golang:1.25-alpine → alpine:3.21)
+│   ├── go.mod                     # Go 1.25.10, pgx v5
+│   ├── cmd/server/
+│   │   ├── main.go                # Server entry + buildMux (health/openapi dual-mount)
+│   │   ├── demo_routes.go         # ALL demo route registration (cleanout swaps this)
+│   │   └── main_test.go           # Path-contract + spec↔mux consistency tests
 │   ├── internal/
+│   │   ├── config/moses.go        # MOSES_TENANT_ID deploy-pin (CHAT-pxeo.12)
+│   │   ├── database/
+│   │   │   ├── db.go              # Connect/retry/28P01 fail-fast plumbing
+│   │   │   └── migrate_demo.go    # Demo schema + tenant rewrite (cleanout swaps this)
 │   │   ├── handler/               # HTTP handlers
-│   │   │   ├── health.go
-│   │   │   ├── openapi.go
-│   │   │   ├── moses_info.go
-│   │   │   └── capabilities.go
-│   │   ├── middleware/            # Moses headers, CORS, logging
-│   │   └── model/                 # Capability data model
-│   └── api/openapi.json           # OpenAPI 3.0.3 spec
+│   │   │   ├── health.go          # /health (dual-mounted)
+│   │   │   ├── openapi.go         # Serves embedded spec
+│   │   │   ├── tenant.go          # enforceTenantMatch 403 cross-check (survives cleanout)
+│   │   │   ├── moses_info.go      # Demo: Moses context echo
+│   │   │   ├── capabilities.go    # Demo: capability catalog
+│   │   │   ├── notes.go           # Demo: tenant-scoped CRUD on Postgres
+│   │   │   └── users.go           # Demo: MOSES_PLATFORM_API_KEY consumption
+│   │   ├── middleware/            # Moses headers, CSRF (vendored), CORS, logging
+│   │   └── model/                 # Demo capability data model
+│   └── api/openapi.json           # OpenAPI 3.0.3 spec (embedded via api/api.go)
 ├── frontend/
-│   ├── Dockerfile                 # Multi-stage React build
-│   ├── nginx.conf                 # Template with ${ENV_VARS}
-│   ├── entrypoint.sh             # envsubst for runtime config
+│   ├── Dockerfile                 # Multi-stage React build (deps layer cached)
+│   ├── nginx.conf                 # Template with ${ENV_VARS} + CSP
+│   ├── entrypoint.sh              # Renders CSP + sub-path blocks at start
 │   ├── package.json
-│   ├── vite.config.ts
-│   ├── index.html
+│   ├── vite.config.ts             # React Compiler enabled
+│   ├── index.html                 # moses-base-path meta + theme init
 │   ├── src/
-│   │   ├── main.tsx
-│   │   ├── App.tsx               # Router + routes
-│   │   ├── App.css               # Moses design tokens
-│   │   ├── api/client.ts         # Fetch wrapper
+│   │   ├── main.tsx               # Router basename + browser logger install
+│   │   ├── moses-browser-logger.ts  # Vendored BLF-B reporter
+│   │   ├── App.tsx                # Router + routes (MOSES ROUTING contract)
+│   │   ├── App.css                # Moses design tokens
+│   │   ├── styles/theme.css
+│   │   ├── api/                   # TanStack Query data layer
+│   │   │   ├── client.ts          # Typed fetch transport (+ getErrorMessage)
+│   │   │   ├── hooks.ts           # useQuery/useMutation hooks
+│   │   │   ├── queryKeys.ts       # Central query-key factory
+│   │   │   └── queryClient.ts     # Shared client (staleTime/retry defaults)
 │   │   ├── utils/baseUrl.ts
 │   │   ├── components/
-│   │   │   ├── Layout.tsx        # App shell + sidebar nav
-│   │   │   ├── FeatureCard.tsx   # Reusable card component
-│   │   │   └── FlowDiagram.tsx   # CSS-based flow diagrams
-│   │   └── pages/
-│   │       ├── OverviewPage.tsx       # Hero + Moses context + features
-│   │       ├── MCPToolsPage.tsx       # MCP system explained
-│   │       ├── DeploymentPage.tsx     # Pipeline flows
-│   │       ├── AuthFlowPage.tsx       # Authentication methods
-│   │       ├── MultiTenancyPage.tsx   # RBAC + isolation
-│   │       └── APIExamplesPage.tsx    # Interactive API testing
+│   │   │   ├── Layout.tsx         # App shell + sidebar nav
+│   │   │   ├── ThemeToggle.tsx
+│   │   │   ├── FeatureCard.tsx    # Demo
+│   │   │   ├── FlowDiagram.tsx    # Demo
+│   │   │   ├── NotesPanel.tsx     # Demo: live query + mutation
+│   │   │   └── UserList.tsx       # Demo: platform users table
+│   │   └── pages/                 # Demo: 6 showcase pages (+ CSS)
 │   └── public/favicon.svg
 ├── helm/
 │   ├── Chart.yaml
-│   ├── values.yaml               # Multi-service: frontend + backend
+│   ├── values.yaml               # Multi-service + postgresql block
 │   └── templates/
 │       ├── _helpers.tpl
-│       ├── deployment.yaml       # Loop over services
-│       └── service.yaml          # ClusterIP per service
+│       ├── deployment.yaml       # Loop over services + env auto-injection
+│       ├── service.yaml          # ClusterIP per service
+│       └── postgresql.yaml       # Per-app Postgres (emptyDir — ephemeral!)
 ├── skills/
-│   ├── showcase-overview.md     # Agent skill: what this app shows
-│   └── api-integration.md       # Agent skill: Moses integration patterns
+│   ├── usage.md                 # START HERE: cleanout + env contract + patterns
+│   ├── api-integration.md       # Agent skill: Moses integration patterns
+│   ├── secrets-tutorial.md      # Runtime secrets declaration
+│   └── showcase-overview.md     # Demo: what the showcase shows
 └── README.md                     # This file
 ```
 

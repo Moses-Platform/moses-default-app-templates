@@ -11,10 +11,9 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Moses Frontend Template</title>
 
-    <!-- Distinctive display + mono webfonts; graceful fallback to the system stack. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <!-- No external font CDNs: theme.css font stacks fall back to system
+         fonts, keeping the app self-contained (works air-gapped and under
+         strict CSPs). Self-host webfonts under public/ if you need them. -->
 
     <!-- No-flash theme init: set data-theme before first paint. -->
     <script>

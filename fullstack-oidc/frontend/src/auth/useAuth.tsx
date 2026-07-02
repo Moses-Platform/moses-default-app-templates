@@ -1,10 +1,10 @@
 /**
  * Shared authentication state for the fullstack-oidc reference app.
  *
- * Identity + posture are SERVER STATE, so they live in TanStack Query
- * (`useMe` / `usePublicInfo` in ../api/hooks) — not in hand-rolled
- * useState + useEffect-fetch. This provider layers the OIDC BFF bootstrap
- * lifecycle on top of those queries:
+ * PURE AUTH PLUMBING — no demo/app data lives here. Identity is SERVER
+ * STATE, so it lives in TanStack Query (`useMe` in ../api/hooks) — not in
+ * hand-rolled useState + useEffect-fetch. This provider layers the OIDC
+ * BFF bootstrap lifecycle on top of that query:
  *   1. The `me` query reads the existing session cookie (`GET /api/v1/me`).
  *   2. If it resolves anonymous, a silent (`prompt=none`) SSO probe runs
  *      ONCE in a hidden iframe — invisible if the user is already logged
@@ -24,9 +24,9 @@ import {
   type ReactNode,
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useMe, usePublicInfo } from '../api/hooks';
+import { useMe } from '../api/hooks';
 import { queryKeys } from '../api/queryKeys';
-import type { MeResponse, PublicInfo } from '../api/client';
+import type { MeResponse } from '../api/client';
 import { attemptSilentSSO, startInteractiveLogin, logout } from './silentSSO';
 
 /** Where the bootstrap currently stands. */
@@ -39,8 +39,6 @@ export interface AuthState {
   phase: AuthPhase;
   /** The authenticated principal, or null when anonymous. */
   me: MeResponse | null;
-  /** Always-public backend metadata (best-effort). */
-  info: PublicInfo | null;
   /** How the session was obtained — drives the "silent SSO" narration. */
   via: AuthVia;
   /** Human-readable note about the last bootstrap outcome. */
@@ -58,7 +56,6 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const meQuery = useMe();
-  const infoQuery = usePublicInfo();
 
   // `via` is the only piece of genuinely local lifecycle state: it records
   // HOW the (server-owned) identity was obtained, for the demo narration.
@@ -67,7 +64,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const silentTried = useRef(false);
 
   const me = meQuery.data ?? null;
-  const info = infoQuery.data ?? null;
 
   // Bootstrap orchestration (an imperative side-effect, NOT data-into-useState:
   // the data lives in Query). When the `me` query settles to anonymous and a
@@ -108,7 +104,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       phase,
       me,
-      info,
       via,
       note,
       refresh: async () => {
@@ -118,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signIn: () => startInteractiveLogin(),
       signOut: () => logout(),
     }),
-    [phase, me, info, via, note, qc],
+    [phase, me, via, note, qc],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

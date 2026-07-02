@@ -165,11 +165,15 @@ func rewriteToInternalHost(discovered, internalIssuer string) string {
 // authorizeRedirectURL builds the browser redirect to the OIDC
 // authorization endpoint for an authorization-code + PKCE flow.
 //
+// The `nonce` is echoed by the IdP into the ID token's `nonce` claim,
+// where the callback verifies it against the value stored in the HMAC
+// state cookie — binding the issued token to this handshake.
+//
 // When prompt == "none" the request is a SILENT SSO attempt: Keycloak
 // returns immediately with a code if the user already has an SSO
 // session, or with `error=login_required` if not — no login page is
 // shown. The middleware uses that for the in-iframe case.
-func (p *provider) authorizeRedirectURL(redirectURI, state, codeChallenge, prompt string) string {
+func (p *provider) authorizeRedirectURL(redirectURI, state, codeChallenge, nonce, prompt string) string {
 	q := url.Values{}
 	q.Set("response_type", "code")
 	q.Set("client_id", p.cfg.ClientID)
@@ -178,6 +182,9 @@ func (p *provider) authorizeRedirectURL(redirectURI, state, codeChallenge, promp
 	q.Set("state", state)
 	q.Set("code_challenge", codeChallenge)
 	q.Set("code_challenge_method", "S256")
+	if nonce != "" {
+		q.Set("nonce", nonce)
+	}
 	if prompt != "" {
 		q.Set("prompt", prompt)
 	}
@@ -266,13 +273,17 @@ func (p *provider) exchangeCode(ctx context.Context, code, redirectURI, codeVeri
 
 // verifyIDToken validates an ID token's signature + claims against the
 // internally-fetched JWKS, using the EXTERNAL issuer for the `iss`
-// check (the token is minted by the external issuer).
-func (p *provider) verifyIDToken(ctx context.Context, idToken string) (*Claims, error) {
+// check (the token is minted by the external issuer). expectedNonce is
+// the nonce sent on the authorization request (from the HMAC state
+// cookie); when non-empty the token's `nonce` claim MUST be present and
+// equal it.
+func (p *provider) verifyIDToken(ctx context.Context, idToken, expectedNonce string) (*Claims, error) {
 	if p.keys == nil {
 		return nil, fmt.Errorf("oidcauth: provider not discovered")
 	}
 	return verifyToken(ctx, idToken, p.keys, verifyOptions{
 		expectedIssuer:   p.cfg.Issuer,
 		expectedAudience: p.cfg.expectedAudience(),
+		expectedNonce:    expectedNonce,
 	})
 }

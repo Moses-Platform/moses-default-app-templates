@@ -63,7 +63,6 @@
   "maintenance": {
     "renovate": {
       "schedule": "0 4 * * 1",
-      "configPath": "renovate.json",
       "context": "Go HTTP API service. Update Go modules and Docker base images. Check for breaking API changes in major dependency updates."
     },
     "logMonitor": {

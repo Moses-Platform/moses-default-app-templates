@@ -26,8 +26,14 @@ var openapiSpec []byte
 // indexTemplate is parsed once at startup from the embedded static/index.html.
 // It renders the Moses browser-logger meta tag using MOSES_CHART_ID,
 // MOSES_DEPLOYMENT_ID, and MOSES_API_BASE env vars (BLF-J / CHAT-ry35). When
-// the env vars are absent the tag still renders but with empty values, and
-// the snippet's readConfig() short-circuits to a no-op.
+// the env vars are absent the tag still renders with empty values and the
+// snippet falls back to a location-derived `loc` param so the platform can
+// resolve identity server-side (it does NOT disable itself).
+//
+// NOTE: because index.html goes through html/template, any literal `{{ }}`
+// in it is executed as a template action against indexContext — a stray
+// `{{title}}` silently renders as an error/empty. Escape braces or keep
+// them out of static/index.html (see skills/usage.md).
 var indexTemplate *template.Template
 
 // indexContext is the data struct rendered into static/index.html. The
@@ -111,8 +117,9 @@ func main() {
 	// Parse index.html as a Go template once at startup so the BLF-J browser
 	// logger meta tag can be filled with chart/deployment IDs from the env
 	// without re-reading the file per request. If parsing fails the index
-	// handler falls back to serving the raw file (the snippet's readConfig()
-	// will no-op on the literal {{.…}} placeholders).
+	// handler falls back to serving the raw file — the snippet's readConfig()
+	// treats the literal {{.…}} placeholders as absent and the logger then
+	// uses its location-derived `loc` fallback.
 	loadIndexTemplate()
 
 	fileServer := http.FileServer(http.FS(staticFS))
@@ -150,7 +157,9 @@ func main() {
 		// SameSite=None). Wrapped innermost so it guards the API + static routes
 		// while the outer middleware still runs on blocked (403) requests; only
 		// unsafe methods are blocked, so static-asset / SPA GETs pass through.
-		Handler:      withMosesHeaders(withEmbeddingHeaders(RejectCrossSiteCSRF(mux))),
+		// corsMiddleware (cors.go) is outermost: OFF by default (same-origin
+		// deployment model), opt-in via CORS_ALLOWED_ORIGINS.
+		Handler:      corsMiddleware(withEmbeddingHeaders(RejectCrossSiteCSRF(mux))),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -168,7 +177,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatalf("Server forced shutdown: %v", err)
@@ -209,8 +218,9 @@ func registerAPIRoutes(mux *http.ServeMux, baseURL string) {
 		mux.HandleFunc(baseURL+"/api/openapi.json", handleOpenAPI)
 	}
 
-	// API endpoints — registered ONCE under MOSES_BASE_PATH.
-	mux.HandleFunc(baseURL+"/api/v1/status", handleStatus)
+	// API endpoints — registered ONCE under MOSES_BASE_PATH, concentrated in
+	// demo_routes.go so clean_out_template.sh can swap in an empty stub.
+	registerDemoRoutes(mux, baseURL)
 }
 
 // mosesContext holds Moses platform headers extracted from the request.
@@ -340,30 +350,6 @@ func withEmbeddingHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// withMosesHeaders adds CORS headers for development convenience.
-//
-// SECURITY WARNING: This template uses permissive CORS (Allow-Origin: "*") for
-// development convenience. For production deployments, restrict this to your actual
-// domain(s). Example:
-//
-//	w.Header().Set("Access-Control-Allow-Origin", "https://yourdomain.com")
-//
-// See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
-func withMosesHeaders(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-var startTime = time.Now()
-
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
@@ -376,23 +362,4 @@ func handleOpenAPI(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	w.Write(openapiSpec)
-}
-
-func handleStatus(w http.ResponseWriter, r *http.Request) {
-	if enforceTenantMatch(w, r) {
-		return
-	}
-	mc := getMosesContext(r)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"app":     "fullstack-unified",
-		"version": "1.0.0",
-		"uptime":  time.Since(startTime).Round(time.Second).String(),
-		"moses":   mc,
-		"env": map[string]string{
-			"port":            os.Getenv("PORT"),
-			"base_url":        os.Getenv("BASE_URL"),
-			"moses_base_path": os.Getenv("MOSES_BASE_PATH"),
-		},
-	})
 }

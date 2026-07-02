@@ -21,3 +21,7 @@ vendor/
 .idea/
 *.swp
 *.swo
+
+# One-shot demo cleanout machinery (ships in the repo, never in images)
+clean_out_template.sh
+.template-clean/

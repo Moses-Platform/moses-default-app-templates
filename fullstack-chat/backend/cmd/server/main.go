@@ -1,16 +1,19 @@
 // Command server boots the fullstack-chat backend that demonstrates the full
-// app↔Moses-Manager chat roundtrip:
+// app↔Moses-Manager chat roundtrip. Plumbing routes (registered here in
+// buildMux, survive clean_out_template.sh):
 //
-//   - GET  /api/v1/entries        — list (frontend reads after WS push)
-//   - POST /api/v1/entries        — create (Moses Manager calls this via the
-//     workspace-tools wedge after a
-//     chat_prompt action fires)
 //   - POST /api/v1/webhooks/chat-complete — Moses fires this when the AI
-//     turn finishes; HMAC-verified
+//     turn finishes; HMAC-verified (webhook_chat.go)
+//   - POST /__moses/invoke — mosesproxy mount the in-iframe SDK posts to
+//   - /health + /api/openapi.json dual mounts (MOSES ROUTING contract)
+//
+// Demo routes (GET/POST /api/v1/entries — the feed Moses Manager writes
+// into via the workspace-tools wedge) live in demo_routes.go.
 package main
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"net/http"
 	"os"
@@ -67,8 +70,10 @@ func main() {
 		log.Fatalf("CHAT-pxeo.12 tenant migration failed: %v", err)
 	}
 
-	entries := handler.NewEntriesHandler(db)
-	chatWebhook := handler.NewChatWebhookHandler(db)
+	// The webhook receiver is pure plumbing; where verified payloads are
+	// persisted is the app's choice via the CompletionSink wired in
+	// demo_routes.go (demo: Postgres chat_completions; clean twin: log-only).
+	chatWebhook := handler.NewChatWebhookHandler(newCompletionSink(db))
 
 	// CHAT-pbup / CHAT-8qiu0: read MOSES_BASE_PATH (canonical) with BASE_URL as
 	// the deprecated alias. API routes are registered ONCE under this prefix
@@ -98,7 +103,7 @@ func main() {
 	proxyCfg := mosesproxy.ConfigFromEnv()
 	proxyCfg.RequireRequestedWith = true
 
-	mux := buildMux(basePath, entries, chatWebhook, proxyCfg)
+	mux := buildMux(basePath, chatWebhook, proxyCfg, db)
 	var h http.Handler = mux
 	// RejectCrossSiteCSRF blocks cross-site state-changing requests (the app
 	// must not rely on the platform edge alone — the access_token cookie is
@@ -159,7 +164,7 @@ func main() {
 //     {basePath}/api/openapi.json — the platform's discovery hook uses the
 //     canonical path; the base-path alias keeps it reachable through the
 //     frontend nginx, which forwards the prefix unchanged (CHAT-yfmwv).
-func buildMux(basePath string, entries *handler.EntriesHandler, chatWebhook *handler.ChatWebhookHandler, proxyCfg mosesproxy.Config) *http.ServeMux {
+func buildMux(basePath string, chatWebhook *handler.ChatWebhookHandler, proxyCfg mosesproxy.Config, db *sql.DB) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// Health check — canonical for the K8s probe, plus the base-path alias.
@@ -179,9 +184,12 @@ func buildMux(basePath string, entries *handler.EntriesHandler, chatWebhook *han
 	}
 
 	// API endpoints — registered ONCE under MOSES_BASE_PATH.
-	mux.HandleFunc(basePath+"/api/v1/entries", entries.Entries)
 	mux.HandleFunc(basePath+"/api/v1/webhooks/chat-complete", chatWebhook.Handle)
 	mux.HandleFunc(basePath+mosesproxy.InvokePath, mosesproxy.NewHandler(proxyCfg))
+
+	// Demo routes (entries feed) — concentrated in demo_routes.go so
+	// clean_out_template.sh can swap that one file for a stub twin.
+	registerDemoRoutes(mux, basePath, db)
 
 	return mux
 }

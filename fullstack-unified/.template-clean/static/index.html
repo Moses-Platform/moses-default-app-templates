@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Moses App</title>
+  <!-- PLUMBING: <base href="./"> resolves to the page's full origin+subpath;
+       app.js builds API URLs from it. Do not remove. -->
+  <base href="./">
+  <!--
+    BLF-J: Moses browser-logger config. main.go renders these data-* values
+    from the MOSES_CHART_ID / MOSES_DEPLOYMENT_ID / MOSES_API_BASE env vars.
+    When empty, the snippet falls back to a location-derived `loc` param so
+    the platform resolves identity server-side — it does NOT disable itself.
+    CAUTION: this file is parsed as a Go html/template — any literal
+    double-curly-brace sequence (even inside an HTML comment like this one)
+    is executed as a template action (see skills/usage.md). Keep the three
+    placeholders below exactly as they are.
+  -->
+  <meta name="moses-config"
+        data-chart-id="{{.ChartID}}"
+        data-deployment-id="{{.DeploymentID}}"
+        data-api-base="{{.APIBase}}">
+  <!-- No CDN webfonts: deployed apps must be self-contained (CSP/offline).
+       style.css font stacks lead with system fonts. -->
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="favicon.svg">
+  <!-- No-flash theme init: set data-theme before first paint. -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('moses-theme');
+        if (t !== 'light' && t !== 'dark') {
+          t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app">
+    <button class="theme-toggle" type="button" id="theme-toggle" aria-label="Toggle dark/light mode" title="Toggle dark/light mode">☀</button>
+    <header class="header">
+      <h1>Your App</h1>
+      <p>Fullstack Unified template &mdash; demo removed, ready for real work</p>
+    </header>
+    <main class="main" id="main">
+      <section class="card">
+        <h2>Getting started</h2>
+        <p class="loading">Add your first endpoint in demo_routes.go (+ api/openapi.json), then fetch it from app.js.</p>
+      </section>
+    </main>
+  </div>
+  <!-- BLF-J: install error/console capture early so it catches app.js errors too. -->
+  <script src="moses-browser-logger.js"></script>
+  <script src="app.js"></script>
+  <!-- Vanilla dark/light toggle (no framework). -->
+  <script>
+    (function () {
+      var btn = document.getElementById('theme-toggle');
+      if (!btn) return;
+      function sync() {
+        btn.textContent = (document.documentElement.getAttribute('data-theme') === 'light') ? '☾' : '☀';
+      }
+      sync();
+      btn.addEventListener('click', function () {
+        var next = (document.documentElement.getAttribute('data-theme') === 'light') ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('moses-theme', next); } catch (e) {}
+        sync();
+      });
+    })();
+  </script>
+</body>
+</html>

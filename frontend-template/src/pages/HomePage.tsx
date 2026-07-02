@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import './HomePage.css'
 
 function HomePage() {
@@ -24,7 +25,7 @@ function HomePage() {
     },
     {
       title: 'Iframe Ready',
-      description: 'SAMEORIGIN headers allow embedding in Moses Apps page',
+      description: 'CSP frame-ancestors policy (rendered from MOSES_EMBEDDING_* env) allows embedding in the Moses Apps page',
       icon: '📦',
     },
     {
@@ -60,7 +61,9 @@ function HomePage() {
         <h2>Ready to Build?</h2>
         <p>
           Start customizing this template for your application. Check out the{' '}
-          <a href="/about">About page</a> to learn more.
+          {/* react-router Link resolves against the router basename; a raw
+              <a href="/about"> would escape the /apps/<t>/<a>/ mount. */}
+          <Link to="/about">About page</Link> to learn more.
         </p>
       </section>
     </div>

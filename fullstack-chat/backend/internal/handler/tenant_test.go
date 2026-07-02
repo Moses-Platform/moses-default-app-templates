@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,7 +9,9 @@ import (
 	"github.com/moses-platform/fullstack-chat/internal/config"
 )
 
-// CHAT-pxeo.12 acceptance tests. The package-level config.SelfTenantID()
+// CHAT-pxeo.12 acceptance tests, exercised directly against the tenant
+// helpers in tenant.go (no demo handlers involved, so this file survives
+// clean_out_template.sh). The package-level config.SelfTenantID()
 // resolves once via sync.Once, so these tests must NOT call it before
 // the first t.Setenv they care about. Tests share global state — when
 // adding new ones be mindful of ordering.
@@ -21,7 +22,7 @@ import (
 // the rest of the test binary, this test name is alphabetically chosen
 // to be the first that reads SelfTenantID. Running `go test ./handler`
 // alphabetically orders tests; "TestSelfTenantID_LazyInitWithEnv" is
-// before any other config-touching test in this file.
+// before any other config-touching test in this package.
 func TestSelfTenantID_LazyInitWithEnv(t *testing.T) {
 	t.Setenv("MOSES_TENANT_ID", "tenant-aaaa-bbbb-cccc-dddd")
 	got := config.SelfTenantID()
@@ -30,33 +31,26 @@ func TestSelfTenantID_LazyInitWithEnv(t *testing.T) {
 	}
 }
 
-// TestEntries_Create_UsesEnvTenant covers acceptance test #1. Because
-// config.SelfTenantID is sync.Once-cached, this test asserts the cached
-// value matches what we set via t.Setenv in the lazy-init test. The
-// create handler reads config.SelfTenantID directly (no DB needed for
-// the cross-check; we exercise the early-return validation path so DB
-// can stay nil and we still observe code-path coverage).
-func TestEntries_Create_UsesEnvTenant(t *testing.T) {
-	// First-call winner is set by TestSelfTenantID_LazyInitWithEnv. Read
-	// it through SelfTenantID() to keep the assertion symmetrical.
+// TestTenantGate_CachedEnvValue covers acceptance test #1: the cached
+// SelfTenantID (locked in by the lazy-init test above) is what every
+// write handler keys storage on.
+func TestTenantGate_CachedEnvValue(t *testing.T) {
 	if got := config.SelfTenantID(); got == "" || got == "local-dev" {
 		t.Fatalf("preconditions: expected non-sentinel cached tenant, got %q (alphabetical-test-order invariant broken?)", got)
 	}
 }
 
-// TestEntries_Create_TenantMismatch403 covers acceptance test #2.
-// env=A (cached), header=B → 403, body has the canonical error+code,
-// body does NOT contain the tenant UUIDs.
-func TestEntries_Create_TenantMismatch403(t *testing.T) {
-	h := &EntriesHandler{} // DB nil; cross-check fires before any DB call
-	body := []byte(`{"text":"hello","source":"user"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/entries", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+// TestTenantGate_Mismatch403 covers acceptance test #2, straight through
+// enforceTenantMatch: env=A (cached), header=B → 403, body has the
+// canonical error+code, body does NOT contain the tenant UUIDs.
+func TestTenantGate_Mismatch403(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/anything", nil)
 	req.Header.Set("X-Moses-Tenant-ID", "header-tenant-uuid-different-1")
 	rec := httptest.NewRecorder()
 
-	h.Entries(rec, req)
-
+	if !enforceTenantMatch(rec, req) {
+		t.Fatal("expected enforceTenantMatch to report a mismatch (true)")
+	}
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d body=%q", rec.Code, rec.Body.String())
 	}
@@ -75,28 +69,33 @@ func TestEntries_Create_TenantMismatch403(t *testing.T) {
 	}
 }
 
-// TestEntries_StrictTenantCheckDisabled covers the second half of #2:
-// MOSES_STRICT_TENANT_CHECK=false → cross-check is skipped, write would
-// proceed (we observe by checking that the 403 path is not taken — the
-// next failure mode is a DB nil-pointer, which is fine for this assert).
-func TestEntries_StrictTenantCheckDisabled(t *testing.T) {
+// TestTenantGate_MatchAndNoHeaderPass: a matching header and an absent
+// header both pass the gate (false = continue processing).
+func TestTenantGate_MatchAndNoHeaderPass(t *testing.T) {
+	for name, header := range map[string]string{"matching": config.SelfTenantID(), "absent": ""} {
+		t.Run(name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/anything", nil)
+			if header != "" {
+				req.Header.Set("X-Moses-Tenant-ID", header)
+			}
+			rec := httptest.NewRecorder()
+			if enforceTenantMatch(rec, req) {
+				t.Fatalf("expected gate to pass, got 403 body=%q", rec.Body.String())
+			}
+		})
+	}
+}
+
+// TestTenantGate_StrictCheckDisabled covers the second half of #2:
+// MOSES_STRICT_TENANT_CHECK=false → cross-check is skipped even on a
+// mismatching header.
+func TestTenantGate_StrictCheckDisabled(t *testing.T) {
 	t.Setenv("MOSES_STRICT_TENANT_CHECK", "false")
-	h := &EntriesHandler{} // DB nil
-	body := []byte(`{"text":"hi","source":"user"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/entries", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/anything", nil)
 	req.Header.Set("X-Moses-Tenant-ID", "some-mismatched-tenant")
 	rec := httptest.NewRecorder()
 
-	defer func() {
-		// Recovery: nil DB triggers a panic from QueryRowContext when we
-		// reach the insert. The path we care about (cross-check skipped)
-		// has been exercised by the time we get there.
-		_ = recover()
-	}()
-	h.Entries(rec, req)
-
-	if rec.Code == http.StatusForbidden {
+	if enforceTenantMatch(rec, req) {
 		t.Errorf("expected cross-check to be SKIPPED with MOSES_STRICT_TENANT_CHECK=false, got 403")
 	}
 }

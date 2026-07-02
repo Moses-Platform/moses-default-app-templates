@@ -150,10 +150,8 @@ export default function APIExamplesPage() {
           as a workspace tool, Moses would generate these MCP tools:
         </p>
         <div className="tool-examples">
-          <div className="tool-example">
-            <code>workspace_showcase_healthCheck</code>
-            <p>→ GET /health</p>
-          </div>
+          {/* NOTE: /health is deliberately NOT in the OpenAPI spec — it would
+              register a phantom workspace tool (see main_test.go WS-F F1). */}
           <div className="tool-example">
             <code>workspace_showcase_getMosesInfo</code>
             <p>→ GET /api/v1/moses-info</p>

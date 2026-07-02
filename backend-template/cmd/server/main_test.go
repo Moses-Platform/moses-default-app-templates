@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/moses-platform/backend-template/internal/handler"
-	"github.com/moses-platform/backend-template/internal/model"
 )
 
 func TestHealthEndpoint(t *testing.T) {
@@ -31,7 +30,7 @@ func TestHealthEndpoint(t *testing.T) {
 // newTestMux builds the production router (buildMux from main.go) for the
 // given basePath.
 func newTestMux(basePath string) *http.ServeMux {
-	return buildMux(basePath, model.NewItemStore())
+	return buildMux(basePath)
 }
 
 // CHAT-8qiu0: the API is registered ONCE, under MOSES_BASE_PATH. When no

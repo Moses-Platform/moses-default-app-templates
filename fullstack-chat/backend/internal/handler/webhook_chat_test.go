@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -177,42 +178,146 @@ func TestChatWebhook_RejectsNonPOST(t *testing.T) {
 	}
 }
 
-func TestEntries_RejectsEmptyText(t *testing.T) {
-	h := &EntriesHandler{} // DB nil — list will fail; we only test create validation here
-	body := []byte(`{"text": "   ", "source": "moses_manager"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/entries", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	h.Entries(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d body=%s", w.Code, w.Body.String())
+// recordingSink captures every Record call so tests can assert the audit
+// trail (rejected forgeries persist with sigValid=false).
+type recordingSink struct {
+	calls []struct {
+		payload  ChatCompletionPayload
+		sigValid bool
 	}
 }
 
-func TestEntries_RejectsInvalidSource(t *testing.T) {
-	h := &EntriesHandler{}
-	body := []byte(`{"text": "hi", "source": "not-a-known-source"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/entries", bytes.NewReader(body))
+func (s *recordingSink) Record(_ context.Context, p ChatCompletionPayload, sigValid bool) error {
+	s.calls = append(s.calls, struct {
+		payload  ChatCompletionPayload
+		sigValid bool
+	}{p, sigValid})
+	return nil
+}
+
+// Ordering invariant: a STALE payload with an INVALID signature must land
+// on the 401 + audit-persist path, not the 400 timestamp_skew branch —
+// signature verification runs before any content-derived check.
+func TestChatWebhook_StaleForgeryHits401AuditPath(t *testing.T) {
+	secret := []byte("test-secret-32-bytes-test-secret-")
+	sink := &recordingSink{}
+	h := &ChatWebhookHandler{Secret: secret, Sink: sink}
+
+	body := []byte(`{
+		"v": 1,
+		"conversationId": "conv-stale-forgery",
+		"appSlug": "fullstack-chat",
+		"timestamp": "` + time.Now().Add(-10*time.Minute).UTC().Format(time.RFC3339) + `",
+		"nonce": "n-stale-forgery"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/webhooks/chat-complete", bytes.NewReader(body))
+	req.Header.Set("X-Moses-Signature", sign([]byte("attacker-key"), body))
 	req.Header.Set("Content-Type", "application/json")
+
 	w := httptest.NewRecorder()
-	h.Entries(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d body=%s", w.Code, w.Body.String())
+	h.Handle(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 (signature checked before skew), got %d body=%s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), "invalid_source") {
-		t.Errorf("expected invalid_source code, got %s", w.Body.String())
+	if strings.Contains(w.Body.String(), "timestamp_skew") {
+		t.Errorf("stale forgery must NOT surface the skew branch; got %s", w.Body.String())
+	}
+	if len(sink.calls) != 1 || sink.calls[0].sigValid {
+		t.Fatalf("expected exactly one audit persist with sigValid=false, got %+v", sink.calls)
 	}
 }
 
-func TestEntries_RejectsLongText(t *testing.T) {
-	h := &EntriesHandler{}
-	long := strings.Repeat("a", 281)
-	body := []byte(`{"text": "` + long + `"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/entries", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+// Replay protection: a byte-identical (validly signed) payload re-sent
+// within the 5-minute window must be rejected on the nonce.
+func TestChatWebhook_RejectsNonceReplay(t *testing.T) {
+	secret := []byte("test-secret-32-bytes-test-secret-")
+	sink := &recordingSink{}
+	h := &ChatWebhookHandler{Secret: secret, Sink: sink}
+
+	body := makePayload(t)
+	newReq := func() *http.Request {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/webhooks/chat-complete", bytes.NewReader(body))
+		req.Header.Set("X-Moses-Signature", sign(secret, body))
+		req.Header.Set("Content-Type", "application/json")
+		return req
+	}
+
 	w := httptest.NewRecorder()
-	h.Entries(w, req)
+	h.Handle(w, newReq())
+	if w.Code != http.StatusOK {
+		t.Fatalf("first delivery: expected 200, got %d body=%s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	h.Handle(w, newReq())
 	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d body=%s", w.Code, w.Body.String())
+		t.Fatalf("replay: expected 400, got %d body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "nonce_replayed") {
+		t.Errorf("expected nonce_replayed code, got %s", w.Body.String())
+	}
+	if len(sink.calls) != 1 {
+		t.Errorf("replay must NOT reach the sink; got %d persists", len(sink.calls))
+	}
+}
+
+// Nonce entries expire: once outside the replay window the same nonce is
+// accepted again (the sweep keeps the map bounded).
+func TestChatWebhook_NonceExpiresAfterWindow(t *testing.T) {
+	h := &ChatWebhookHandler{}
+	now := time.Now()
+	if !h.storeNonce("n-x", now) {
+		t.Fatal("fresh nonce must be accepted")
+	}
+	if h.storeNonce("n-x", now.Add(time.Minute)) {
+		t.Fatal("duplicate inside the window must be rejected")
+	}
+	if !h.storeNonce("n-x", now.Add(nonceWindow+time.Second)) {
+		t.Fatal("nonce past the window must be swept and re-accepted")
+	}
+}
+
+// AppSlug claim (documented in validate_env.go): when MOSES_APP_SLUG pins
+// this app's identity, a signed payload claiming another app is rejected.
+func TestChatWebhook_RejectsAppSlugMismatch(t *testing.T) {
+	secret := []byte("test-secret-32-bytes-test-secret-")
+	sink := &recordingSink{}
+	h := &ChatWebhookHandler{Secret: secret, Sink: sink, AppSlug: "some-other-app"}
+
+	body := makePayload(t) // claims appSlug "fullstack-chat"
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/webhooks/chat-complete", bytes.NewReader(body))
+	req.Header.Set("X-Moses-Signature", sign(secret, body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	h.Handle(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "app_slug_mismatch") {
+		t.Errorf("expected app_slug_mismatch code, got %s", w.Body.String())
+	}
+	if len(sink.calls) != 0 {
+		t.Errorf("slug-mismatched payload must NOT reach the sink; got %d persists", len(sink.calls))
+	}
+}
+
+// Matching slug (the steady-state deployed configuration) passes.
+func TestChatWebhook_AcceptsMatchingAppSlug(t *testing.T) {
+	secret := []byte("test-secret-32-bytes-test-secret-")
+	h := &ChatWebhookHandler{Secret: secret, AppSlug: "fullstack-chat"}
+
+	body := makePayload(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/webhooks/chat-complete", bytes.NewReader(body))
+	req.Header.Set("X-Moses-Signature", sign(secret, body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	h.Handle(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
 	}
 }

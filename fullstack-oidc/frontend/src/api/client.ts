@@ -20,8 +20,6 @@ export interface MeResponse {
   username: string;
   /** resource_access.<client>.roles projected by Moses onto the token. */
   roles: string[];
-  /** Server-computed: true when `roles` includes `oidc-admin`. */
-  is_app_admin: boolean;
 }
 
 /** Always-public app metadata from GET /api/v1/public-info. */

@@ -7,7 +7,9 @@ moses:
   executionId: ""
   chartId: ""
   appSlug: ""
-  # CHAT-pbup: Moses-aware template values. See ../README.md / DEPRECATIONS.md.
+  # CHAT-pbup: Moses-aware template values. See ../README.md and the
+  # platform repo's DEPRECATIONS.md (moses-platform-prep) for the BASE_URL
+  # -> MOSES_BASE_PATH deprecation window.
   basePath: "/"
   embedding:
     framing: ""           # empty -> appType default ("denied" for api)

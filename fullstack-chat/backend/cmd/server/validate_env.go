@@ -5,7 +5,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -15,15 +14,20 @@ import (
 // contract that fullstack-chat depends on. The contract:
 //
 //   Required (DEPS-A1):
-//     MOSES_API_BASE      — backend → platform invokes
 //     MOSES_TENANT_ID     — backend self-identification
 //     MOSES_CHART_ID      — scope queries to own chart
 //     MOSES_APP_SLUG      — webhook-claim verification
 //
 //   Required when chat_prompt declared (DEPS-A2):
 //     MOSES_CHAT_WEBHOOK_SECRET — HMAC verification of completion webhook
+//     MOSES_INTERNAL_API_BASE   — mosesproxy forward target
 //
 //   Optional:
+//     MOSES_API_BASE (public platform origin — injected by the provisioner
+//     when the install surfaces one, but nothing in this template consumes
+//     it; only MOSES_INTERNAL_API_BASE is used, and the provisioner OMITS
+//     MOSES_API_BASE entirely when no public URL is configured, so
+//     requiring it would crash-loop valid deploys),
 //     MOSES_DEPLOYMENT_ID, MOSES_USER_ID, MOSES_BASE_PATH,
 //     MOSES_EMBEDDING_*, MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS
 //
@@ -39,7 +43,6 @@ import (
 // log.Fatal by mocking out the os.Exit path via the validateExit helper.
 
 const (
-	envMosesAPIBase         = "MOSES_API_BASE"
 	envMosesTenantID        = "MOSES_TENANT_ID"
 	envMosesChartID         = "MOSES_CHART_ID"
 	envMosesAppSlug         = "MOSES_APP_SLUG"
@@ -56,7 +59,11 @@ var requiredPlatformEnv = []struct {
 	description string
 	chatPrompt  bool // only required when the app declares a chat_prompt action
 }{
-	{envMosesAPIBase, "MOSES_API_BASE — origin of the Moses platform API", false},
+	// MOSES_API_BASE is deliberately NOT required: nothing in this template
+	// consumes it (the mosesproxy forwards to MOSES_INTERNAL_API_BASE), and
+	// the platform provisioner omits the key when no public URL is
+	// configured — see agent_helm_provisioner.go BuildDeployValuesWithContext.
+	//
 	// CHAT-pxeo.12: MOSES_TENANT_ID is now authoritative for storage keys
 	// (read via internal/config.SelfTenantID()). Already-deployed apps
 	// without it will fail-fast in main() via config.Validate().
@@ -181,22 +188,4 @@ func validatePlatformEnv(exit func(int)) bool {
 		log.Printf("  - NOTE: %s", m)
 	}
 	return false
-}
-
-// formatMissingEnvList is a tiny helper exported for the test harness.
-// It produces a comma-separated list of missing env names (no descriptions)
-// for assertion. Honors the chatPrompt gate (CHAT-ct5q) so it stays in
-// lockstep with validatePlatformEnv.
-func formatMissingEnvList() string {
-	chatPromptRequired := chatPromptActionDeclared()
-	missing := make([]string, 0, len(requiredPlatformEnv))
-	for _, v := range requiredPlatformEnv {
-		if v.chatPrompt && !chatPromptRequired {
-			continue
-		}
-		if strings.TrimSpace(os.Getenv(v.name)) == "" {
-			missing = append(missing, v.name)
-		}
-	}
-	return fmt.Sprintf("%s", strings.Join(missing, ","))
 }

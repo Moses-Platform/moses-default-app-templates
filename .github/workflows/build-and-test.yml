@@ -1,0 +1,106 @@
+name: Build and test
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  # Every Go module listed in go.work, built/vetted/tested standalone
+  # (GOWORK=off) — templates must compile outside the monorepo workspace,
+  # which is exactly how moses_init_repo ships them.
+  go:
+    name: go (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - backend-template
+          - fullstack-chat/backend
+          - fullstack-oidc/backend
+          - fullstack-showcase/backend
+          - fullstack-simple/backend
+          - fullstack-unified
+          - shared/csrf-go
+          - shared/mosesproxy-go
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+          # Several modules are stdlib-only (no go.sum), so the per-module
+          # module cache is skipped rather than pointing at missing files.
+          cache: false
+      - name: go vet
+        working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: "off"
+        run: go vet ./...
+      - name: go test
+        working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: "off"
+        run: go test ./...
+
+  # Every npm frontend: typecheck (lint = tsc --noEmit), vitest, prod build.
+  # All five package.json test scripts are `vitest run`, so `npm test` is
+  # already non-interactive.
+  node:
+    name: node (${{ matrix.frontend }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        frontend:
+          - frontend-template
+          - fullstack-simple/frontend
+          - fullstack-showcase/frontend
+          - fullstack-chat/frontend
+          - fullstack-oidc/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: ${{ matrix.frontend }}/package-lock.json
+      - name: npm ci
+        working-directory: ${{ matrix.frontend }}
+        run: npm ci
+      - name: lint (tsc)
+        working-directory: ${{ matrix.frontend }}
+        run: npm run lint
+      - name: test (vitest)
+        working-directory: ${{ matrix.frontend }}
+        run: npm test --if-present
+      - name: build
+        working-directory: ${{ matrix.frontend }}
+        run: npm run build
+
+  # Contract tests — separate jobs so a failure is attributable at a glance.
+  nginx-entrypoint:
+    name: contract (nginx entrypoint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install envsubst
+        run: sudo apt-get update && sudo apt-get install -y gettext-base
+      - run: bash tests/test_nginx_entrypoint.sh
+
+  template-parity:
+    name: contract (template parity)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/test_template_parity.sh
+
+  clean-out:
+    name: contract (clean-out mechanism)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+          cache: false
+      - run: bash tests/test_clean_out.sh

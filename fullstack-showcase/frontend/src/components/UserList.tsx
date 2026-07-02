@@ -1,4 +1,5 @@
 import { useUsers } from '../api/hooks';
+import { getErrorMessage } from '../api/client';
 
 export default function UserList() {
   const { data, isPending, isError, error } = useUsers();
@@ -6,7 +7,7 @@ export default function UserList() {
   const message = data?.message ?? null;
 
   if (isPending) return <div className="feature-card"><p>Loading tenant users...</p></div>;
-  if (isError) return <div className="feature-card"><p>Error: {(error as Error).message}</p></div>;
+  if (isError) return <div className="feature-card"><p>Error: {getErrorMessage(error)}</p></div>;
 
   return (
     <div className="feature-card">

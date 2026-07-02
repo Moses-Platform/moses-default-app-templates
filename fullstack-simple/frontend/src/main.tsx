@@ -7,8 +7,10 @@ import './App.css'
 import { installBrowserLogger } from './moses-browser-logger'
 import { queryClient } from './api/queryClient'
 
-// Moses browser-log reporter (BLF-B). Fire-and-forget; silent no-op when
-// the platform's build-time chart_id / deployment_id env vars are absent.
+// Moses browser-log reporter (BLF-B). Fire-and-forget; when the build-time
+// chart_id / deployment_id env vars are absent it falls back to a
+// location-derived `loc` param (the platform resolves identity server-side)
+// and only no-ops if the bootstrap endpoint reports not-enabled.
 void installBrowserLogger()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

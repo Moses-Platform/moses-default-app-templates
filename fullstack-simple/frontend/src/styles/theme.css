@@ -1,5 +1,5 @@
 /* =============================================================================
-   Moses design system — fullstack-showcase
+   Moses design system — fullstack-simple
    Aligned with the platform Moses Color System (coding-standards/MOSES_COLOR_SYSTEM.md):
    emerald-green brand, coral-red CTA/focus, three-tier background hierarchy,
    dark-mode default with a [data-theme="light"] override, WCAG 2.1 AA.
@@ -73,10 +73,10 @@
                 radial-gradient(760px 480px at 6% 6%, rgba(96, 165, 250, 0.06), transparent 55%);
   --surface-glass: rgba(20, 20, 20, 0.72);
 
-  /* ---- Typography ---- */
-  --font-display: 'Sora', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* ---- Typography (system stacks — no CDN webfonts in deployed apps) ---- */
+  --font-display: system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
   --font-family: var(--font-sans);
 
   --font-size-xs: 12px;

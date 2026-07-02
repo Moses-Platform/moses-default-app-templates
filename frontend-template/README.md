@@ -8,18 +8,29 @@ A production-ready React + TypeScript + Vite frontend template for building Mose
 - **SPA Routing** - React Router with nginx fallback for all routes
 - **Health Checks** - `/health` endpoint for Kubernetes liveness/readiness probes
 - **Moses UI Standards** - Design tokens, 4px grid, accessible colors
-- **Iframe Ready** - SAMEORIGIN headers for embedding in Moses Apps page
+- **Iframe Ready** - CSP `frame-ancestors` policy (from `MOSES_EMBEDDING_*` env) for embedding in Moses Apps page
 - **Production Build** - Multi-stage Docker, gzip compression, optimized caching
 
 ## Technology Stack
 
-- **React 18** - Modern UI framework with hooks and concurrent features
+- **React 19** - Modern UI framework, with the **React Compiler** enabled in
+  `vite.config.ts` (auto-memoization — do NOT add manual
+  `useMemo`/`useCallback`/`React.memo` for plain render values)
 - **TypeScript** - Type safety and better developer experience
 - **Vite** - Fast development server and optimized production builds
 - **React Router** - Client-side routing for single-page applications
+- **TanStack Query** - Server-state layer (`src/api/`): typed client + hooks + central query-key factory
 - **nginx** - Production web server with health checks and caching
 
 ## Quick Start
+
+### First step: clean out the demo
+
+The Home/About/404 pages are demo content. Starting a real app? Run
+`./clean_out_template.sh` once — it removes the demo pages, keeps all Moses
+plumbing (base-path meta, router basename, data layer, nginx/entrypoint,
+helm), and leaves a building, tested skeleton. Details (including a manual
+KEEP/REPLACE/DELETE table) in [skills/usage.md](skills/usage.md).
 
 ### Local Development
 
@@ -49,8 +60,8 @@ npm run preview
 # Build Docker image
 docker build -t frontend-template:latest .
 
-# Run container
-docker run -p 8080:80 frontend-template:latest
+# Run container (nginx listens on 8080 inside the container)
+docker run -p 8080:8080 frontend-template:latest
 
 # Visit http://localhost:8080
 ```
@@ -124,17 +135,19 @@ import MyPage from './pages/MyPage'
 
 ### Customize Design
 
-Moses design tokens in `src/App.css`:
+Moses design tokens live in `src/styles/theme.css` (global element styles and
+utilities are in `src/App.css`):
 
 ```css
 :root {
-  --color-primary: #4F46E5;      /* Change primary color */
-  --color-bg: #F9FAFB;           /* Background color */
-  --spacing-4: 16px;             /* 4px spacing grid */
+  --color-brand-primary: #34D399;     /* Brand (emerald) */
+  --color-page-background: #0F0F0F;   /* Page background (dark default) */
+  --spacing-4: 16px;                  /* 4px spacing grid */
 }
 ```
 
-Keep spacing in multiples of 4px to match Moses UI standards.
+Keep spacing in multiples of 4px to match Moses UI standards. Light mode is
+the `[data-theme="light"]` override in the same file.
 
 ### Add Components
 
@@ -162,16 +175,23 @@ function Button({ label, onClick }: ButtonProps) {
 
 The app is configured for subpath deployment via:
 
-- `vite.config.ts`: `base: './'` (relative paths)
-- `nginx.conf`: `try_files $uri $uri/ /index.html` (SPA fallback)
-- No `basename` needed in React Router (Moses strips prefix)
+- `vite.config.ts`: `base: './'` (relative asset paths)
+- `nginx.conf` + `entrypoint.sh`: sub-path location block rewrites
+  `/apps/<t>/<a>/<rest>` → `/<rest>`, plus the SPA `try_files` fallback
+- `main.tsx`: `<BrowserRouter basename={getBasePath()}>` — the basename IS
+  required. The ingress does NOT strip the prefix; `getBasePath()` reads the
+  `moses-base-path` meta tag that `entrypoint.sh` renders at container start
+  (CHAT-pbup). Use `<Link to="/about">` for internal navigation — never raw
+  absolute `<a href="/...">`, which escapes the mount.
 
-For absolute URLs (sharing, etc.), use the baseUrl utility:
+For building app-absolute paths (sharing, etc.), join against the base path —
+it comes back as `/` (root) or `/apps/<t>/<a>` (no trailing slash):
 
 ```typescript
-import { getBaseUrl } from './utils/baseUrl'
+import { getBasePath } from './utils/baseUrl'
 
-const shareUrl = `${getBaseUrl()}my-page`
+const base = getBasePath()
+const shareUrl = `${base === '/' ? '' : base}/my-page`
 ```
 
 ### Health Checks
@@ -200,9 +220,14 @@ nginx serves this automatically. No changes needed unless adding API backend.
 
 nginx includes:
 
-- `X-Frame-Options: SAMEORIGIN` - Allows embedding in Moses
+- `Content-Security-Policy: frame-ancestors ...` - Framing policy rendered at
+  container start by `entrypoint.sh` from `MOSES_EMBEDDING_FRAMING` /
+  `MOSES_EMBEDDING_ALLOWED_ANCESTORS` (default `moses-only`); `denied` also
+  emits `X-Frame-Options: DENY`
 - `X-Content-Type-Options: nosniff` - Prevents MIME sniffing
-- `X-XSS-Protection: 1; mode=block` - XSS protection
+
+`X-XSS-Protection` is deliberately NOT sent — it is deprecated/no-op in modern
+browsers; CSP is the source of truth.
 
 ### Resource Limits
 
@@ -225,33 +250,40 @@ Adjust in `helm/values.yaml` if needed (stay within namespace quota).
 ```
 frontend-template/
 ├── src/
+│   ├── api/                 # TanStack Query data layer
+│   │   ├── client.ts        # Typed transport (relative paths only)
+│   │   ├── hooks.ts         # useQuery/useMutation hooks
+│   │   ├── queryClient.ts   # Shared QueryClient singleton
+│   │   └── queryKeys.ts     # Central query-key factory
 │   ├── components/          # Reusable UI components
 │   │   ├── Layout.tsx       # Page shell (header, footer)
-│   │   └── Layout.css
-│   ├── pages/               # Route pages
+│   │   ├── Layout.css
+│   │   └── ThemeToggle.tsx  # data-theme switcher
+│   ├── pages/               # DEMO route pages (cleanout target)
 │   │   ├── HomePage.tsx
 │   │   ├── AboutPage.tsx
 │   │   └── NotFoundPage.tsx
-│   ├── utils/               # Helper functions
-│   │   └── baseUrl.ts       # Moses subpath handling
+│   ├── styles/
+│   │   └── theme.css        # Design tokens (dark default + light override)
+│   ├── utils/
+│   │   └── baseUrl.ts       # Moses subpath handling (getBasePath)
 │   ├── App.tsx              # Route configuration
-│   ├── App.css              # Global styles + design tokens
-│   ├── main.tsx             # React entry point
+│   ├── App.css              # Global element styles + utilities
+│   ├── main.tsx             # React entry point (router basename, logger)
+│   ├── moses-browser-logger.ts  # Vendored browser-log reporter (do not edit)
 │   └── vite-env.d.ts        # Vite type definitions
 ├── public/
 │   └── favicon.svg          # Moses branding icon
 ├── helm/                    # Kubernetes deployment
-│   ├── Chart.yaml           # Helm chart metadata
-│   ├── values.yaml          # Deployment configuration
-│   └── templates/           # Kubernetes resources
-│       ├── deployment.yaml
-│       ├── service.yaml
-│       └── _helpers.tpl
 ├── skills/                  # Agent documentation
-│   └── usage.md             # Customization guide
+│   ├── usage.md             # Customization guide
+│   └── secrets-tutorial.md  # Declaring runtime secrets
+├── .template-clean/         # Clean twins used by clean_out_template.sh
+├── clean_out_template.sh    # One-shot demo cleanout (self-deleting)
 ├── Dockerfile               # Multi-stage build
-├── nginx.conf               # Production web server
-├── vite.config.ts           # Build configuration
+├── nginx.conf               # Production web server (template, rendered by entrypoint.sh)
+├── entrypoint.sh            # Renders nginx.conf + base-path meta at start
+├── vite.config.ts           # Build configuration (React Compiler enabled)
 ├── tsconfig.json            # TypeScript configuration
 ├── package.json             # Dependencies
 ├── moses-app.config.json    # Moses platform metadata
@@ -262,13 +294,20 @@ frontend-template/
 
 ### API Integration
 
-```typescript
-// src/services/api.ts
-const API_BASE = import.meta.env.VITE_API_URL || '/api'
+Server state goes through the TanStack Query layer that ships in `src/api/`
+(typed client + hooks + query-key factory) — never `fetch()` from a component.
+Paths MUST be relative (`'api/v1/...'`, never `'/api/...'`): the app lives at
+a subpath and an absolute path escapes its mount:
 
-export async function fetchData() {
-  const response = await fetch(`${API_BASE}/data`)
-  return response.json()
+```typescript
+// src/api/client.ts — add a typed read
+export interface Thing { id: string; name: string }
+export const getThings = (signal?: AbortSignal) =>
+  fetchAPI<Thing[]>('api/v1/things', signal) // relative path, no leading '/'
+
+// src/api/hooks.ts — expose it as a hook
+export function useThings() {
+  return useQuery({ queryKey: queryKeys.things, queryFn: ({ signal }) => getThings(signal) })
 }
 ```
 

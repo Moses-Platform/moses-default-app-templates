@@ -83,6 +83,18 @@ spec:
             - name: data
               mountPath: /var/lib/postgresql/data
       volumes:
+        # ⚠️ EPHEMERAL STORAGE: emptyDir lives and dies with the pod — a
+        # reschedule, node drain, eviction, or `kubectl delete pod` WIPES
+        # the database. Acceptable only for demo/dev data. To persist, add
+        # a PersistentVolumeClaim and reference it here instead:
+        #
+        #   volumes:
+        #     - name: data
+        #       persistentVolumeClaim:
+        #         claimName: {{ include "agent-deployed-app.fullname" . }}-postgresql
+        #
+        # plus a PVC manifest (accessModes: [ReadWriteOnce], e.g. 1Gi) in
+        # this templates/ directory.
         - name: data
           emptyDir: {}
 ---

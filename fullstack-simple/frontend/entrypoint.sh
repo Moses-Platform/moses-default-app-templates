@@ -121,13 +121,11 @@ if [ -n "$MOSES_BASE_PATH_PREFIX" ]; then
     proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto \$scheme;
 
-    # CHAT-pxeo.12: X-Moses-Tenant-ID is audit-only / caller-context.
-    # Backend reads MOSES_TENANT_ID from env for storage keys; the
-    # forwarded header drives the backend's 403 cross-check on writes.
-    proxy_pass_header X-Moses-Tenant-ID;
-    proxy_pass_header X-Moses-User-ID;
-    proxy_pass_header X-Moses-Chart-ID;
-    proxy_pass_header X-Moses-Request-ID;
+    # CHAT-pxeo.12: the X-Moses-* REQUEST headers are forwarded by nginx's
+    # default proxy behaviour — no directive needed (proxy_pass_header
+    # would be a no-op: it controls upstream RESPONSE headers). Backend
+    # reads MOSES_TENANT_ID from env for storage keys; the forwarded
+    # header only drives the backend's 403 cross-check on writes.
   }
   location ^~ ${MOSES_BASE_PATH_PREFIX}/ {
     absolute_redirect off;

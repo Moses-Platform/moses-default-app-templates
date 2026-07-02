@@ -7,6 +7,10 @@ priority: optional
 
 # Fullstack Chat Roundtrip — Architecture
 
+> **Starting a real app on this template?** Run `./clean_out_template.sh`
+> first and read `skills/usage.md` — it has the KEEP/REPLACE/DELETE map and
+> the full env-var contract (MOSES_*, DB_*, PORT).
+
 A reference template that exercises every chat surface in the app↔Moses-Manager round-trip. Use this when designing apps that:
 
 - Fire button-driven `chat_prompt` platform actions to Moses Manager.
@@ -148,9 +152,15 @@ that is described in `app-invoked-profiles.md`.
 ```
 Frontend                 Moses backend                MM AI runtime              This app's backend
 ────────                 ─────────────                ─────────────              ──────────────────
-[click "Generate"] ───►  POST /apps/fullstack-chat/
+[click "Generate"]
+  │ iframe SDK: window.moses.actions.invoke
+  │ POST <base-path>/__moses/invoke  (same-origin; access_token cookie
+  ▼                                   + X-Requested-With: moses-iframe)
+This app's backend mosesproxy
+  │ pod-to-pod, user JWT lifted into Bearer
+  └───────────────────►  POST /api/v1/apps/fullstack-chat/
                          actions/generate-entry/invoke
-                         (user JWT, body: {variables: {topic}})
+                         (body: {variables: {topic}, chartId})
                                   │
                                   ▼
                          dispatchChatPrompt:
@@ -201,14 +211,14 @@ Frontend                 Moses backend                MM AI runtime             
 | Webhook target | `chatPrompt.completionWebhook.url` (in-cluster service URL only) |
 | App-data exposure | `appData.enabled: true`, default `manager.access: read`, `agent.access: read` |
 | Workspace-tool registration | `apiEndpoints.specPath: /api/openapi.json` (auto-discovered) |
-| MM call-back endpoint | `backend/internal/handler/entries.go` (POST /api/v1/entries) |
-| Webhook receiver | `backend/internal/handler/webhook_chat.go` (HMAC + 5-min skew window) |
-| Frontend invoke | `frontend/src/App.tsx` `invokeChatPrompt` (uses `VITE_MOSES_API_BASE`) |
-| Frontend listener | `frontend/src/App.tsx` `onMessage` (origin-checked postMessage) |
+| MM call-back endpoint | `backend/internal/handler/entries.go` (POST /api/v1/entries; demo — removed by clean_out_template.sh) |
+| Webhook receiver | `backend/internal/handler/webhook_chat.go` (HMAC dual-slot + 5-min skew + nonce replay window + appSlug claim; persistence via the injected `CompletionSink`) |
+| Frontend invoke | `frontend/src/moses/invoke.ts` `invokeAction` → iframe SDK `window.moses.actions.invoke` → POST `/__moses/invoke` on this app's own backend (mosesproxy forwards to `MOSES_INTERNAL_API_BASE`) |
+| Frontend listener | `frontend/src/moses/hostMessages.ts` `useMosesChatComplete` (origin-checked postMessage) + `announceOpenChat` (open-chat announce to the host shell) |
 
 ## Key constraints
 
-1. **Relative vs absolute paths.** Calls to THIS app's backend use relative paths (`fetch('api/v1/entries')`); calls to MOSES backend use absolute prefixed by `VITE_MOSES_API_BASE` (`${VITE_MOSES_API_BASE}/apps/.../invoke`). Confusing them produces 404s in production.
+1. **All browser calls are relative / same-origin.** Calls to THIS app's backend use relative paths (`fetch('api/v1/entries')`) through the app's nginx. Calls to MOSES platform actions go through the iframe SDK (`src/moses/invoke.ts`), which POSTs same-origin to `/__moses/invoke`; the app's backend proxy — not the browser — talks to moses-backend (CHAT-pswm.8/.9). The iframe never fetches moses-backend directly, and there is no `VITE_MOSES_API_BASE` involved in the roundtrip.
 
 2. **postMessage origin check.** Always compare `e.origin === window.location.origin`. The host iframe shell deploys apps under a Moses subpath, so iframe and host are same-origin. Cross-origin custom-domain apps need an origin allowlist (future work).
 

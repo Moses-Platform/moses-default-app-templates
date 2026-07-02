@@ -21,7 +21,7 @@ owns the inject link, and your handlers do the read.
     "roles": ["oidc-admin", "oidc-member"],
     "oidc": {
       "mode": "moses-oidc",
-      "protectedPaths": ["/api/v1/me", "/api/v1/entries", "/api/v1/admin-area"],
+      "protectedPaths": ["/api/v1/me", "/api/v1/entries", "/api/v1/shared-notes", "/api/v1/admin-area"],
       "publicPaths": ["/api/v1/public-info", "/health", "/api/openapi.json"]
     }
   }
@@ -120,25 +120,53 @@ the backend — see `frontend/nginx.conf` + `frontend/entrypoint.sh`.
 
 ## Config knobs
 
-`ConfigFromEnv()` reads: `MOSES_OIDC_ISSUER`,
-`MOSES_OIDC_INTERNAL_ISSUER`, `MOSES_OIDC_CLIENT_ID`,
-`MOSES_OIDC_CLIENT_SECRET`, `MOSES_OIDC_AUDIENCE`,
-`MOSES_OIDC_PROTECTED_PATHS`, `MOSES_OIDC_PUBLIC_PATHS`,
-`MOSES_BASE_PATH`, `MOSES_OIDC_COOKIE_SECRET`,
-`MOSES_OIDC_INSECURE_COOKIE`, `MOSES_PUBLIC_URL`, `MOSES_PUBLIC_URLS`.
-`MOSES_PUBLIC_URLS` is the comma-separated set of every external origin
-the app is reachable at; the middleware builds redirect_uri on the one
-whose host matches the request (falls back to `MOSES_PUBLIC_URL`, then
-the request host).
+`ConfigFromEnv()` reads (source: `oidcauth/config.go`, `interapp.go`):
+
+| Env var | Purpose |
+|---------|---------|
+| `MOSES_OIDC_ISSUER` | external issuer URL — browser redirects + `iss` validation |
+| `MOSES_OIDC_INTERNAL_ISSUER` | in-cluster issuer — JWKS fetch + token exchange |
+| `MOSES_OIDC_CLIENT_ID` | confidential client id |
+| `MOSES_OIDC_CLIENT_SECRET` | confidential client secret |
+| `MOSES_OIDC_AUDIENCE` | expected `aud` (empty ⇒ client id) |
+| `MOSES_OIDC_PROTECTED_PATHS` | gated path prefixes (empty ⇒ protect everything not public) |
+| `MOSES_OIDC_PUBLIC_PATHS` | always-public path prefixes |
+| `MOSES_BASE_PATH` | deploy sub-path; /auth/* routes + cookies derive from it |
+| `MOSES_OIDC_COOKIE_SECRET` | session-cookie HMAC key (unset ⇒ process-local; sessions die on pod restart) |
+| `MOSES_OIDC_INSECURE_COOKIE` | `1` drops the cookie `Secure` flag — plain-HTTP local dev ONLY |
+| `MOSES_GATEWAY_AUTH_SECRET` | **arms the X-Moses-\* header-trust path.** The platform proxy sends the matching `X-Moses-Gateway-Auth` header; unset ⇒ header trust DISABLED entirely (pod-to-pod calls fall through to OIDC and 401). |
+| `MOSES_PUBLIC_URL` | external origin used for `redirect_uri` when the gateway strips the Host port |
+| `MOSES_PUBLIC_URLS` | comma-separated allowlist of EVERY external origin; the one matching the request host wins (multi-home) |
+| `MOSES_INTERAPP_SECRET` | per-tenant HS256 key for inter-app trust tokens; unset ⇒ inter-app path disabled |
+| `MOSES_APP_SLUG` | this app's slug — stamped as `iss` when minting and required as `aud` when verifying inter-app tokens |
+| `MOSES_TENANT_ID` | deploy-pinned tenant id (also read by `internal/config` for data scoping) |
+| `MOSES_DEPLOYED` | `1` on platform-deployed pods — makes a missing `MOSES_TENANT_ID` fail startup (`internal/config.Validate`) |
 
 - **Pass-through mode**: when issuer/client/secret are absent,
-  `Config.Enabled()` is false. Public routes + the header-trust path
-  still work; browser requests are NOT redirected. A misconfigured
-  deploy degrades visibly instead of hard-500ing.
-- **`protectedPaths` empty** ⇒ deny-by-default (everything not public
-  is protected). Non-empty ⇒ only the listed prefixes are gated.
-- **`MOSES_OIDC_INSECURE_COOKIE=1`** drops the cookie `Secure` flag —
-  local plain-HTTP dev ONLY, never on a real deploy.
+  `Config.Enabled()` is false. Public routes + the (marker-gated)
+  header-trust path still work; browser requests are NOT redirected. A
+  misconfigured deploy degrades visibly instead of hard-500ing.
+
+### ⚠️ Session lifetime = ID-token `exp` (the 5-minute cliff)
+
+`sessionFromClaims` (middleware.go) caps the BFF session at the SOONER
+of the token `exp` and 8 h. Keycloak's default Access Token Lifespan is
+~5 minutes and the ID token shares it — so with an untuned realm the
+session expires ~5 min after login: protected XHRs 401, and the SPA's
+silent-SSO probe runs only ONCE per anonymous result (`silentTried` in
+`useAuth`), so nothing re-authenticates automatically. Remedies, in
+order of preference:
+
+1. Raise the Keycloak realm/client **Access Token Lifespan** for this
+   client (hours are reasonable for a BFF — the browser never holds the
+   token).
+2. On a 401 from a protected call, invoke `useAuth().refresh()` — it
+   resets the one-shot guard and re-runs the silent (`prompt=none`)
+   probe; while the Moses SSO session is alive this re-establishes the
+   app session with no visible login.
+
+Do NOT bolt an automatic retry loop into the middleware; keep recovery
+an explicit, observable step.
 
 ## Silent SSO (the embedded-iframe case)
 
@@ -170,8 +198,13 @@ post-login redirect back from Keycloak. See the doc comment on
   `/apps/<tenant>/<slug>/` on the platform host); cross-app isolation on
   a shared host is by a per-app cookie name, not by Path.
 - PKCE `S256` always; `plain` never offered.
-- `state` CSRF nonce verified constant-time on callback.
-- Session expiry is capped to the sooner of the token `exp` and 8h.
+- `state` CSRF value verified constant-time on callback.
+- OIDC `nonce` sent on every authorization request, carried in the HMAC
+  state cookie, and verified against the ID token's `nonce` claim at the
+  callback (missing claim = rejection) — replay binding per OIDC Core
+  3.1.3.7.
+- Session expiry is capped to the sooner of the token `exp` and 8h (see
+  the session-lifetime warning above).
 
 ## Tests
 

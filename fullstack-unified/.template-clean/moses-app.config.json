@@ -1,0 +1,66 @@
+{
+  "name": "fullstack-unified-instance",
+  "version": "1.0.0",
+  "displayName": "My App",
+  "description": "UPDATE THIS — describe what your app does. This text appears in the Moses app registry.",
+  "appType": "hybrid",
+  "entrypoint": "index.html",
+  "templateApiVersion": "moses-manager.eu/v1",
+  "embedding": {
+    "framing": "moses-only"
+  },
+  "skills": [
+    "skills/usage.md",
+    "skills/secrets-tutorial.md"
+  ],
+  "displayLocations": ["apps"],
+  "permissions": [],
+  "platformActions": [],
+  "apiEndpoints": {
+    "basePath": "/api/v1",
+    "healthPath": "/health",
+    "specPath": "/api/openapi.json"
+  },
+  "autoRegisterTool": true,
+  "helm": {
+    "chartPath": "helm"
+  },
+  "docker": {
+    "files": [
+      {
+        "name": "app",
+        "dockerfile": "Dockerfile",
+        "context": "."
+      }
+    ]
+  },
+  "services": {
+    "app": {
+      "port": 8080,
+      "healthCheck": { "enabled": true, "path": "/health" },
+      "ingress": { "enabled": true },
+      "resources": {
+        "cpu": { "request": "100m", "limit": "200m" },
+        "memory": { "request": "128Mi", "limit": "256Mi" }
+      }
+    }
+  },
+  "validation": {
+    "enabled": true,
+    "commands": [
+      { "name": "go-vet", "run": "go vet ./...", "required": true },
+      { "name": "go-test", "run": "go test ./...", "required": true }
+    ]
+  },
+  "maintenance": {
+    "renovate": {
+      "schedule": "0 4 * * 1",
+      "context": "Unified Go binary serving static frontend + API. Frontend is embedded at build time. Update both Go modules and any frontend dependencies in the embedded assets."
+    },
+    "logMonitor": {
+      "lookbackMinutes": 15,
+      "minErrorCount": 5,
+      "context": "Single Go binary serving frontend files and API endpoints. Common errors: static file serving 404s, API handler panics, and port binding failures."
+    }
+  }
+}

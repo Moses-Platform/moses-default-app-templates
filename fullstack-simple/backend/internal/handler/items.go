@@ -1,17 +1,18 @@
 package handler
 
 import (
-	"crypto/rand"
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/moses-platform/fullstack-simple/internal/config"
 )
+
+// DEMO FILE — deleted by clean_out_template.sh. The tenant-contract helpers
+// it uses (strictTenantCheckEnabled / enforceTenantMatch / generateUUID)
+// live in tenant.go, which survives the clean-out.
 
 // Item represents a simple data entry scoped to a tenant.
 type Item struct {
@@ -63,36 +64,7 @@ func (h *ItemsHandler) HandleWithID(w http.ResponseWriter, r *http.Request) {
 // CHAT-pxeo.12: in-memory store has no persistent state across restarts,
 // but the storage key contract is the same as the persistent templates:
 // reads/writes use config.SelfTenantID(); the X-Moses-Tenant-ID header
-// is caller-context only.
-
-// strictTenantCheckEnabled gates the 403 cross-check. Default true.
-func strictTenantCheckEnabled() bool {
-	v := strings.TrimSpace(os.Getenv("MOSES_STRICT_TENANT_CHECK"))
-	if v == "" {
-		return true
-	}
-	switch strings.ToLower(v) {
-	case "0", "false", "no", "off":
-		return false
-	}
-	return true
-}
-
-// enforceTenantMatch returns true when it has written a 403 response. Caller
-// MUST stop processing on a true return. Body intentionally omits UUIDs.
-func enforceTenantMatch(w http.ResponseWriter, r *http.Request) bool {
-	if !strictTenantCheckEnabled() {
-		return false
-	}
-	caller := strings.TrimSpace(r.Header.Get("X-Moses-Tenant-ID"))
-	if caller == "" || caller == config.SelfTenantID() {
-		return false
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusForbidden)
-	_, _ = w.Write([]byte(`{"error":"tenant_mismatch","code":"E_TENANT_MISMATCH"}`))
-	return true
-}
+// is caller-context only (see tenant.go).
 
 func (h *ItemsHandler) list(w http.ResponseWriter, r *http.Request) {
 	if enforceTenantMatch(w, r) {
@@ -185,13 +157,4 @@ func (h *ItemsHandler) delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// generateUUID creates a random UUID v4 without external dependencies.
-func generateUUID() string {
-	b := make([]byte, 16)
-	rand.Read(b)
-	b[6] = (b[6] & 0x0f) | 0x40 // version 4
-	b[8] = (b[8] & 0x3f) | 0x80 // variant 2
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }

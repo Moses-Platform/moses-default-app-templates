@@ -79,7 +79,6 @@
   "maintenance": {
     "renovate": {
       "schedule": "0 4 * * 1",
-      "configPath": "renovate.json",
       "context": "React+Vite frontend. Group React ecosystem updates. Watch for Vite major version changes that may break the build pipeline."
     },
     "logMonitor": {

@@ -213,6 +213,11 @@ type Claims struct {
 	Expiry      int64    `json:"exp"`
 	IssuedAt    int64    `json:"iat"`
 
+	// Nonce echoes the `nonce` the RP sent on the authorization request
+	// (OIDC Core 3.1.3.7 rule 11). Verified against the value stored in
+	// the handshake state cookie — replay protection for the ID token.
+	Nonce string `json:"nonce"`
+
 	// ResourceAccess carries `resource_access.<client>.roles` — the
 	// Keycloak client-role projection used for in-app authorization.
 	ResourceAccess map[string]struct {
@@ -281,8 +286,12 @@ func (a audSlice) contains(v string) bool {
 type verifyOptions struct {
 	expectedIssuer   string
 	expectedAudience string
-	now              func() time.Time
-	leeway           time.Duration
+	// expectedNonce, when non-empty, requires the token's `nonce` claim
+	// to be present and equal it (constant-time). Empty skips the check
+	// (a flow that sent no nonce).
+	expectedNonce string
+	now           func() time.Time
+	leeway        time.Duration
 }
 
 // verifyToken parses a compact JWS, verifies the RSA signature against
@@ -394,6 +403,19 @@ func validateClaims(claims *Claims, opts verifyOptions) error {
 
 	if opts.expectedAudience != "" && !claims.Audience.contains(opts.expectedAudience) {
 		return fmt.Errorf("oidcauth: audience mismatch: token aud %v lacks %q", []string(claims.Audience), opts.expectedAudience)
+	}
+
+	// OIDC Core 3.1.3.7 rule 11: when a nonce was sent on the
+	// authorization request, the ID token MUST carry it back verbatim. A
+	// missing claim is as fatal as a mismatch — an IdP that drops the
+	// nonce provides no replay binding.
+	if opts.expectedNonce != "" {
+		if claims.Nonce == "" {
+			return errors.New("oidcauth: token has no `nonce` claim but one was sent on the authorization request")
+		}
+		if subtle.ConstantTimeCompare([]byte(claims.Nonce), []byte(opts.expectedNonce)) != 1 {
+			return errors.New("oidcauth: token `nonce` does not match the authorization request nonce")
+		}
 	}
 
 	if claims.Expiry == 0 {

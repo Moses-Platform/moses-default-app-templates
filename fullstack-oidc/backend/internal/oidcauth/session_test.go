@@ -168,6 +168,7 @@ func TestStateCookieRoundTrip(t *testing.T) {
 		CodeVerifier: "verifier-xyz",
 		ReturnTo:     "/apps/t/s/dashboard",
 		Prompt:       "none",
+		Nonce:        "oidc-nonce-abc",
 	}
 	rec := httptest.NewRecorder()
 	if err := setStateCookie(rec, cfg, hs); err != nil {
@@ -186,6 +187,9 @@ func TestStateCookieRoundTrip(t *testing.T) {
 	}
 	if got.State != "state-nonce" || got.CodeVerifier != "verifier-xyz" || got.Prompt != "none" {
 		t.Errorf("state round-trip mismatch: %+v", got)
+	}
+	if got.Nonce != "oidc-nonce-abc" {
+		t.Errorf("state cookie must carry the OIDC nonce, got %q", got.Nonce)
 	}
 }
 

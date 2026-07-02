@@ -45,14 +45,16 @@ func main() {
 
 	mux := buildMux(basePath)
 
-	// CORS middleware
 	var h http.Handler = mux
 	// RejectCrossSiteCSRF blocks cross-site state-changing requests (the app
 	// must not rely on the platform edge alone — the access_token cookie is
 	// SameSite=None). Kept inside CORS so blocked requests still get CORS
-	// headers and so OPTIONS preflight is handled by the outer layer.
+	// headers (when an allowlist is configured) and so OPTIONS preflight is
+	// handled by the outer layer.
 	h = middleware.RejectCrossSiteCSRF(h)
-	h = corsMiddleware(h)
+	// CORS is OFF by default (same-origin deployment model); opt in via the
+	// CORS_ALLOWED_ORIGINS env — see internal/middleware/cors.go.
+	h = middleware.CORS(h)
 
 	srv := &http.Server{
 		Addr:         ":" + port,
@@ -117,33 +119,9 @@ func buildMux(basePath string) *http.ServeMux {
 		mux.HandleFunc(basePath+"/api/openapi.json", handler.OpenAPI)
 	}
 
-	// API endpoints — registered ONCE under MOSES_BASE_PATH.
-	items := handler.NewItemsHandler()
-	mux.HandleFunc(basePath+"/api/v1/status", handler.Status)
-	// CRUD example — in-memory items scoped by tenant.
-	// For database-backed CRUD patterns, see the fullstack-showcase template.
-	mux.HandleFunc(basePath+"/api/v1/items", items.Handle)
-	mux.HandleFunc(basePath+"/api/v1/items/", items.HandleWithID)
+	// API endpoints — registered ONCE under MOSES_BASE_PATH, concentrated in
+	// demo_routes.go so clean_out_template.sh can swap in an empty stub.
+	registerDemoRoutes(mux, basePath)
 
 	return mux
-}
-
-// SECURITY WARNING: This template uses permissive CORS (Allow-Origin: "*") for
-// development convenience. For production deployments, restrict this to your actual
-// domain(s). Example:
-//
-//	w.Header().Set("Access-Control-Allow-Origin", "https://yourdomain.com")
-//
-// See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
