@@ -1,0 +1,29 @@
+# Go build artifacts — anchored to the repo root so they only match the
+# compiled binary, NOT a `server/` source directory or a `server.go` file.
+/server
+/fullstack-unified
+*.exe
+*.test
+*.out
+
+# Dependencies
+vendor/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

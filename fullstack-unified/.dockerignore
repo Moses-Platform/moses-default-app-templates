@@ -1,0 +1,21 @@
+# NOTE: static/ and api/ must NOT be ignored — static/ is served content
+# compiled into the image and api/openapi.json is the embedded spec.
+node_modules/
+helm/
+.git/
+.gitignore
+*.md
+!README.md
+vendor/
+*.exe
+*.out
+*.test
+.env*
+# Locally-built binaries (a stale ~48MB binary must not be copied into the
+# build context / trigger COPY-layer invalidation).
+fullstack-unified
+server
+.vscode/
+.idea/
+*.swp
+*.swo

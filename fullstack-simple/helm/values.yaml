@@ -1,0 +1,96 @@
+moses:
+  namespace: ""
+  tenantId: ""
+  executionId: ""
+  chartId: ""
+  appSlug: ""
+  # CHAT-pbup: Moses-aware template values. See ../README.md / DEPRECATIONS.md.
+  basePath: "/"
+  embedding:
+    framing: ""           # empty -> appType default (hybrid: moses-only)
+    allowedAncestors: []
+    reportUri: ""
+
+# Image references (v2 format — used by deployment template)
+# These are overridden by Moses during deployment via --set images.{name}.repository=...
+images:
+  frontend:
+    repository: "fullstack-simple-frontend"
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  backend:
+    repository: "fullstack-simple-backend"
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+# CHAT-pxeo.12 — RollingUpdate race window note:
+# This template is in-memory only; tenant migration is moot here (state
+# is wiped on every restart). The RollingUpdate strategy is documented
+# anyway for symmetry with the persistent templates: during a rollout
+# the OLD pod keeps serving while the NEW pod boots. Concurrent writes
+# during cutover land on whichever pod the load balancer hits — and
+# vanish from the old pod when the rollout completes.
+services:
+  - name: frontend
+    image:
+      repository: "fullstack-simple-frontend"
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    port: 8080
+    replicas: 1
+    resources:
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+    healthCheck:
+      enabled: true
+      path: /health
+    ingress: true
+
+  - name: backend
+    image:
+      repository: "fullstack-simple-backend"
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    port: 8080
+    replicas: 1
+    resources:
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+    healthCheck:
+      enabled: true
+      path: /health
+
+globalEnv:
+  # CHAT-pbup: BASE_URL deprecated alias, MOSES_BASE_PATH canonical.
+  BASE_URL: ""
+  MOSES_BASE_PATH: ""
+  NODE_ENV: "production"
+  # Embedding policy envs rendered into nginx CSP at startup.
+  MOSES_EMBEDDING_FRAMING: ""
+  MOSES_EMBEDDING_ALLOWED_ANCESTORS: ""
+  MOSES_EMBEDDING_REPORT_URI: ""
+
+# Optional Valkey (Redis-compatible) sidecar — set enabled: true to include an instance.
+# REDIS_ADDR is auto-injected into all service containers using the fullname helper.
+# Agents should NEVER hardcode service names — they are dynamic.
+redis:
+  enabled: false
+  image:
+    repository: "valkey/valkey"
+    tag: "8-alpine"
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: "100m"
+      memory: "128Mi"
+    requests:
+      cpu: "50m"
+      memory: "64Mi"

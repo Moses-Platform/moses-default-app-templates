@@ -1,0 +1,53 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Moses Fullstack OIDC App API",
+    "version": "1.0.0",
+    "description": "OIDC relying-party app (BFF pattern) built on the vendored oidcauth middleware. Add one entry under `paths` for every route you register (paths are relative to the servers[] /api/v1 prefix) — the Moses platform reads this spec to generate workspace tools."
+  },
+  "servers": [
+    { "url": "/api/v1" }
+  ],
+  "paths": {
+    "/me": {
+      "get": {
+        "operationId": "getMe",
+        "summary": "Return the authenticated identity",
+        "description": "Protected route (OIDC plumbing — keep it). Returns the principal resolved by the OIDCAuth middleware — either from a validated session cookie or from trusted X-Moses-* pod-to-pod headers. Includes the roles projected from resource_access.<client>.roles; role-based authorization decisions are made server-side by the handlers that need them.",
+        "responses": {
+          "200": {
+            "description": "The authenticated identity",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Identity" }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (no session, no trusted headers)"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Identity": {
+        "type": "object",
+        "properties": {
+          "authenticated": { "type": "boolean" },
+          "source": { "type": "string", "enum": ["session", "moses-headers", "interapp", ""] },
+          "subject": { "type": "string" },
+          "email": { "type": "string" },
+          "name": { "type": "string" },
+          "username": { "type": "string" },
+          "roles": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "resource_access.<client>.roles projected by Moses onto the ID token."
+          }
+        }
+      }
+    }
+  }
+}

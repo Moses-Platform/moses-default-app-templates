@@ -1,0 +1,98 @@
+{{- if .Values.postgresql }}
+{{- if .Values.postgresql.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "agent-deployed-app.fullname" . }}-postgresql
+  labels:
+    {{- include "agent-deployed-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+type: Opaque
+data:
+  postgresql-password: {{ .Values.postgresql.auth.password | b64enc | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent-deployed-app.fullname" . }}-postgresql
+  labels:
+    {{- include "agent-deployed-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "agent-deployed-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgresql
+  template:
+    metadata:
+      labels:
+        {{- include "agent-deployed-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgresql
+    spec:
+      containers:
+        - name: postgresql
+          image: "{{ .Values.postgresql.image.repository | default "postgres" }}:{{ .Values.postgresql.image.tag | default "16-alpine" }}"
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.postgresql.auth.username | default "app" | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agent-deployed-app.fullname" . }}-postgresql
+                  key: postgresql-password
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.auth.database | default "appdb" | quote }}
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - {{ .Values.postgresql.auth.username | default "app" | quote }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - {{ .Values.postgresql.auth.username | default "app" | quote }}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.postgresql.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          # EPHEMERAL DATA: emptyDir lives and dies with the pod — every
+          # postgres pod restart/reschedule wipes the demo feed. That is
+          # fine for this roundtrip smoke-test template; switch to a
+          # PersistentVolumeClaim before storing anything you want to keep.
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agent-deployed-app.fullname" . }}-postgresql
+  labels:
+    {{- include "agent-deployed-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  selector:
+    {{- include "agent-deployed-app.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+  ports:
+    - port: 5432
+      targetPort: 5432
+{{- end }}
+{{- end }}

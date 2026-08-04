@@ -1,0 +1,29 @@
+go 1.26.4
+
+// Go workspace for the moses-default-app-templates monorepo.
+//
+// This workspace exists purely for repo-wide developer convenience:
+// with every Go module listed, `go build ./...` / `go vet ./...` work
+// from any directory in the repo without cd-ing into each module.
+//
+// It is NOT a dependency mechanism. Templates do not import the
+// shared/ modules — they VENDOR shared packages (mosesproxy-go,
+// csrf-go) by copying the files into their own module tree
+// (e.g. fullstack-chat/backend/internal/mosesproxy/), so every
+// template compiles standalone with `GOWORK=off go build ./...`
+// and after `moses_init_repo` clones it out of this monorepo.
+// Drift between shared/ and the vendored copies is caught by the
+// tools/check-vendored-*.sh CI gates.
+//
+// Adding a new Go module under this repo? Add it here as well.
+
+use (
+	./backend-template
+	./fullstack-chat/backend
+	./fullstack-oidc/backend
+	./fullstack-showcase/backend
+	./fullstack-simple/backend
+	./fullstack-unified
+	./shared/csrf-go
+	./shared/mosesproxy-go
+)

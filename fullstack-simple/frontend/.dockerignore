@@ -1,0 +1,12 @@
+node_modules/
+.git/
+*.md
+!README.md
+.env*
+dist/
+.vscode/
+.idea/
+
+# Template clean-out machinery — must never reach images.
+.template-clean/
+clean_out_template.sh

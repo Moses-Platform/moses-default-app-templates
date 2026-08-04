@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- CHAT-pbup: BASE_PATH placeholder rewritten by entrypoint.sh -->
+    <meta name="moses-base-path" content="__MOSES_BASE_PATH__" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Moses App</title>
+
+    <!-- No CDN webfonts: deployed apps must be self-contained (CSP/offline).
+         theme.css font stacks lead with system fonts. -->
+
+    <!-- No-flash theme init: set data-theme before first paint. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('moses-theme');
+          if (t !== 'light' && t !== 'dark') {
+            t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          }
+          document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

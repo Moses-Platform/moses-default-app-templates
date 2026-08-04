@@ -1,0 +1,25 @@
+# Helm charts
+helm/
+
+# Documentation
+*.md
+
+# Git
+.git/
+.gitignore
+
+# Dependencies
+vendor/
+
+# Build artifacts
+*.exe
+*.out
+*.test
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# One-shot demo cleanout machinery (ships in the repo, never in images)

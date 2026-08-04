@@ -1,0 +1,19 @@
+name: Vendored base-path drift check
+on:
+  pull_request:
+    paths:
+      - 'shared/base-path/**'
+      - '**/src/utils/baseUrl.ts'
+      - 'tools/check-vendored-base-path.sh'
+  push:
+    branches: [main]
+    paths:
+      - 'shared/base-path/**'
+      - '**/src/utils/baseUrl.ts'
+      - 'tools/check-vendored-base-path.sh'
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./tools/check-vendored-base-path.sh

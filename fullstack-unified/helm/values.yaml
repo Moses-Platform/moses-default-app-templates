@@ -1,0 +1,55 @@
+moses:
+  namespace: ""
+  tenantId: ""
+  executionId: ""
+  chartId: ""
+  appSlug: ""
+  # CHAT-pbup: Moses-aware template values. See ../README.md / DEPRECATIONS.md.
+  basePath: "/"
+  embedding:
+    framing: ""           # empty -> appType default (hybrid: moses-only)
+    allowedAncestors: []
+    reportUri: ""
+
+# Image references (v2 format — used by deployment template)
+# These are overridden by Moses during deployment via --set images.{name}.repository=...
+images:
+  app:
+    repository: "fullstack-unified-app"
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+# CHAT-pxeo.12 — RollingUpdate race window note:
+# fullstack-unified has no persistent storage today, so the rollout
+# race window described in the persistent templates does not produce
+# orphaned rows here. The note is kept for symmetry: if you add a
+# database, MUST follow the chat/showcase pattern (idempotent tenant
+# rewrite at startup BEFORE listener; document the race window here).
+services:
+  - name: app
+    image:
+      repository: "fullstack-unified-app"
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    port: 8080
+    replicas: 1
+    resources:
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+    healthCheck:
+      enabled: true
+      path: /health
+    ingress: true
+
+globalEnv:
+  # CHAT-pbup: BASE_URL deprecated alias, MOSES_BASE_PATH canonical.
+  BASE_URL: ""
+  MOSES_BASE_PATH: ""
+  # Embedding policy envs read by the Go runtime to render CSP frame-ancestors.
+  MOSES_EMBEDDING_FRAMING: ""
+  MOSES_EMBEDDING_ALLOWED_ANCESTORS: ""
+  MOSES_EMBEDDING_REPORT_URI: ""

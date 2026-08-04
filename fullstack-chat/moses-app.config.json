@@ -1,0 +1,128 @@
+{
+  "name": "fullstack-chat-instance",
+  "version": "1.0.0",
+  "displayName": "Moses Chat App",
+  "description": "Full-stack Moses app scaffold with the iframe-SDK round-trip wired: platform SDK in the iframe, /__moses/invoke proxy in the backend, and an HMAC-verified completion webhook receiver. Declare a chat_prompt action in platformActions to activate it — see moses-app.config.with-secrets.example.json.",
+  "appType": "hybrid",
+  "entrypoint": "index.html",
+  "templateApiVersion": "moses-manager.eu/v1",
+  "embedding": {
+    "framing": "moses-only"
+  },
+  "skills": [
+    "skills/usage.md",
+    "skills/chat-roundtrip-overview.md",
+    "skills/app-invoked-profiles.md",
+    "skills/secrets-tutorial.md"
+  ],
+  "displayLocations": [
+    "apps"
+  ],
+  "permissions": [],
+  "platformActions": [],
+  "apiEndpoints": {
+    "basePath": "/api/v1",
+    "healthPath": "/health",
+    "specPath": "/api/openapi.json"
+  },
+  "autoRegisterTool": true,
+  "appData": {
+    "enabled": true,
+    "retentionDays": 30,
+    "manager": {
+      "access": "read"
+    },
+    "agent": {
+      "access": "read"
+    }
+  },
+  "helm": {
+    "chartPath": "helm"
+  },
+  "docker": {
+    "files": [
+      {
+        "name": "frontend",
+        "dockerfile": "frontend/Dockerfile",
+        "context": "frontend"
+      },
+      {
+        "name": "backend",
+        "dockerfile": "backend/Dockerfile",
+        "context": "backend"
+      }
+    ]
+  },
+  "services": {
+    "frontend": {
+      "port": 8080,
+      "healthCheck": {
+        "enabled": true,
+        "path": "/health"
+      },
+      "ingress": {
+        "enabled": true
+      },
+      "resources": {
+        "cpu": {
+          "request": "50m",
+          "limit": "200m"
+        },
+        "memory": {
+          "request": "64Mi",
+          "limit": "256Mi"
+        }
+      }
+    },
+    "backend": {
+      "port": 8080,
+      "healthCheck": {
+        "enabled": true,
+        "path": "/health"
+      },
+      "resources": {
+        "cpu": {
+          "request": "50m",
+          "limit": "300m"
+        },
+        "memory": {
+          "request": "64Mi",
+          "limit": "256Mi"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "services": [
+      "postgresql"
+    ],
+    "bundledServices": [
+      "postgresql"
+    ]
+  },
+  "validation": {
+    "enabled": true,
+    "commands": [
+      {
+        "name": "frontend-lint",
+        "run": "cd frontend && npm install --include=dev --ignore-scripts && npm run lint",
+        "required": true
+      },
+      {
+        "name": "frontend-test",
+        "run": "cd frontend && NODE_ENV=test npm test",
+        "required": true
+      },
+      {
+        "name": "backend-vet",
+        "run": "cd backend && go vet ./...",
+        "required": true
+      },
+      {
+        "name": "backend-test",
+        "run": "cd backend && go test ./...",
+        "required": true
+      }
+    ]
+  }
+}

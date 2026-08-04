@@ -1,0 +1,168 @@
+moses:
+  namespace: ""
+  tenantId: ""
+  executionId: ""
+  chartId: ""
+  appSlug: ""
+  # CHAT-pbup: Moses-aware template values. See ../README.md / DEPRECATIONS.md.
+  basePath: "/"
+  embedding:
+    framing: ""           # empty -> appType default (hybrid: moses-only)
+    allowedAncestors: []
+    reportUri: ""
+  # CHAT-t5d1u.28.8 / .28.20 / .28.21 / .28.22: OIDC relying-party config.
+  #
+  # IMPORTANT — the seven MOSES_OIDC_* values (issuer, internalIssuer,
+  # clientId, clientSecret, audience, protectedPaths, publicPaths) are NOT
+  # chart values. The Moses platform (ticket 28.5 / 28.21-S2) registers a
+  # confidential Keycloak client for the app and delivers those values
+  # exactly one way: a Kubernetes Secret whose name it appends to
+  # `secrets.secretNames` (see the `secrets` block below). The chart
+  # mounts that Secret via `envFrom`, so MOSES_OIDC_ISSUER,
+  # MOSES_OIDC_INTERNAL_ISSUER, MOSES_OIDC_CLIENT_ID, MOSES_OIDC_AUDIENCE,
+  # MOSES_OIDC_CLIENT_SECRET, MOSES_OIDC_PROTECTED_PATHS and
+  # MOSES_OIDC_PUBLIC_PATHS reach the backend container as env vars.
+  #
+  # CHAT-t5d1u.28.21 (C1) / .28.22 (B1): the deployment template MUST NOT
+  # also emit those seven as explicit `env` entries — a Kubernetes explicit
+  # `env` overrides an `envFrom` value, so chart placeholders here would
+  # shadow the real Secret: empty issuer/clientId/etc. silently disable
+  # OIDC, and stale protectedPaths/publicPaths silently ignore the
+  # platform's per-app access.oidc path policy. The vestigial
+  # issuer/internalIssuer/clientId/clientSecret/audience/protectedPaths/
+  # publicPaths placeholder fields are therefore REMOVED from this block
+  # entirely.
+  #
+  # Only cookieSecret remains — it is genuinely chart-provided (NOT in the
+  # platform Secret) and the deployment template renders it into env
+  # (MOSES_OIDC_COOKIE_SECRET). The `oidc` key itself is kept so the
+  # `{{- if ... $.Values.moses.oidc }}` guard in the deployment template
+  # stays truthy and the cookie-secret env is emitted.
+  #
+  # Standalone `helm install` without the platform Secret leaves the
+  # MOSES_OIDC_* env vars (including PROTECTED_PATHS / PUBLIC_PATHS) empty;
+  # the vendored oidcauth middleware then runs in pass-through mode (public
+  # routes + the X-Moses-* header path still work, browser requests are NOT
+  # redirected).
+  oidc:
+    # cookieSecret keys the session cookie HMAC. Chart-provided (NOT in
+    # the platform Secret); the platform may inject a per-deploy random
+    # value via --set, empty => the chart's oidc Secret supplies a value
+    # that is stable across `helm upgrade` (see oidc-secret.yaml).
+    cookieSecret: ""
+
+# Platform-injected secrets / config maps.
+#
+# CHAT-t5d1u.28.20 (B2): the Moses platform delivers app secrets — including
+# the OIDC Secret described under moses.oidc above — by creating a Kubernetes
+# Secret and appending its name to the indexed list `secrets.secretNames`
+# (provisionPlatformAPISecretIntoValues / provisionAppOIDCIntoValues). The
+# deployment template mounts every entry as an `envFrom: secretRef`, so the
+# Secret's keys become container env vars.
+#
+# `secretName` (singular) and `configMapName` are retained for backward
+# compatibility — older injection paths and standalone overrides may use them.
+#
+# Standalone `helm install` (no platform injection) leaves secretNames empty;
+# the `envFrom` range then renders nothing and oidcauth pass-through mode
+# (the correct standalone behavior) applies.
+secrets:
+  secretName: ""        # legacy single-secret name (backward compatible)
+  secretNames: []       # platform-injected list of Secret names (mounted via envFrom)
+  configMapName: ""     # optional config map mounted via envFrom
+
+# Image references (v2 format — used by deployment template)
+# These are overridden by Moses during deployment via --set images.{name}.repository=...
+images:
+  frontend:
+    repository: "fullstack-oidc-frontend"
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  backend:
+    repository: "fullstack-oidc-backend"
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+services:
+  - name: frontend
+    image:
+      repository: "fullstack-oidc-frontend"
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    port: 8080
+    replicas: 1
+    resources:
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+    healthCheck:
+      enabled: true
+      path: /health
+    ingress: true
+
+  - name: backend
+    image:
+      repository: "fullstack-oidc-backend"
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    port: 8080
+    replicas: 1
+    # Keep in lockstep with moses-app.config.json services.backend.resources
+    # — the platform reads the config; these values apply on standalone
+    # `helm install`.
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+    healthCheck:
+      enabled: true
+      path: /health
+
+globalEnv:
+  # CHAT-pbup: BASE_URL deprecated alias, MOSES_BASE_PATH canonical.
+  BASE_URL: ""
+  MOSES_BASE_PATH: ""
+  NODE_ENV: "production"
+  MOSES_EMBEDDING_FRAMING: ""
+  MOSES_EMBEDDING_ALLOWED_ANCESTORS: ""
+  MOSES_EMBEDDING_REPORT_URI: ""
+
+postgresql:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "17-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    # CHAT-59o2 (DEPS-B2): align with platform convention. Moses' provisioner
+    # (agent_helm_provisioner.go BuildDeployValuesWithEmbedding around line
+    # 443-444) injects postgresql.auth.username="app" / database="appdb" by
+    # default. Earlier values had username/database="showcase" which collided
+    # with the platform override and produced 14 retries with
+    # `password authentication failed for user "app"` before postgres
+    # finally created the role as a side effect. Aligning here makes the
+    # backend connect on attempt 1.
+    username: app
+    # __MOSES_GENERATE_PASSWORD__ is a sentinel the Moses platform's
+    # SanitizeTemplateCredentials replaces with a per-tenant random 24-char
+    # password during template injection (see moses-platform-prep/backend/
+    # internal/services/agent_blueprint_provisioner.go).
+    #
+    # When deploying this chart standalone (without Moses), override via:
+    #   helm install <release> . --set postgresql.auth.password=$(openssl rand -hex 24)
+    # NEVER ship this literal value to production — it is a placeholder.
+    password: __MOSES_GENERATE_PASSWORD__
+    database: appdb
+  resources:
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
+    requests:
+      cpu: "100m"
+      memory: "128Mi"

@@ -1,0 +1,65 @@
+{
+  "name": "backend-template-instance",
+  "version": "1.0.0",
+  "displayName": "My App",
+  "description": "UPDATE THIS — describe what your app does. This text appears in the Moses app registry.",
+  "appType": "api",
+  "entrypoint": "main.go",
+  "templateApiVersion": "moses-manager.eu/v1",
+  "embedding": {
+    "framing": "denied"
+  },
+  "skills": [
+    "skills/usage.md",
+    "skills/secrets-tutorial.md"
+  ],
+  "apiEndpoints": {
+    "basePath": "/api/v1",
+    "healthPath": "/health",
+    "specPath": "/api/openapi.json"
+  },
+  "autoRegisterTool": true,
+  "displayLocations": ["apps"],
+  "permissions": [],
+  "docker": {
+    "files": [
+      {
+        "name": "app",
+        "dockerfile": "Dockerfile",
+        "context": "."
+      }
+    ]
+  },
+  "service": {
+    "port": 8080,
+    "healthCheck": {
+      "enabled": true,
+      "path": "/health"
+    },
+    "ingress": {
+      "enabled": true
+    }
+  },
+  "resources": {
+    "cpu": { "request": "100m", "limit": "500m" },
+    "memory": { "request": "128Mi", "limit": "512Mi" }
+  },
+  "validation": {
+    "enabled": true,
+    "commands": [
+      { "name": "vet", "run": "go vet ./...", "required": true },
+      { "name": "test", "run": "go test ./...", "required": true }
+    ]
+  },
+  "maintenance": {
+    "renovate": {
+      "schedule": "0 4 * * 1",
+      "context": "Go HTTP API service. Update Go modules and Docker base images. Check for breaking API changes in major dependency updates."
+    },
+    "logMonitor": {
+      "lookbackMinutes": 15,
+      "minErrorCount": 5,
+      "context": "Go API with Moses platform integration. Common errors: database connection pool exhaustion, panic recovery middleware catches, HTTP client timeouts to external services, and OpenAPI spec generation failures."
+    }
+  }
+}

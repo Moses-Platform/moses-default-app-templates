@@ -1,0 +1,10 @@
+node_modules/
+.git/
+helm/
+dist/
+*.log
+.DS_Store
+.env
+.env.local
+
+# Cleanout machinery — never ship in images (but DO keep in git)

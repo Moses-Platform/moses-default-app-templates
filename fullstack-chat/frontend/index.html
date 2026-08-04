@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- CHAT-pbup: BASE_PATH placeholder rewritten by entrypoint.sh -->
+    <meta name="moses-base-path" content="__MOSES_BASE_PATH__" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Moses-deployed application" />
+    <title>Moses App</title>
+
+    <!-- No CDN webfonts: theme.css font stacks fall back to the system
+         stack, so the app renders identically offline / air-gapped. -->
+
+    <!-- No-flash theme init: set data-theme before first paint. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('moses-theme');
+          if (t !== 'light' && t !== 'dark') {
+            t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          }
+          document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+      })();
+    </script>
+    <!--
+      CHAT-pswm.2/.9 — Moses iframe SDK. Provides window.moses.actions.invoke(actionId, vars).
+      The SDK POSTs to /__moses/invoke on THIS app's own backend (see
+      backend/cmd/server/main.go for the proxy registration); the proxy
+      forwards pod-to-pod to moses-backend with the user's JWT preserved.
+      Cached by the platform for 5 min; safe to load on every page boot.
+      Keep this <script> in lockstep with the proxy mount in main.go.
+    -->
+    <script src="/api/v1/sdk/iframe-sdk.js" defer></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

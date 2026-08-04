@@ -1,0 +1,86 @@
+# Pre-configured by Moses - DO NOT REMOVE moses section
+# These values ensure proper deployment to your namespace
+
+moses:
+  namespace: ""
+  tenantId: ""
+  executionId: ""
+  chartId: ""
+  appSlug: ""
+  # CHAT-pbup: Moses-aware template values. Set by the platform deploy
+  # pipeline at deploy time when the moses-app.config.json declares
+  # templateApiVersion: "moses-manager.eu/v1". When unset (legacy / standalone) the
+  # template falls back to "/" basePath and the appType-default framing
+  # policy. See ../README.md and the platform repo's DEPRECATIONS.md
+  # (moses-platform-prep) for the migration window.
+  basePath: "/"
+  embedding:
+    framing: ""           # empty -> template's appType default ("moses-only" for frontend, "denied" for api)
+    allowedAncestors: []
+    reportUri: ""
+
+# Image settings - Set automatically by deployment pipeline
+image:
+  repository: "frontend-template"
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Service settings
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+# Deployment settings
+replicaCount: 1
+
+# Resource limits
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Environment variables
+# BASE_URL (deprecated alias) and MOSES_BASE_PATH (canonical) are set
+# automatically when deployed via Moses. Both carry the same value during
+# the N-2 deprecation window — see the platform repo's DEPRECATIONS.md
+# (moses-platform-prep). New templates should
+# read MOSES_BASE_PATH; legacy ones read BASE_URL.
+# Use either in your app for absolute paths: <link href="${MOSES_BASE_PATH}styles.css">
+env:
+  PORT: "8080"
+  NODE_ENV: "production"
+  # BASE_URL / MOSES_BASE_PATH will be set by deployment process based on ingress path
+  # Example: /apps/workspace-slug/app-slug/
+  BASE_URL: ""
+  MOSES_BASE_PATH: ""
+  # Embedding policy envs (CHAT-pbup): rendered into nginx CSP at startup.
+  # Empty values resolve to the appType default (frontend: moses-only).
+  MOSES_EMBEDDING_FRAMING: ""
+  MOSES_EMBEDDING_ALLOWED_ANCESTORS: ""
+  MOSES_EMBEDDING_REPORT_URI: ""
+
+# Health checks - startupProbe allows up to 5 min for image pull + init
+startupProbe:
+  httpGet:
+    path: /health
+    port: http
+  failureThreshold: 30
+  periodSeconds: 10
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 2
+  periodSeconds: 5

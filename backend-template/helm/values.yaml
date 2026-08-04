@@ -1,0 +1,83 @@
+# Pre-configured by Moses - DO NOT REMOVE moses section
+# These values ensure proper deployment to your namespace
+
+moses:
+  namespace: ""
+  tenantId: ""
+  executionId: ""
+  chartId: ""
+  appSlug: ""
+  # CHAT-pbup: Moses-aware template values. See ../README.md and the
+  # platform repo's DEPRECATIONS.md (moses-platform-prep) for the BASE_URL
+  # -> MOSES_BASE_PATH deprecation window.
+  basePath: "/"
+  embedding:
+    framing: ""           # empty -> appType default ("denied" for api)
+    allowedAncestors: []
+    reportUri: ""
+
+# CHAT-pxeo.12 — RollingUpdate race window note:
+# This template is in-memory only; tenant migration is moot here (state
+# is wiped on every restart). The note is kept for symmetry with the
+# persistent templates: if you add a database, follow the showcase/chat
+# pattern (idempotent tenant rewrite at startup BEFORE the listener;
+# document the race window here).
+
+replicaCount: 1
+
+image:
+  repository: backend-template
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+env:
+  PORT: "8080"
+  # BASE_URL is the legacy alias; MOSES_BASE_PATH is canonical (CHAT-pbup).
+  BASE_URL: ""
+  MOSES_BASE_PATH: ""
+  # Embedding policy: an api defaults to denied (no iframe).
+  MOSES_EMBEDDING_FRAMING: ""
+  MOSES_EMBEDDING_ALLOWED_ANCESTORS: ""
+  MOSES_EMBEDDING_REPORT_URI: ""
+
+secrets:
+  secretName: ""
+  configMapName: ""
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+startupProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  failureThreshold: 30
+  periodSeconds: 10
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 2
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 3

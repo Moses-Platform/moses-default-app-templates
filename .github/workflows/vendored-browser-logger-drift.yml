@@ -1,0 +1,19 @@
+name: Vendored browser-logger drift check
+on:
+  pull_request:
+    paths:
+      - 'shared/browser-logger/**'
+      - '**/moses-browser-logger.ts'
+      - 'tools/check-vendored-browser-logger.sh'
+  push:
+    branches: [main]
+    paths:
+      - 'shared/browser-logger/**'
+      - '**/moses-browser-logger.ts'
+      - 'tools/check-vendored-browser-logger.sh'
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./tools/check-vendored-browser-logger.sh

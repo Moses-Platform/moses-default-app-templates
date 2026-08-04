@@ -1,0 +1,506 @@
+#!/bin/sh
+set -eu
+
+# Template parity test — codifies the rules the comprehensive-review-agent
+# verified before the templates-cleanup PR. Run from repo root or anywhere:
+#
+#   ./tests/test_template_parity.sh
+#
+# Exits non-zero on any failure. Companion to tests/test_nginx_entrypoint.sh.
+#
+# Each rule below is documented inline. When a rule fires a failure, the
+# message names which file and what the offending content was so a human
+# can fix it without re-reading this script.
+
+REPO_ROOT="$(cd "$(dirname "$0")"/.. && pwd)"
+cd "$REPO_ROOT"
+
+PASS=0
+FAIL=0
+
+pass() {
+  PASS=$((PASS + 1))
+  echo "PASS: $1"
+}
+
+fail() {
+  FAIL=$((FAIL + 1))
+  echo "FAIL: $1"
+}
+
+# Templates and their per-folder paths. Frontend-only templates have no
+# backend; the assertions below skip the missing paths gracefully.
+TEMPLATES="frontend-template backend-template fullstack-simple fullstack-unified fullstack-showcase fullstack-chat fullstack-oidc"
+
+# ---------------------------------------------------------------------------
+# 1. Helm Chart.yaml uniformity. The platform's deploy pipeline expects
+#    every template's chart to be named exactly `agent-deployed-app` v1.0.0
+#    so platform-injected values like nameOverride / images.<svc>.* hit the
+#    expected paths.
+# ---------------------------------------------------------------------------
+for t in $TEMPLATES; do
+  cy="$t/helm/Chart.yaml"
+  if [ ! -f "$cy" ]; then
+    fail "Chart.yaml: missing at $cy"
+    continue
+  fi
+  name=$(awk '/^name:/ { print $2 }' "$cy" | tr -d '"' | tr -d "'")
+  ver=$(awk '/^version:/ { print $2 }' "$cy" | tr -d '"' | tr -d "'")
+  if [ "$name" = "agent-deployed-app" ]; then
+    pass "Chart.yaml name: $cy → agent-deployed-app"
+  else
+    fail "Chart.yaml name: $cy has name=$name (expected agent-deployed-app)"
+  fi
+  if [ "$ver" = "1.0.0" ]; then
+    pass "Chart.yaml version: $cy → 1.0.0"
+  else
+    fail "Chart.yaml version: $cy has version=$ver (expected 1.0.0)"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# 2. moses-app.config.json must NOT carry the `my-app` placeholder. The
+#    template-side rename to `<template>-instance` removes the collision
+#    risk for anyone who deploys a template standalone via `helm install`
+#    without rewriting the file first. Per-template names are also a
+#    sanity signal that someone actually customized the app config.
+# ---------------------------------------------------------------------------
+for t in $TEMPLATES; do
+  cfg="$t/moses-app.config.json"
+  if [ ! -f "$cfg" ]; then
+    fail "moses-app.config.json: missing at $cfg"
+    continue
+  fi
+  if grep -q '"name": *"my-app"' "$cfg"; then
+    fail "moses-app.config.json: $cfg still has \"my-app\" placeholder"
+  else
+    pass "moses-app.config.json: $cfg has a real name"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# 3. README.md presence. fullstack-unified used to be missing one; the
+#    parity rule keeps every template self-documenting for agents that
+#    scaffold a new repo and need to know what they got.
+# ---------------------------------------------------------------------------
+for t in $TEMPLATES; do
+  if [ -f "$t/README.md" ]; then
+    lines=$(wc -l < "$t/README.md")
+    if [ "$lines" -gt 20 ]; then
+      pass "README.md: $t has $lines lines"
+    else
+      fail "README.md: $t has only $lines lines (expected > 20)"
+    fi
+  else
+    fail "README.md: $t is missing"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# 4. Go module + Dockerfile version parity. The platform itself pins Go
+#    1.26.4 (moses-platform-prep/backend/go.mod + agent-base/Dockerfile);
+#    we keep the templates on the same exact patch so a template that adopts
+#    a transitive dependency requiring `go 1.26+` doesn't fail builds and so
+#    builds stay reproducible across the fleet.
+#
+#    All `go.mod` files must declare exactly `go 1.26.4`. The check below
+#    is exact-match — when bumping to 1.26 or later, update both
+#    EXPECTED_GO_MAJOR_MINOR AND the Dockerfile golang base tag in this file
+#    in the same PR (see rule #5 below).
+# ---------------------------------------------------------------------------
+EXPECTED_GO_MAJOR_MINOR="1.26.4"
+for gm in $(find . -maxdepth 4 -name go.mod -not -path './node_modules/*' -not -path '*/.template-clean/*' 2>/dev/null); do
+  declared=$(awk '/^go [0-9]/ { print $2 }' "$gm")
+  if [ "$declared" = "$EXPECTED_GO_MAJOR_MINOR" ]; then
+    pass "go.mod: $gm → go $declared"
+  else
+    fail "go.mod: $gm has 'go $declared' (expected $EXPECTED_GO_MAJOR_MINOR)"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# 5. Dockerfile base image parity. Every Dockerfile that uses golang must
+#    pin the same major.minor.patch as go.mod. Every Dockerfile that uses
+#    alpine runtime must pin the same alpine tag (3.21) so security scanning
+#    is consistent with the platform's agent-base image.
+# ---------------------------------------------------------------------------
+EXPECTED_GOLANG_TAG="golang:1.26.4-alpine"
+EXPECTED_ALPINE_TAG="alpine:3.21"
+
+for df in $(find . -maxdepth 4 -name Dockerfile -not -path './node_modules/*' -not -path '*/.template-clean/*' 2>/dev/null); do
+  # Only check FROM lines that reference golang.
+  if grep -qE '^FROM golang:' "$df"; then
+    if grep -qE "^FROM $EXPECTED_GOLANG_TAG" "$df"; then
+      pass "Dockerfile golang base: $df"
+    else
+      bad=$(grep -E '^FROM golang:' "$df" | head -1)
+      fail "Dockerfile golang base: $df has '$bad' (expected $EXPECTED_GOLANG_TAG)"
+    fi
+  fi
+  # Only check FROM lines that reference plain alpine (not nginx:alpine).
+  if grep -qE '^FROM alpine:' "$df"; then
+    if grep -qE "^FROM $EXPECTED_ALPINE_TAG" "$df"; then
+      pass "Dockerfile alpine base: $df"
+    else
+      bad=$(grep -E '^FROM alpine:' "$df" | head -1)
+      fail "Dockerfile alpine base: $df has '$bad' (expected $EXPECTED_ALPINE_TAG)"
+    fi
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# 6. Backend Dockerfile hardening: every backend (Go) Dockerfile must run
+#    as a non-root user and declare a HEALTHCHECK. fullstack-unified used
+#    to lack both — the parity rule prevents regression.
+#
+#    Frontend Dockerfiles are excluded: the nginx:alpine base image already
+#    drops to a non-root worker after a brief root-uid startup window, and
+#    the entrypoint chmods rendered config files for that worker.
+# ---------------------------------------------------------------------------
+for df in backend-template/Dockerfile fullstack-unified/Dockerfile fullstack-simple/backend/Dockerfile fullstack-showcase/backend/Dockerfile; do
+  if [ ! -f "$df" ]; then
+    fail "backend Dockerfile: missing at $df"
+    continue
+  fi
+  if grep -qE '^USER appuser' "$df"; then
+    pass "Dockerfile non-root user: $df"
+  else
+    fail "Dockerfile non-root user: $df is missing 'USER appuser' (USER directive must follow adduser)"
+  fi
+  if grep -qE '^HEALTHCHECK' "$df"; then
+    pass "Dockerfile HEALTHCHECK: $df"
+  else
+    fail "Dockerfile HEALTHCHECK: $df is missing"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# 7. Reproducibility: backend Dockerfiles must NOT run `go mod tidy` at
+#    build time. Tidy mutates go.sum; running it inside an in-cluster build
+#    means each build can produce a different binary even with no source
+#    change, and breaks air-gap registry mirrors that don't trust the
+#    upstream module proxy. Use `go mod verify` instead.
+# ---------------------------------------------------------------------------
+for df in backend-template/Dockerfile fullstack-unified/Dockerfile fullstack-simple/backend/Dockerfile fullstack-showcase/backend/Dockerfile; do
+  [ -f "$df" ] || continue
+  # Strip comments before searching so the check only flags real RUN
+  # directives, not commentary explaining why tidy was removed.
+  if sed 's/#.*$//' "$df" | grep -qE 'go mod tidy'; then
+    fail "Dockerfile reproducibility: $df runs 'go mod tidy' (use 'go mod verify' instead)"
+  else
+    pass "Dockerfile reproducibility: $df has no 'go mod tidy'"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# 8. No literal credentials in helm/values.yaml. The Moses platform's
+#    SanitizeTemplateCredentials replaces __MOSES_GENERATE_PASSWORD__ with
+#    a per-tenant random password during template injection. Anything else
+#    (real passwords, the legacy `showcase-secret` literal, `changeme`,
+#    `password`, etc.) is a security hazard if a user `helm install`s the
+#    chart standalone or copies the value into another repo.
+# ---------------------------------------------------------------------------
+for t in $TEMPLATES; do
+  vy="$t/helm/values.yaml"
+  [ -f "$vy" ] || continue
+  # Lines like `password: <something>` where <something> is not the
+  # known-sentinel and not empty — flag them.
+  bad_pw=$(awk -F: '/password:/ {
+    val = $2
+    sub(/#.*/, "", val)
+    gsub(/^[ \t]+|[ \t]+$/, "", val)
+    if (val != "" && val != "__MOSES_GENERATE_PASSWORD__" && val != "\"\"" && val != "\"__MOSES_GENERATE_PASSWORD__\"") {
+      print val
+    }
+  }' "$vy" | head -3)
+  if [ -n "$bad_pw" ]; then
+    fail "helm/values.yaml: $vy contains a literal password value: $bad_pw (use __MOSES_GENERATE_PASSWORD__ or empty string)"
+  else
+    pass "helm/values.yaml: $vy has no literal password values"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# 9. nginx.conf must not emit X-XSS-Protection (deprecated/no-op in modern
+#    browsers — Chrome 78+ ignores it; Firefox never implemented it).
+#    Content-Security-Policy is the source of truth for framing/XSS.
+# ---------------------------------------------------------------------------
+for nc in $(find . -maxdepth 5 -name nginx.conf -not -path './node_modules/*' -not -path '*/.template-clean/*' 2>/dev/null); do
+  if grep -qiE 'X-XSS-Protection' "$nc"; then
+    line=$(grep -niE 'X-XSS-Protection' "$nc" | head -1)
+    # Allow comments that mention WHY it's omitted; only fail on actual
+    # add_header directives.
+    if echo "$line" | grep -qE 'add_header.*X-XSS-Protection'; then
+      fail "nginx.conf: $nc emits X-XSS-Protection (deprecated): $line"
+    else
+      pass "nginx.conf: $nc mentions X-XSS-Protection only in a comment"
+    fi
+  else
+    pass "nginx.conf: $nc has no X-XSS-Protection reference"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# 10. moses-app.config.json declares `templateApiVersion: "moses-manager.eu/v1"` —
+#     all 7 templates must be Moses-aware so the platform's Helm value
+#     injection (basePath / embedding.*) takes effect.
+# ---------------------------------------------------------------------------
+for t in $TEMPLATES; do
+  cfg="$t/moses-app.config.json"
+  [ -f "$cfg" ] || continue
+  if grep -q '"templateApiVersion": *"moses-manager.eu/v1"' "$cfg"; then
+    pass "templateApiVersion: $cfg → moses-manager.eu/v1"
+  else
+    fail "templateApiVersion: $cfg is missing or not moses-manager.eu/v1"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# 11. moses-app.config.json `name` must NOT collide with the platform's
+#     reserved canonical-template slugs. The platform hard-rejects any
+#     deployed config whose name is in `reservedTemplateSlugs`
+#     (moses-platform-prep/backend/pkg/validator/app_config_validator.go,
+#     CHAT-m9vi: "name %q is reserved for the canonical built-in template"),
+#     so a clone deployed without editing `name` would fail validation on
+#     every deploy. The `<template>-instance` rename convention exists to
+#     dodge that check (see rule 2). RESERVED mirrors the platform list,
+#     PLUS fullstack-oidc proactively: it is a directory in this repo and
+#     the platform list's own source-of-truth comment ("directory names in
+#     moses-default-app-templates/") means it will be added there.
+#
+#     Checked over EVERY config file in the repo (incl. the with-secrets
+#     examples), not just the TEMPLATES list, so future templates are
+#     covered before they are added to the list.
+# ---------------------------------------------------------------------------
+RESERVED="backend-template frontend-template fullstack-chat fullstack-oidc fullstack-showcase fullstack-simple fullstack-unified"
+for cfg in */moses-app.config.json */moses-app.config.with-secrets.example.json; do
+  [ -f "$cfg" ] || continue
+  name=$(sed -n 's/^[[:space:]]*"name": *"\([^"]*\)".*/\1/p' "$cfg" | head -1)
+  if [ -z "$name" ]; then
+    fail "reserved slug: could not extract \"name\" from $cfg"
+    continue
+  fi
+  collided=0
+  for r in $RESERVED; do
+    if [ "$name" = "$r" ]; then
+      collided=1
+      break
+    fi
+  done
+  if [ "$collided" -eq 1 ]; then
+    fail "reserved slug: $cfg has \"name\": \"$name\" which collides with the platform's reservedTemplateSlugs (rename to \"$name-instance\")"
+  else
+    pass "reserved slug: $cfg → $name"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# 12. Every declared Docker build context must carry a .dockerignore at the
+#     CONTEXT ROOT (the only place the build engine reads it — a template-root
+#     .dockerignore is dead weight when the context is a subdir, which is how
+#     fullstack-simple shipped a 104 MB node_modules/ into its frontend build
+#     context). Contexts containing a package.json must ignore node_modules/.
+#     Contexts come from moses-app.config.json docker.files[].context;
+#     extracted with python3 (JSON-correct — the "context" key also appears
+#     in renovate/triage sections with prose values).
+# ---------------------------------------------------------------------------
+if command -v python3 >/dev/null 2>&1; then
+  for cfg in */moses-app.config.json; do
+    [ -f "$cfg" ] || continue
+    t=$(dirname "$cfg")
+    contexts=$(python3 -c '
+import json, sys
+cfg = json.load(open(sys.argv[1]))
+for f in (cfg.get("docker") or {}).get("files") or []:
+    ctx = f.get("context")
+    if ctx:
+        print(ctx)
+' "$cfg") || { fail "dockerignore: could not parse $cfg"; continue; }
+    for ctx in $contexts; do
+      ctx_dir="$t/$ctx"
+      di="$ctx_dir/.dockerignore"
+      # Normalize "<template>/." to "<template>".
+      ctx_dir=$(cd "$ctx_dir" 2>/dev/null && pwd) || { fail "dockerignore: context dir $t/$ctx missing"; continue; }
+      di="$ctx_dir/.dockerignore"
+      if [ ! -f "$di" ]; then
+        fail "dockerignore: missing at build-context root $di (context \"$ctx\" in $cfg)"
+        continue
+      fi
+      pass "dockerignore: present at $di"
+      if [ -f "$ctx_dir/package.json" ]; then
+        if grep -q '^node_modules/$' "$di"; then
+          pass "dockerignore: $di ignores node_modules/"
+        else
+          fail "dockerignore: $di must contain a node_modules/ line (context has a package.json)"
+        fi
+      fi
+    done
+  done
+else
+  echo "SKIP: rule 12 (dockerignore contexts) needs python3"
+fi
+
+# ---------------------------------------------------------------------------
+# 13. No teaching content may ship in a LIVE artifact.
+#     Go/TS comments are free (compiled or stripped away), but openapi.json is
+#     //go:embed-ed and SERVED at /api/openapi.json, and moses-app.config.json
+#     is read by the platform and drives real deploy behaviour. Example content
+#     placed in either reaches production. Worked examples belong in comments
+#     next to the embed directive (see api/api.go), never in the artifact.
+# ---------------------------------------------------------------------------
+for t in $TEMPLATES; do
+  for spec in "$t/api/openapi.json" "$t/backend/api/openapi.json"; do
+    [ -f "$spec" ] || continue
+    if grep -q '"x-moses-example' "$spec"; then
+      fail "shipped example: $spec carries an x-moses-example-* key (it is embedded AND served — move it to a comment above //go:embed)"
+    else
+      pass "shipped example: $spec carries no example extension"
+    fi
+  done
+
+  cfg="$t/moses-app.config.json"
+  [ -f "$cfg" ] || continue
+
+  if grep -q 'TODO:' "$cfg"; then
+    fail "shipped placeholder: $cfg still contains a TODO: string (it ships as user-visible config; mid-string TODOs count too)"
+  else
+    pass "shipped placeholder: $cfg has no TODO: strings"
+  fi
+
+  # A declared platform action is LIVE on deploy: it registers a real action,
+  # makes MOSES_CHAT_WEBHOOK_SECRET / MOSES_INTERNAL_API_BASE prod-fatal
+  # (CHAT-ct5q) and trips the DEPS-A3/A4 activation gate. An action literally
+  # named "example-*" is demo content reaching production.
+  if grep -qE '"id": *"example-' "$cfg"; then
+    fail "shipped demo action: $cfg declares an example-* platformAction (live on deploy — move the shape to moses-app.config.with-secrets.example.json)"
+  else
+    pass "shipped demo action: $cfg declares no example-* action"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# 14. The worked `things` example must be REAL, COMPILED code that can never
+#     ship. Commented-out example code is compiled by nothing, so defects in it
+#     are invisible to every gate here — four of seven templates shipped a
+#     commented slice that did not compile until someone copied it out by hand.
+#     The fix is placement, not discipline:
+#
+#       Go  — example_test.go, DECLARATIONS ONLY (no Test*/Benchmark*/Example*
+#             function). `go vet ./...` and `go test ./...` compile every
+#             _test.go file; `go build` excludes them, so nothing reaches the
+#             binary and nothing runs.
+#       TS  — src/api/example.ts (+ src/example.tsx). tsconfig.json's
+#             "include": ["src"] means `npm run lint`
+#             (tsc -p tsconfig.build.json --noEmit) type-checks it, while Vite
+#             bundles only what the entry reaches, so a module nothing imports
+#             is tree-shaken out.
+#
+#     Two things therefore have to hold, and this rule asserts both:
+#       (a) the expected example files exist (and the Go ones declare no test
+#           function, or `go test` would start running example code);
+#       (b) no app source imports/references them — that is what guarantees
+#           they can never ship. Comment lines are stripped before the
+#           reference grep so the pointer comments that name the example files
+#           do not trip it.
+#
+#     The OpenAPI half of the slice deliberately stays a comment above the
+#     //go:embed directive (JSON has no comment syntax and openapi.json ships —
+#     see rule 13), as does the SQL DDL sketch in migrate_demo.go and the
+#     vanilla-JS half in fullstack-unified/static/app.js (served as-is).
+# ---------------------------------------------------------------------------
+
+# Expected example files per template, relative to the template root.
+example_files_for() {
+  case "$1" in
+    frontend-template)
+      echo "src/api/example.ts src/example.tsx" ;;
+    backend-template)
+      echo "cmd/server/example_test.go internal/handler/example_test.go" ;;
+    fullstack-unified)
+      echo "example_test.go" ;;
+    fullstack-oidc)
+      # The OIDC template keeps handler + routes together in package main.
+      echo "backend/cmd/server/example_test.go frontend/src/api/example.ts frontend/src/example.tsx" ;;
+    fullstack-simple|fullstack-showcase|fullstack-chat)
+      echo "backend/cmd/server/example_test.go backend/internal/handler/example_test.go frontend/src/api/example.ts frontend/src/example.tsx" ;;
+    *)
+      echo "" ;;
+  esac
+}
+
+# Go identifiers the example files declare. No shipped .go file may name them.
+EXAMPLE_GO_SYMBOLS='exampleRegisterRoutes|exampleLogDemoEndpoints|exampleListThings|exampleCreateThing|exampleThingsHandler|exampleNewThingsHandler|ThingsHandler|NewThingsHandler|ListThings|CreateThing|handleListThings|handleCreateThing|newThingID|thingsByTenant'
+
+for t in $TEMPLATES; do
+  files=$(example_files_for "$t")
+  if [ -z "$files" ]; then
+    fail "worked example: no expected example files declared for template $t (add it to example_files_for)"
+    continue
+  fi
+
+  for rel in $files; do
+    f="$t/$rel"
+    if [ ! -f "$f" ]; then
+      fail "worked example: missing $f — the slice must be compiled code, not a comment (see rule 14)"
+      continue
+    fi
+    pass "worked example: $f present"
+
+    case "$rel" in
+      *_test.go)
+        if grep -qE '^func (Test|Benchmark|Example)[A-Z_]' "$f"; then
+          fail "worked example: $f declares a Test/Benchmark/Example function — it must be declarations only, so go test compiles it and runs nothing"
+        else
+          pass "worked example: $f is declarations-only (compiled, never run)"
+        fi
+        ;;
+    esac
+  done
+
+  # (b) Nothing that ships may reference the examples.
+
+  # Go: any non-_test.go file naming an example symbol (comments stripped).
+  for gdir in "$t" "$t/backend"; do
+    [ -f "$gdir/go.mod" ] || continue
+    leaked=""
+    for gf in $(find "$gdir" -name '*.go' ! -name '*_test.go' -not -path '*/vendor/*' | sort); do
+      if sed 's://.*::' "$gf" | grep -qE "$EXAMPLE_GO_SYMBOLS"; then
+        leaked="$leaked $gf"
+      fi
+    done
+    if [ -n "$leaked" ]; then
+      fail "worked example: shipped Go source references example-only symbols:$leaked (the example must stay in _test.go files nothing depends on)"
+    else
+      pass "worked example: no shipped Go source in $gdir references the example symbols"
+    fi
+  done
+
+  # TS: any non-example source importing the example modules (comments stripped).
+  for sdir in "$t/src" "$t/frontend/src"; do
+    [ -d "$sdir" ] || continue
+    leaked=""
+    for tf in $(find "$sdir" \( -name '*.ts' -o -name '*.tsx' \) ! -name 'example.ts' ! -name 'example.tsx' | sort); do
+      if sed 's://.*::' "$tf" | grep -qE "['\"][^'\"]*(\./|/)example['\"]"; then
+        leaked="$leaked $tf"
+      fi
+    done
+    if [ -n "$leaked" ]; then
+      fail "worked example: shipped frontend source imports the example module:$leaked (nothing may import it, or Vite stops tree-shaking it out of the bundle)"
+    else
+      pass "worked example: no shipped source in $sdir imports the example module"
+    fi
+  done
+done
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+echo
+echo "----------------------------------------------------------"
+echo "Template parity: $PASS passed, $FAIL failed"
+echo "----------------------------------------------------------"
+
+if [ "$FAIL" -gt 0 ]; then
+  exit 1
+fi
+exit 0

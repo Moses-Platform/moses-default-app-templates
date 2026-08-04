@@ -1,0 +1,292 @@
+# Fullstack Chat Roundtrip
+
+**Reference template that exercises every chat surface in the app↔Moses-Manager roundtrip.**
+
+A Postgres-backed scaffold that carries the whole plumbing for the `chat_prompt` platform action, the workspace-tools wedge, the completion webhook, the host-shell postMessage relays, and the per-app data git repo — with the app logic left to you. The template ships **one example action** (`example-action`, a `chat_prompt`) declared in `moses-app.config.json`; the API surface (`backend/api/openapi.json`) contains only the webhook receiver. Use it as the end-to-end verification artifact when validating any change under epic [CHAT-gfcp](../../moses-platform-prep/.beads/) (App→MM round-trip completeness).
+
+## The round-trip, step by step
+
+Once you wire a button to `invokeAction('example-action', { topic })` (see
+[`frontend/src/moses/invoke.ts`](frontend/src/moses/invoke.ts)) and declare at
+least one API path in `backend/api/openapi.json`:
+
+1. User clicks the action button in the embedded app.
+2. The iframe SDK POSTs to `/__moses/invoke` on **this app's own backend**, which proxies pod-to-pod to `/apps/<slug>/actions/example-action/invoke` on the Moses backend.
+3. Moses creates a new visible conversation and fires the AI with the rendered prompt (user-supplied `topic` fenced via `variableEscapeMode`).
+4. The AI calls back into your app through the workspace tools auto-discovered from `backend/api/openapi.json`.
+5. Your backend handles the call (Postgres is provisioned and wired — add tables in `backend/internal/database/migrate_demo.go`).
+6. AI replies in the chat sidebar; the conversation is visible immediately (`conversation_created` WS event).
+7. Moses fires the **completion webhook** at `/api/v1/webhooks/chat-complete` with an HMAC-SHA256 signature — this receiver ships working.
+8. The app receives a `moses_embed_chat_complete` postMessage in the host iframe, surfaced by the `useMosesChatComplete` hook in [`frontend/src/moses/hostMessages.ts`](frontend/src/moses/hostMessages.ts).
+9. Your UI reacts (e.g. invalidate a TanStack Query key and re-render).
+
+See [`skills/chat-roundtrip-overview.md`](skills/chat-roundtrip-overview.md) for the full architectural walkthrough and the manual end-to-end test recipe.
+
+## Round-trip mechanics (CHAT-pswm.2/.8/.9)
+
+`fullstack-chat` is the canonical reference for the iframe-SDK + backend-proxy
+contract. Three pieces wire together:
+
+1. **Iframe SDK** — `<script src="/api/v1/sdk/iframe-sdk.js" defer>` in
+   [`frontend/index.html`](frontend/index.html). Served by `moses-backend`
+   ([`backend/internal/api/iframe_sdk_handler.go`][sdk-handler] in the
+   platform repo). The SDK installs `window.moses.actions.invoke(actionId,
+   variables)`. The frontend never calls moses-backend directly: the SDK
+   POSTs to `/__moses/invoke` on this app's own backend, with
+   `X-Requested-With: moses-iframe` so the proxy can gate cross-origin CSRF.
+
+2. **mosesproxy-go** — the Go handler vendored into this template at
+   [`backend/internal/mosesproxy/`](backend/internal/mosesproxy/) so the
+   template is **self-contained**: `moses_init_repo` and manual subdirectory
+   clones produce a buildable repo with no `replace` directives pointing
+   outside it. The canonical upstream copy lives in the templates monorepo
+   at `shared/mosesproxy-go/` — re-sync instructions are in the header
+   comment of `backend/internal/mosesproxy/proxy.go`.
+
+   Mounted by [`backend/cmd/server/main.go`](backend/cmd/server/main.go) at
+   `mosesproxy.InvokePath` (= `/__moses/invoke`). Extracts the user's JWT
+   from `Authorization: Bearer` or the `access_token` cookie, then forwards
+   pod-to-pod to `${MOSES_INTERNAL_API_BASE}/api/v1/apps/{slug}/actions/{id}/invoke`
+   with the JWT preserved. `Set-Cookie` from moses-backend is stripped so
+   the upstream's session cookie cannot bleed into the iframe's origin.
+   `cfg.RequireRequestedWith = true` rejects any POST missing the custom
+   header — vanilla `<form>` / `<img>` CSRF gadgets cannot satisfy that
+   requirement.
+
+3. **Backend → moses-backend hop** — the proxy runs inside the cluster.
+   Moses' `AuthMiddleware` accepts the forwarded Bearer (CSRF-exempt
+   branch in `backend/internal/api/middleware.go`); the user-scoped
+   dispatcher persists `platform_action_invocations.user_id` so the
+   resulting chat conversation appears in the user's Moses Manager
+   sidebar without any browser-side CSRF/Origin negotiation.
+
+The contract holds in every browser (Chrome on Minikube/Rancher, Tauri,
+production K3s) because the iframe → app-backend hop is same-origin: the
+session cookie travels normally, and the JWT is forwarded by the proxy.
+There is no Tauri-only `AUTH_HEADER_INJECTION_SHIM` dependence anymore.
+
+Two env vars must reach the backend pod or the proxy returns 503
+`moses_unconfigured`:
+
+- `MOSES_INTERNAL_API_BASE` — e.g. `http://moses-backend.moses.svc.cluster.local:8080`
+  (injected by the platform provisioner, CHAT-pswm.1).
+- `MOSES_APP_SLUG` — already wired (provisioner).
+
+`MOSES_CHART_ID` and `MOSES_TENANT_ID` are forwarded when present (the
+proxy includes `chartId` in the invoke body and sets `X-Tenant-ID`); both
+are routine in deployed apps.
+
+[sdk-handler]: ../../moses-platform-prep/backend/internal/api/iframe_sdk_handler.go
+
+## Two paths: chat_prompt vs launch_agent
+
+Under epic [CHAT-89ig](../../moses-platform-prep/.beads/) Moses offers TWO platform-action paths. The template ships a `chat_prompt` example (`example-action`); declare a `launch_agent` action in `moses-app.config.json` to use Path B. The contracts side by side:
+
+| Concern | Path A — `chat_prompt` | Path B — `launch_agent` |
+|---|---|---|
+| `type` in `moses-app.config.json` | `chat_prompt` (shipped as `example-action`) | `launch_agent` (declare your own) |
+| What it creates | Visible Moses Manager conversation | One-shot agent pod against a synthetic ticket |
+| User experience | Streaming AI reply in the chat sidebar | Background work; user observes via your app's UI and the execution UI |
+| Profile (CHAT-btd4) | `ProfileAppInvokedMM` (4 static tools) | `ProfileAppInvokedAgent` (9 static tools) |
+| Mode (CHAT-ohlv) | `ModeAppInvokedMM` | `ModeAppInvokedAgent` |
+| Workspace-tool surface | Chart-scoped union via `GetMosesManagerToolsForChart` (CHAT-cj8m) | Same chart-scoped union |
+| Escape hatch | `moses_discover_tools` | `moses_discover_tools` (NEW — `ProfileAgentExecution` lacked this) |
+| OUT of profile | `moses_query`/`moses_create`/`moses_update`/`moses_delete`, `moses_execute_ticket`, `moses_quick_build`, ticket/chart/lane CRUD | Same exclusions as Path A |
+| Rate limit | 5/min, 50/hr as shipped; platform floor 1/min, 5/hr, ceiling 10/min, 100/hr | Set it tighter than chat — agent pods are heavier |
+| Completion signal | `chatPrompt.completionWebhook` (HMAC-signed POST) + postMessage | Standard ticket completion via `moses_agent_submit_completed` + deployment pipeline |
+
+**When to use which:**
+
+- Use **`chat_prompt`** when you want the user to watch the AI think and
+  optionally steer mid-stream. Best for short, conversational tasks
+  (generate text, answer a question, draft a one-liner).
+- Use **`launch_agent`** when the work is well-defined, multi-step, and
+  benefits from being autonomous. Best for "go fetch X, transform it,
+  POST it back" tasks where the user does not need to read a transcript.
+
+### The narrow profile contract (CHAT-89ig)
+
+Both paths surface a deliberately small static tool set. The key
+discipline: the calling app declared its needs in
+`moses-app.config.json`; the user clicked a button, not started a
+conversation; therefore the tool surface is scoped to *this app* only.
+Tenant-wide CRUD is out of profile by design. The discovery escape
+hatch (`moses_discover_tools`) is **symmetric across both paths
+(CHAT-ymlz)**:
+
+- For `chat_prompt` (Path A), discovery appends the tool to the
+  conversation's `chat_conversations.exposed_extra_tools` overlay
+  (CHAT-ci3f Phase 1, schema 885); it becomes callable on the next
+  turn. Storage cap: `ProfileMosesManagerFull`.
+- For `launch_agent` (Path B), discovery appends the tool to the
+  execution's `agent_pod_executions.exposed_extra_tools` overlay
+  (CHAT-ymlz, schema 888); it becomes callable on the next turn.
+  Storage cap: `ProfileAppInvokedAgent` ∪ `ProfileAgentExecution`
+  ∪ `ProfileMosesManagerFull` (wider than chat so legitimate
+  agent-only tools are discoverable).
+
+In either path, if a tool stays uncallable AFTER discovery (it lies
+outside the storage cap), widen the declared profile in
+`moses-app.config.json` and re-deploy. See
+`skills/app-invoked-profiles.md` for the per-path instructions.
+
+Sources of truth (read these for the canonical surface):
+
+- `moses-platform-prep/backend/internal/mcp/tools/config.go` —
+  `ProfileAppInvokedMM`, `ProfileAppInvokedAgent`, the static tool lists.
+- `moses-platform-prep/backend/pkg/prompts/moses_manager.go` —
+  `ModeAppInvokedMM`, `ModeAppInvokedAgent`,
+  `buildAppInvokedManagerPrompt` (the thin app-invoked system prompt
+  body).
+- `moses-platform-prep/backend/internal/mcp/tools/workspace_tool_proxy.go`
+  — `GetMosesManagerToolsForChart` chart-scoped union (CHAT-cj8m).
+- The platform repo's `arch/backend/MCP_SERVER.md` § "App-invoked
+  profiles" subsection (CHAT-ieru) — canonical contract.
+
+The agent skill `skills/app-invoked-profiles.md` ships **inside this
+template** so any agent launched under either path reads the contract
+without inferring it. The companion `skills/chat-roundtrip-overview.md`
+is now split into a Section A (user-typed Manager) and a Section B
+(app-invoked) that points to the new skill.
+
+### Example: how a Path B agent uses workspace tools
+
+A `launch_agent` action's prompt drives the agent purely through the
+workspace tools generated from *your* `backend/api/openapi.json`. A typical
+shape, for an app that exposes a `/things` collection:
+
+```
+1. GET  /api/v1/things           (workspace tool — chart-scoped)
+2. compose a summary line (≤120 chars)
+3. POST /api/v1/things           (workspace tool — chart-scoped)
+   body: {"text": "<summary>", "source": "agent"}
+4. moses_agent_submit_completed   (lifecycle tool — in profile)
+```
+
+The agent never touches `moses_query` or any other tenant-wide tool. If
+it wanted to (e.g. to look up tickets), it would have to call
+`moses_discover_tools` first. That is the wedge.
+
+## Stack
+
+- **Frontend**: React 19 + Vite, single-page (no router). 12 vitest tests, all integration-contract tests in `src/moses/moses.test.tsx` (SDK invoke guard + error shaping, postMessage origin checks, `moses_embed_open_chat` envelope) — the only test file in the frontend.
+- **Backend**: Go (stdlib `net/http`), Postgres via `pgx/v5` (stdlib `database/sql` driver). Handlers that ship: `webhook_chat`, `health`, `openapi`, plus the `respond` JSON helpers and the `tenant` 403 cross-check gate. Tests cover HMAC signature verification (including dual-slot rotation acceptance), verify-before-skew ordering, nonce replay rejection, appSlug claim checks, and fail-closed behavior when no secret is configured.
+- **Helm**: multi-service chart (frontend + backend), Postgres declared in `dependencies.services`.
+- **OpenAPI** at `/api/openapi.json` declares the webhook receiver; every path you add there is picked up by Moses' `WorkspaceToolService.discoverAndRegisterEndpoints` after deploy and becomes an MCP tool.
+
+## Build verification
+
+```bash
+# Frontend
+cd frontend
+npm install --no-audit --no-fund
+npm run lint        # tsc strict mode, production sources (what the build compiles)
+npm run typecheck   # tsc strict mode, INCLUDING *.test.* (vitest strips types, never checks them)
+npm test            # vitest
+npm run build       # tsc + vite
+
+# Backend
+cd backend
+go vet ./...
+go test ./...
+go build ./...
+```
+
+All four `validation.commands` in `moses-app.config.json` are required and run by Moses' submit-completed gate.
+
+## Configuration knobs
+
+| Field in `moses-app.config.json` | Effect |
+|---|---|
+| `platformActions[0].chatPrompt.completionWebhook.url` | Where Moses POSTs the AI completion. Internal cluster service URL only. Default: `http://fullstack-chat-backend:8080/api/v1/webhooks/chat-complete`. |
+| `platformActions[0].chatPrompt.variableEscapeMode` | `raw` / `fenced` / `stripped`. Default `fenced` here because `topic` is `userSupplied: true`. |
+| `platformActions[0].rateLimit.perMinute` | Per-action cap. Subject to platform-floor (1/min, 5/hr) and platform-ceiling (10/min, 100/hr). |
+| `appData.enabled` | When true, Moses provisions a `{tenantID}/app-data/{appSlug}/` git repo. MM reads via `moses_read_file`. |
+| `appData.manager.access` | `read` (default for this template) / `none`. Whether MM sees the repo in `moses_get_repositories`. |
+
+Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tutorial.md).
+
+## Webhook secret rotation
+
+The platform supports a 24h overlap window for `app_webhook_secrets` rotation (schema migration `882_app_webhook_secret_rotation.sql`, `secret_previous` + `secret_previous_expires_at`). The platform-side _sender_ is single-slot — once you rotate, every outbound signature uses the new secret immediately. **No-cutover rotation is therefore a contract on the recipient**: during the overlap the recipient must accept signatures from EITHER the active or the previous secret.
+
+This template's `backend/internal/handler/webhook_chat.go` ships with dual-slot verification:
+
+- `MOSES_CHAT_WEBHOOK_SECRET` (required) — the currently active signing secret. Always tried first.
+- `MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS` (optional) — fallback that only fires on primary HMAC mismatch. Unset outside an overlap window.
+
+### Platform-deployed apps (CHAT-1j43 / DEPS-A2 — recommended)
+
+The platform's webhook-secret publisher creates a Kubernetes Secret named `moses-webhook-secret-{appSlug}` in the app's namespace at deploy time and mounts both keys (`MOSES_CHAT_WEBHOOK_SECRET` and, during a 24h rotation overlap, `MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS`) into the backend container via the chart's existing `.Values.secrets.secretName` envFrom slot.
+
+**No app redeploy or env-var change is needed during rotation.** The platform's `WebhookSecretRotationService.Rotate` (CHAT-v5al) patches the live K8s Secret with both new and previous values; the kubelet propagates the new env to the running pod within seconds. The recipient picks up the new value automatically.
+
+For the canonical platform-injected runtime env contract, see `moses-deployment-guide/SKILL.md` § *"Platform-injected runtime env contract"*.
+
+### Local development (no Moses)
+
+For local-dev / docker-run setups outside the platform, you set both env vars manually:
+
+```bash
+# Initial install
+MOSES_CHAT_WEBHOOK_SECRET=$(openssl rand -hex 32) go run ./cmd/server
+
+# Rotation: stage both old + new for 24h
+MOSES_CHAT_WEBHOOK_SECRET=$NEW_SECRET \
+  MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS=$OLD_SECRET \
+  go run ./cmd/server
+
+# After 24h, drop _PREVIOUS
+MOSES_CHAT_WEBHOOK_SECRET=$NEW_SECRET go run ./cmd/server
+```
+
+### Off-cluster recipients
+
+If your `completionWebhook.url` points at an HTTPS URL outside the cluster (rare), the K8s Secret bridge does NOT reach you. Operators recover the secret from the install-time audit log (see `moses-deployment-guide/SKILL.md` § *"Off-cluster webhook recipients"*).
+
+### Forks that drop chat_prompt (CHAT-ct5q)
+
+The backend's `validate_env.go` startup gate makes `MOSES_CHAT_WEBHOOK_SECRET` **conditionally** required: it parses `moses-app.config.json` at boot and only enforces the var when the config declares at least one `chat_prompt` platform action. The config is searched via `MOSES_APP_CONFIG_PATH`, then `./moses-app.config.json`, `/app/moses-app.config.json`, `../moses-app.config.json`. If the config is missing or unparseable the gate falls back to **strict mode** (treats `chat_prompt` as declared) so a misconfigured deploy fails loud, not silently.
+
+A fork that drops chat_prompt entirely should EITHER ship the trimmed config alongside the binary (so the gate sees an empty `platformActions[]` and relaxes) OR set `MOSES_CHAT_WEBHOOK_SECRET` to a placeholder — running the strict-fallback path with no secret still fail-fasts in production.
+
+## Relationship to platform-prep beads
+
+This template targets the implemented surface of:
+
+- **CHAT-jayp** — sidebar visibility for the auto-fired conversation.
+- **CHAT-p1nr** — `conversation_created` WebSocket event for live update.
+- **CHAT-9pz5 / CHAT-h8cm** — chat_prompt rate floor + concurrency cap (testable via repeated clicks).
+- **CHAT-rg5t** — completion webhook (HMAC-verified in this app's `webhook_chat.go`).
+- **CHAT-l7va** — `moses_embed_open_chat` postMessage to host (tested in `frontend/src/moses/moses.test.tsx`).
+- **CHAT-avoi** — automatic action registration via `PlatformRegistrationProvisioner.Reconcile`.
+- **CHAT-qrd6** — `appData` block to surface the per-app git repo to MM and agents.
+- **CHAT-uwlm** — `variableEscapeMode: "fenced"` + `userSupplied: true` flag for prompt-injection hardening.
+- **CHAT-xu9i** — exercises the `finishReason: "credential_unset"` path when AI is unconfigured.
+- **CHAT-89ig** (parent epic) — app-invoked prompt-profile architecture. The shipped `example-action` (`chat_prompt`) flows through `ProfileAppInvokedMM`; a `launch_agent` action you declare exercises `ProfileAppInvokedAgent`. Children: CHAT-btd4 (profiles), CHAT-ohlv (modes + thin prompt), CHAT-iq3i (chat wiring), CHAT-6q99 (agent wiring), CHAT-cj8m (chart-scoped workspace tools), CHAT-3h8z (symmetry test), CHAT-ieru (docs), **CHAT-9oqo (this template wave)**.
+
+## Local development
+
+The template assumes deployment via Moses' Helm pipeline. For pure local dev (no Moses), run the backend and frontend independently with a local Postgres; the chat-action flow won't fire (Moses is the dispatcher), but you can exercise the webhook receiver — and any routes you add — via curl.
+
+**CHAT-pxeo.12 — tenant identity from env, not header.** The backend now reads its self-tenant identifier from `MOSES_TENANT_ID` (via `internal/config.SelfTenantID()`), NOT from the `X-Moses-Tenant-ID` request header. The header is preserved as caller context (audit / cross-check), but storage and lookup keys come from the deploy-pinned env. On a deployed pod (`MOSES_DEPLOYED=1`) the server fail-fast panics if `MOSES_TENANT_ID` is unset; in local dev it falls back to the sentinel `local-dev`. A 403 with `{"error":"tenant_mismatch","code":"E_TENANT_MISMATCH"}` is returned when a request supplies a non-empty `X-Moses-Tenant-ID` that disagrees with the deploy-pinned value. Toggle the cross-check via `MOSES_STRICT_TENANT_CHECK=false` if you need to debug.
+
+**Tenant column typing (CHAT-suvi).** Declare the `tenant_id` column on every tenant-scoped table you add (in `backend/internal/database/migrate_demo.go`) as `TEXT NOT NULL DEFAULT ''`, not `UUID` — the local-dev sentinel `local-dev` is not a UUID and a `UUID NOT NULL` column rejects it. If you later tighten a column to `UUID`, re-tenant (or purge) the sentinel rows first via `MigrateTenant`, otherwise the cast fails.
+
+```bash
+# Backend with local Postgres
+# MOSES_TENANT_ID is optional in local dev — omit and the sentinel
+# 'local-dev' is used. Set it to mirror a real deploy.
+DB_HOST=localhost DB_PORT=5432 DB_NAME=fullstack_chat \
+  DB_USER=postgres DB_PASSWORD=postgres \
+  MOSES_CHAT_WEBHOOK_SECRET=dev-secret \
+  MOSES_TENANT_ID=local-dev \
+  go run ./cmd/server
+
+# Frontend with Vite proxy
+cd frontend && npm run dev
+```
+
+## License
+
+Apache-2.0 — see the repository-root `LICENSE`. Exceptions: `frontend/src/moses-browser-logger.ts` and the Go files under `backend/cmd/server/` that carry an explicit header (`validate_env.go`, `validate_env_test.go`, `main_test.go`, `moses_proxy_integration_test.go`) are licensed under the Business Source License 1.1 as stated in their headers.

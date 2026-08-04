@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent-deployed-app.fullname" . }}
+  labels:
+    {{- include "agent-deployed-app.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "agent-deployed-app.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "agent-deployed-app.selectorLabels" . | nindent 8 }}
+        moses-manager.eu/tenant-id: {{ .Values.moses.tenantId | quote }}
+        {{- if .Values.moses.chartId }}
+        moses-manager.eu/chart-id: {{ .Values.moses.chartId | quote }}
+        {{- end }}
+        {{- if .Values.moses.appSlug }}
+        moses-manager.eu/app-slug: {{ .Values.moses.appSlug | quote }}
+        {{- end }}
+        moses-manager.eu/managed-by: moses
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          {{- if .Values.secrets }}
+          envFrom:
+            {{- if .Values.secrets.secretName }}
+            - secretRef:
+                name: {{ .Values.secrets.secretName }}
+            {{- end }}
+            {{- /* Platform-bridged multi-secret list (secrets.secretNames[N]):
+                   shared app-DB conn, app-declared secrets, platform-API and
+                   OIDC env Secrets all arrive through this list. Without this
+                   range the platform's injection is silently ignored and the
+                   app boots without e.g. DATABASE_URL. */}}
+            {{- range .Values.secrets.secretNames }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
+            {{- if .Values.secrets.configMapName }}
+            - configMapRef:
+                name: {{ .Values.secrets.configMapName }}
+            {{- end }}
+          {{- end }}
+          env:
+            # Chart-required defaults that must always be present (even if not in .Values.env).
+            - name: PORT
+              value: {{ .Values.env.PORT | default "8080" | quote }}
+            - name: NODE_ENV
+              value: {{ .Values.env.NODE_ENV | default "production" | quote }}
+            # CHAT-pbup: BASE_URL deprecated alias, MOSES_BASE_PATH canonical.
+            # Defaults from moses.* values so `helm install --set moses.basePath=...`
+            # works without explicit env overrides; .Values.env keys still win when set.
+            - name: BASE_URL
+              value: {{ .Values.env.BASE_URL | default .Values.moses.basePath | default "" | quote }}
+            - name: MOSES_BASE_PATH
+              value: {{ .Values.env.MOSES_BASE_PATH | default .Values.moses.basePath | default "/" | quote }}
+            - name: MOSES_EMBEDDING_FRAMING
+              value: {{ .Values.env.MOSES_EMBEDDING_FRAMING | default .Values.moses.embedding.framing | default "" | quote }}
+            - name: MOSES_EMBEDDING_ALLOWED_ANCESTORS
+              value: {{ .Values.env.MOSES_EMBEDDING_ALLOWED_ANCESTORS | default (join " " .Values.moses.embedding.allowedAncestors) | default "" | quote }}
+            - name: MOSES_EMBEDDING_REPORT_URI
+              value: {{ .Values.env.MOSES_EMBEDDING_REPORT_URI | default .Values.moses.embedding.reportUri | default "" | quote }}
+            {{- /* CHAT-zber (DEPS-A1b): iterate .Values.env so any platform-injected
+                   env vars (MOSES_API_BASE, MOSES_TENANT_ID, MOSES_CHART_ID,
+                   MOSES_DEPLOYMENT_ID, MOSES_APP_SLUG, MOSES_USER_ID, etc.)
+                   land in the container without per-key enumeration. Skip the
+                   keys already explicitly emitted above so we don't double-set.
+            */}}
+            {{- range $key, $value := .Values.env }}
+            {{- if not (has $key (list "PORT" "NODE_ENV" "BASE_URL" "MOSES_BASE_PATH" "MOSES_EMBEDDING_FRAMING" "MOSES_EMBEDDING_ALLOWED_ANCESTORS" "MOSES_EMBEDDING_REPORT_URI")) }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
+          {{- if .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml .Values.startupProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+        {{- if .Values.sidecars }}
+        {{- range .Values.sidecars }}
+        - name: {{ .name }}
+          image: "{{ .image }}"
+          {{- if .ports }}
+          ports:
+            {{- range .ports }}
+            - containerPort: {{ .containerPort }}
+            {{- end }}
+          {{- end }}
+          {{- if .resources }}
+          resources:
+            {{- toYaml .resources | nindent 12 }}
+          {{- end }}
+        {{- end }}
+        {{- end }}

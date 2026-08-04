@@ -1,0 +1,222 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+
+  // ---------------------------------------------------------------------------
+  // Renovate for moses-default-app-templates.
+  //
+  // Why this repo needs dependency automation at all: these are SCAFFOLDS. Every
+  // repo created by the platform's `moses_init_repo` MCP tool inherits whatever
+  // versions are pinned here, forever. A stale template does not rot in place —
+  // it keeps minting stale repos.
+  //
+  // Why this config is unusually restrictive: the repo has hard version-PARITY
+  // rules enforced by tests/test_template_parity.sh (169 assertions). Several of
+  // them span files no dependency manager can see. Read the "PINNED" block at
+  // the bottom before enabling anything new.
+  // ---------------------------------------------------------------------------
+
+  extends: [
+    'config:recommended',
+    ':semanticCommitTypeAll(chore)',
+    // Dependency Dashboard issue = the single place to see what is pending,
+    // including everything the PINNED rules below suppress.
+    ':dependencyDashboard',
+  ],
+
+  timezone: 'Europe/Berlin',
+
+  // Weekly, Monday morning — matches the `maintenance.renovate.schedule`
+  // ("0 4 * * 1") the templates themselves declare in moses-app.config.json,
+  // so the repo and the apps it scaffolds have the same maintenance rhythm.
+  schedule: ['before 6am on monday'],
+
+  labels: ['dependencies'],
+
+  // Conservative posture. Templates are copied into user repos, so a bad
+  // version here is expensive to walk back. Let a release sit for a week
+  // before adopting it (security fixes are exempt — see vulnerabilityAlerts).
+  minimumReleaseAge: '7 days',
+
+  prConcurrentLimit: 5,
+  prHourlyLimit: 2,
+  rebaseWhen: 'conflicted',
+
+  // Only these four managers. This is deliberate: an explicit allowlist means a
+  // manager that Renovate enables by default in some future release cannot
+  // silently start opening PRs against a repo with hand-written parity gates.
+  //
+  // Notably NOT enabled:
+  //   helm-values — every helm/values.yaml carries placeholder image refs
+  //     (`repository: fullstack-simple-backend`, `tag: latest`) that resolve
+  //     against no registry, plus dev-only sidecars (postgres:17-alpine,
+  //     valkey/valkey:8-alpine) whose tags the PLATFORM overrides at deploy
+  //     time. Nothing there is a real dependency of the template.
+  //   helmv3 — no Chart.yaml in this repo declares `dependencies:`, and the
+  //     chart's own name/version (agent-deployed-app 1.0.0) is asserted by
+  //     parity rules 1; nothing for it to do but risk.
+  enabledManagers: ['npm', 'gomod', 'dockerfile', 'github-actions'],
+
+  ignorePaths: [
+    '**/node_modules/**',
+    '**/dist/**',
+    // shared/browser-logger is a SOURCE-ONLY vendored artifact: its
+    // package.json declares zero dependencies and there is no lockfile. Its
+    // index.ts is copied byte-for-byte into four templates and guarded by
+    // tools/check-vendored-browser-logger.sh, so there is nothing to update
+    // and every possible edit is a byte-identity regression.
+    'shared/browser-logger/**',
+  ],
+
+  // go.sum must be correct IN THE REPO: parity rule 7 forbids `go mod tidy`
+  // inside the backend Dockerfiles (it makes in-cluster builds
+  // non-reproducible and breaks air-gapped module proxies), so the Dockerfiles
+  // run `go mod verify` against a go.sum Renovate is responsible for
+  // regenerating. gomodUpdateImportPaths handles the /vN import rewrite on
+  // major bumps — see the gomod-major grouping rationale below for why that
+  // rewrite must land in ONE PR across all modules.
+  postUpdateOptions: ['gomodTidy', 'gomodUpdateImportPaths'],
+
+  // package-lock.json is committed and shipped with every scaffolded repo
+  // (the frontend Dockerfiles run `npm ci`, which requires it). Refresh the
+  // transitive tree monthly so templates do not accumulate years of drift in
+  // dependencies no direct bump ever touches.
+  lockFileMaintenance: {
+    enabled: true,
+    schedule: ['before 6am on the first day of the month'],
+  },
+
+  // Security fixes skip the weekly window and the 7-day soak.
+  vulnerabilityAlerts: {
+    enabled: true,
+    schedule: ['at any time'],
+    minimumReleaseAge: null,
+    labels: ['dependencies', 'security'],
+  },
+
+  packageRules: [
+    // -------------------------------------------------------------------------
+    // GROUPING
+    //
+    // The organising principle is LOCKSTEP. The five frontends ship byte-for-byte
+    // identical dependency blocks (react 19.2.4, vite 7.3.1, vitest 3.2.0, ...)
+    // and the three database-backed Go backends all pin pgx v5.9.2. That sameness
+    // is a feature of the template set — a human reviews it by eye. Ungrouped,
+    // Renovate would open five separate "react" PRs that merge at five different
+    // times and leave the templates permanently out of sync with each other.
+    // Grouping by *dependency across modules* is what keeps them level.
+    // -------------------------------------------------------------------------
+    {
+      // `bump` (not the default in-range-only behaviour) so the `^` floors in
+      // package.json move too, not just package-lock.json. The five package.json
+      // files are compared by eye for parity; leaving updates lockfile-only would
+      // let them keep reading as identical while resolving differently.
+      // (Renovate forbids rangeStrategy in a rule that also matches update types,
+      // hence its own rule here.)
+      description: 'npm: move the ^ floor in package.json, not just the lockfile',
+      matchManagers: ['npm'],
+      rangeStrategy: 'bump',
+    },
+    {
+      description: 'npm minor/patch — one lockstep PR across all five frontends',
+      matchManagers: ['npm'],
+      matchUpdateTypes: ['minor', 'patch', 'pin', 'digest'],
+      groupName: 'npm minor/patch (all frontends)',
+      groupSlug: 'npm-minor-patch',
+    },
+    {
+      description: 'npm major — one PR per dependency, but spanning every frontend at once',
+      matchManagers: ['npm'],
+      matchUpdateTypes: ['major'],
+      groupName: 'npm major: {{depName}}',
+      groupSlug: 'npm-major-{{depNameSanitized}}',
+    },
+    {
+      description: 'Go modules minor/patch — one lockstep PR across all eight modules',
+      matchManagers: ['gomod'],
+      matchUpdateTypes: ['minor', 'patch', 'digest'],
+      groupName: 'go modules minor/patch (all modules)',
+      groupSlug: 'gomod-minor-patch',
+    },
+    {
+      description: 'Go modules major — one PR per dependency, spanning every module. \
+Majors must never split across PRs: gomodUpdateImportPaths rewrites the /vN import path \
+in .go SOURCE, and several source files are vendored copies held byte-identical across \
+modules by tools/check-vendored-*.sh. Rewriting the import in one module and not its \
+vendored twin fails the drift gate.',
+      matchManagers: ['gomod'],
+      matchUpdateTypes: ['major'],
+      groupName: 'go module major: {{depName}}',
+      groupSlug: 'gomod-major-{{depNameSanitized}}',
+    },
+    {
+      description: 'Container base images that are NOT parity-pinned (node build stage, \
+nginx runtime). All five frontend Dockerfiles use the same two tags — group them so they \
+cannot drift apart.',
+      matchManagers: ['dockerfile'],
+      matchPackageNames: ['node', 'nginx'],
+      groupName: 'docker base images (node, nginx)',
+      groupSlug: 'docker-base-images',
+    },
+    {
+      description: 'GitHub Actions — one PR for all workflows',
+      matchManagers: ['github-actions'],
+      groupName: 'github actions',
+      groupSlug: 'github-actions',
+    },
+
+    // -------------------------------------------------------------------------
+    // PINNED — keep these rules LAST so they win over every grouping rule above.
+    //
+    // The Go toolchain version appears in FOUR kinds of file, and one of them is
+    // a shell script:
+    //
+    //   1. eight go.mod files          `go 1.26.4`         (parity rule 4)
+    //   2. six Go Dockerfiles          `FROM golang:1.26.4-alpine` (rule 5)
+    //   3. six Go Dockerfiles          `FROM alpine:3.21`          (rule 5)
+    //   4. tests/test_template_parity.sh
+    //        EXPECTED_GO_MAJOR_MINOR="1.26.4"
+    //        EXPECTED_GOLANG_TAG="golang:1.26.4-alpine"
+    //        EXPECTED_ALPINE_TAG="alpine:3.21"
+    //
+    // GROUPING WAS CONSIDERED AND REJECTED, for three reasons:
+    //
+    //   (a) No manager can edit (4). Renovate has no manager for a POSIX shell
+    //       variable, so ANY toolchain bump — grouped or not — lands a PR whose
+    //       own CI fails on the parity gate. Grouping makes the breakage
+    //       symmetric; it does not make it green.
+    //   (b) The pin is a CROSS-REPO contract, not a template-local choice. The
+    //       parity test's own comment says so: the platform pins the identical
+    //       patch in moses-platform-prep/backend/go.mod and the agent-base
+    //       image. Bumping here without bumping there desyncs the fleet, and
+    //       Renovate cannot see the other repository.
+    //   (c) Even a perfect group is racy across datasources. go.mod's `go`
+    //       directive resolves via `golang-version` (go.dev releases) while the
+    //       Dockerfile resolves via `docker` (Docker Hub tags). A group PR opens
+    //       for whichever members have an update available; if the image tag
+    //       lags the toolchain release by even a few hours, the group opens with
+    //       one half bumped and parity is red.
+    //
+    // TO BUMP THE GO TOOLCHAIN (a deliberate, human, ecosystem-wide change):
+    //   1. bump moses-platform-prep first (backend/go.mod + agent-base image),
+    //   2. here, in ONE commit: all eight go.mod `go` directives, every
+    //      `FROM golang:` line, and EXPECTED_GO_MAJOR_MINOR +
+    //      EXPECTED_GOLANG_TAG in tests/test_template_parity.sh,
+    //   3. `bash tests/test_template_parity.sh` must still report 0 failed.
+    // Same procedure for alpine (EXPECTED_ALPINE_TAG).
+    //
+    // These stay visible on the Dependency Dashboard, so a new patch release is
+    // still surfaced — it just does not open a PR that cannot pass CI.
+    // -------------------------------------------------------------------------
+    {
+      description: 'PINNED: `go` / `toolchain` directive in go.mod + go.work — see block above',
+      matchDatasources: ['golang-version'],
+      enabled: false,
+    },
+    {
+      description: 'PINNED: golang builder and alpine runtime base images — see block above',
+      matchManagers: ['dockerfile'],
+      matchPackageNames: ['golang', 'alpine'],
+      enabled: false,
+    },
+  ],
+}

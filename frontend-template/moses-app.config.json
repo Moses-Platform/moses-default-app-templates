@@ -1,0 +1,83 @@
+{
+  "name": "frontend-template-instance",
+  "version": "1.1.0",
+  "displayName": "My App",
+  "description": "UPDATE THIS — describe what your app does. This text appears in the Moses app registry.",
+  "appType": "frontend",
+  "entrypoint": "index.html",
+  "templateApiVersion": "moses-manager.eu/v1",
+  "embedding": {
+    "framing": "moses-only"
+  },
+  "skills": [
+    "skills/usage.md",
+    "skills/secrets-tutorial.md"
+  ],
+  "quickActions": [
+    {
+      "id": "launch",
+      "label": "Launch App",
+      "icon": "rocket",
+      "url": "/",
+      "description": "Open the app"
+    }
+  ],
+  "displayLocations": ["apps"],
+  "permissions": [],
+  "platformActions": [
+    {
+      "id": "explain-app",
+      "label": "Explain this app",
+      "icon": "lucide:message-square",
+      "description": "Opens Moses Manager with a seeded prompt that summarizes this app.",
+      "type": "chat_prompt",
+      "chatPrompt": {
+        "conversationTitle": "About this app",
+        "messageTemplate": "Please give me a one-paragraph summary of this app from its README."
+      },
+      "placement": ["app-header-menu"],
+      "availableIn": ["app-standalone"]
+    }
+  ],
+  "docker": {
+    "files": [
+      {
+        "name": "app",
+        "dockerfile": "Dockerfile",
+        "context": "."
+      }
+    ]
+  },
+  "service": {
+    "port": 8080,
+    "healthCheck": {
+      "enabled": true,
+      "path": "/health"
+    },
+    "ingress": {
+      "enabled": true
+    }
+  },
+  "resources": {
+    "cpu": { "request": "100m", "limit": "200m" },
+    "memory": { "request": "128Mi", "limit": "256Mi" }
+  },
+  "validation": {
+    "enabled": true,
+    "commands": [
+      { "name": "lint", "run": "npm install --include=dev --ignore-scripts && npm run lint", "required": true },
+      { "name": "test", "run": "NODE_ENV=test npm test", "required": true }
+    ]
+  },
+  "maintenance": {
+    "renovate": {
+      "schedule": "0 4 * * 1",
+      "context": "React+Vite frontend. Group React ecosystem updates. Watch for Vite major version changes that may break the build pipeline."
+    },
+    "logMonitor": {
+      "lookbackMinutes": 15,
+      "minErrorCount": 5,
+      "context": "Static frontend served by nginx. Common errors: chunk loading failures (stale cache after deploy), CORS issues if API proxy misconfigured, 404s on SPA routes without proper fallback."
+    }
+  }
+}

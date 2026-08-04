@@ -1,0 +1,11 @@
+node_modules/
+.git/
+helm/
+*.md
+!README.md
+.env*
+dist/
+.vscode/
+.idea/
+
+# One-shot demo cleanout machinery (ships in the repo, never in images)

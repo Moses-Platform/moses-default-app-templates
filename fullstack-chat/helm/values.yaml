@@ -1,0 +1,115 @@
+moses:
+  namespace: ""
+  tenantId: ""
+  executionId: ""
+  chartId: ""
+  appSlug: ""
+  # CHAT-pbup: Moses-aware template values. See ../README.md / DEPRECATIONS.md.
+  basePath: "/"
+  embedding:
+    framing: ""           # empty -> appType default (hybrid: moses-only)
+    allowedAncestors: []
+    reportUri: ""
+
+# Image references (v2 format — used by deployment template)
+# These are overridden by Moses during deployment via --set images.{name}.repository=...
+images:
+  frontend:
+    repository: "fullstack-chat-frontend"
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  backend:
+    repository: "fullstack-chat-backend"
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+# CHAT-pxeo.12 — RollingUpdate race window note:
+# This chart uses Helm/K8s defaults for Deployment.spec.strategy
+# (RollingUpdate). During a rollout the OLD pod keeps serving while the
+# NEW pod boots and runs its idempotent tenant-rewrite migration. If the
+# OLD pod still ships header-fallback storage logic (i.e. you are
+# rolling out the CHAT-pxeo.12 patch from a pre-patch baseline) it can
+# write a handful of 'local-dev'-keyed rows during cutover. They are
+# rewritten on the NEXT pod restart by the same idempotent migration.
+# If you cannot tolerate that window, override the strategy to
+# `Recreate` for the cutover deploy ONLY and revert afterward, or run
+# the UPDATE manually post-cutover. The default is intentionally NOT
+# changed here: Recreate causes user-visible downtime on every release.
+services:
+  - name: frontend
+    image:
+      repository: "fullstack-chat-frontend"
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    port: 8080
+    replicas: 1
+    resources:
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+    healthCheck:
+      enabled: true
+      path: /health
+    ingress: true
+
+  - name: backend
+    image:
+      repository: "fullstack-chat-backend"
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    port: 8080
+    replicas: 1
+    resources:
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+    healthCheck:
+      enabled: true
+      path: /health
+
+globalEnv:
+  # CHAT-pbup: BASE_URL deprecated alias, MOSES_BASE_PATH canonical.
+  BASE_URL: ""
+  MOSES_BASE_PATH: ""
+  NODE_ENV: "production"
+  MOSES_EMBEDDING_FRAMING: ""
+  MOSES_EMBEDDING_ALLOWED_ANCESTORS: ""
+  MOSES_EMBEDDING_REPORT_URI: ""
+
+postgresql:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    # CHAT-59o2 (DEPS-B2): align with platform convention. Moses' provisioner
+    # injects postgresql.auth.username="app" / database="appdb" by default.
+    # Earlier values used "fullstack_chat" / "fullstack_chat" which collided
+    # with the platform override → backend logged 14+ retries with
+    # `password authentication failed for user "app"`. Aligning here makes
+    # the backend connect on attempt 1.
+    username: app
+    # __MOSES_GENERATE_PASSWORD__ is a sentinel the Moses platform's
+    # SanitizeTemplateCredentials replaces with a per-tenant random 24-char
+    # password during template injection (see moses-platform-prep/backend/
+    # internal/services/agent_blueprint_provisioner.go).
+    #
+    # When deploying this chart standalone (without Moses), override via:
+    #   helm install <release> . --set postgresql.auth.password=$(openssl rand -hex 24)
+    # NEVER ship this literal value to production — it is a placeholder.
+    password: __MOSES_GENERATE_PASSWORD__
+    database: appdb
+  resources:
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
