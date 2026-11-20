@@ -1,4 +1,4 @@
-FROM golang:1.27.3-alpine3.24 AS builder
+FROM golang:1.27.4-alpine3.24 AS builder
 WORKDIR /build
 # CHAT-s6qf3: optional Moses in-cluster package cache (Nexus). Empty = upstream default.
 ARG GOPROXY=""

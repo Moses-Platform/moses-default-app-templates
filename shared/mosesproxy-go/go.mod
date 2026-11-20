@@ -1,5 +1,5 @@
 module github.com/moses-platform/moses-templates-shared/mosesproxy-go
 
-go 1.27.3
+go 1.27.4
 
 // Stdlib only — no third-party dependencies.

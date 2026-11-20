@@ -15,7 +15,7 @@ fullstack-unified/
 │   └── templates/
 │       ├── deployment.yaml
 │       └── service.yaml
-├── Dockerfile                # multi-stage: golang:1.27.3-alpine3.24 → alpine:3.24.4, non-root
+├── Dockerfile                # multi-stage: golang:1.27.4-alpine3.24 → alpine:3.24.4, non-root
 ├── go.mod
 ├── main.go                   # //go:embed static/*  +  //go:embed api/openapi.json
 ├── demo_routes.go            # empty route-registration stub — add your API routes here
@@ -114,4 +114,4 @@ Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tu
 
 ## Conventions enforced by `tests/test_template_parity.sh`
 
-Same as fullstack-simple: chart name `agent-deployed-app` v1.0.0, Go 1.27.3 (`golang:1.27.3-alpine3.24` → `alpine:3.24.4`), non-root + HEALTHCHECK in Dockerfile, no `"name": "my-app"` placeholder, no literal credentials in `helm/values.yaml`.
+Same as fullstack-simple: chart name `agent-deployed-app` v1.0.0, Go 1.27.4 (`golang:1.27.4-alpine3.24` → `alpine:3.24.4`), non-root + HEALTHCHECK in Dockerfile, no `"name": "my-app"` placeholder, no literal credentials in `helm/values.yaml`.

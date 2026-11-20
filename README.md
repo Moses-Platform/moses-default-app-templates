@@ -258,7 +258,7 @@ build`):
 exclude stays. `typecheck` is `tsc -p tsconfig.json --noEmit`, which keeps
 `"include": ["src"]` and therefore *does* type-check the test files. Without
 it they are checked by nothing: `npm test` runs vitest, and vitest transpiles
-TypeScript with esbuild, which strips types without ever verifying them.
+TypeScript, which strips types without ever verifying them.
 
 ```bash
 ./tests/test_nginx_entrypoint.sh
@@ -291,14 +291,14 @@ does not just sit there, it keeps minting stale repos through
 `moses_init_repo`. It covers npm across the five frontends and Go modules
 across the eight modules in `go.work`, plus Dockerfile base images and
 GitHub Actions. Updates are grouped so the templates move in **lockstep**
-(the five frontends ship identical dependency blocks; splitting them into
+(the five frontends use matching versions for shared dependencies; splitting them into
 five PRs would leave the set permanently out of sync): one PR for all npm
 minor/patch, one PR per npm major spanning every frontend, and the same
 shape for Go. Weekly, Monday morning, with a 7-day minimum release age;
 security fixes bypass both.
 
-**The Go toolchain and the alpine runtime are deliberately NOT updated by
-Renovate.** `go 1.27.3` / `golang:1.27.3-alpine3.24` / `alpine:3.24.4` are pinned
+**The Go toolchain and parity-pinned base images are deliberately NOT updated by
+Renovate.** `go 1.27.4` / `golang:1.27.4-alpine3.24` / `alpine:3.24.4` are pinned
 in all eight `go.mod` files, `go.work`, the Dockerfiles, *and* in `EXPECTED_GO_VERSION` /
 `EXPECTED_GOLANG_TAG` / `EXPECTED_ALPINE_TAG` inside
 `tests/test_template_parity.sh` — no dependency manager can edit that last
@@ -309,9 +309,18 @@ deliberate, coordinated change; the procedure is written out in
 `renovate.json5`'s `PINNED` block. Renovate still surfaces new releases on
 the Dependency Dashboard.
 
-The `go 1.27.3` directive sets the minimum compiler version; it is not an
+The `go 1.27.4` directive sets the minimum compiler version; it is not an
 exact toolchain lock. Older developer toolchains must upgrade (or allow Go
 toolchain selection). The Docker builder selects the versioned image above.
+
+Frontend builders use `node:26.13.1-alpine3.24`, with CI reading the same
+Node patch from `.node-version`; nginx uses the stable `nginx:1.30.7-alpine3.24`.
+Parity rules 5 and 15 enforce these image tags, `npm ci` in each frontend
+Dockerfile, shared direct-dependency versions, and package/lockfile agreement.
+Update image expectations and `.node-version` together when changing Node.
+CI also runs standalone `govulncheck` for all eight Go modules and
+`npm audit --audit-level=high` (including development dependencies) for each
+frontend. All third-party Actions are pinned to reviewed commit SHAs.
 
 The config is schema-validated on every PR by the `contract (renovate
 config)` CI job (`renovate-config-validator --strict`).

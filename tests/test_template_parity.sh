@@ -102,7 +102,7 @@ done
 #    not an exact toolchain lock; older developer compilers must upgrade.
 #    Update this expected directive and both image tags together.
 # ---------------------------------------------------------------------------
-EXPECTED_GO_VERSION="1.27.3"
+EXPECTED_GO_VERSION="1.27.4"
 for gm in go.work $(find . -maxdepth 4 -name go.mod -not -path './node_modules/*' -not -path '*/.template-clean/*' 2>/dev/null); do
   if [ ! -f "$gm" ]; then
     fail "Go directive: missing $gm"
@@ -122,8 +122,10 @@ done
 #    alpine runtime must pin the same alpine tag (3.24.4) so security scanning
 #    is consistent with the platform's agent-base image.
 # ---------------------------------------------------------------------------
-EXPECTED_GOLANG_TAG="golang:1.27.3-alpine3.24"
+EXPECTED_GOLANG_TAG="golang:1.27.4-alpine3.24"
 EXPECTED_ALPINE_TAG="alpine:3.24.4"
+EXPECTED_NODE_TAG="node:26.13.1-alpine3.24"
+EXPECTED_NGINX_TAG="nginx:1.30.7-alpine3.24"
 
 for df in $(find . -maxdepth 4 -name Dockerfile -not -path './node_modules/*' -not -path '*/.template-clean/*' 2>/dev/null); do
   # Compare every literal image token, not a regex/prefix. Accept optional
@@ -132,6 +134,8 @@ for df in $(find . -maxdepth 4 -name Dockerfile -not -path './node_modules/*' -n
     case "$image" in
       golang:*) expected="$EXPECTED_GOLANG_TAG" ;;
       alpine:*) expected="$EXPECTED_ALPINE_TAG" ;;
+      node:*) expected="$EXPECTED_NODE_TAG" ;;
+      nginx:*) expected="$EXPECTED_NGINX_TAG" ;;
       *) continue ;;
     esac
     if [ "$image" = "$expected" ]; then
@@ -151,7 +155,7 @@ done
 #    drops to a non-root worker after a brief root-uid startup window, and
 #    the entrypoint chmods rendered config files for that worker.
 # ---------------------------------------------------------------------------
-for df in backend-template/Dockerfile fullstack-unified/Dockerfile fullstack-simple/backend/Dockerfile fullstack-showcase/backend/Dockerfile; do
+for df in backend-template/Dockerfile fullstack-unified/Dockerfile fullstack-simple/backend/Dockerfile fullstack-showcase/backend/Dockerfile fullstack-chat/backend/Dockerfile fullstack-oidc/backend/Dockerfile; do
   if [ ! -f "$df" ]; then
     fail "backend Dockerfile: missing at $df"
     continue
@@ -175,7 +179,7 @@ done
 #    change, and breaks air-gap registry mirrors that don't trust the
 #    upstream module proxy. Use `go mod verify` instead.
 # ---------------------------------------------------------------------------
-for df in backend-template/Dockerfile fullstack-unified/Dockerfile fullstack-simple/backend/Dockerfile fullstack-showcase/backend/Dockerfile; do
+for df in backend-template/Dockerfile fullstack-unified/Dockerfile fullstack-simple/backend/Dockerfile fullstack-showcase/backend/Dockerfile fullstack-chat/backend/Dockerfile fullstack-oidc/backend/Dockerfile; do
   [ -f "$df" ] || continue
   # Strip comments before searching so the check only flags real RUN
   # directives, not commentary explaining why tidy was removed.
@@ -484,6 +488,100 @@ for t in $TEMPLATES; do
       pass "worked example: no shipped source in $sdir imports the example module"
     fi
   done
+done
+
+# ---------------------------------------------------------------------------
+# 15. Frontend image / install / manifest parity. Missing Python is a failure:
+#     dependency drift must never silently disable this contract in CI.
+# ---------------------------------------------------------------------------
+FRONTENDS="frontend-template fullstack-simple/frontend fullstack-showcase/frontend fullstack-chat/frontend fullstack-oidc/frontend"
+for frontend in $FRONTENDS; do
+  df="$frontend/Dockerfile"
+  if [ ! -f "$df" ]; then
+    fail "frontend Dockerfile: missing $df"
+    continue
+  fi
+  for expected in "$EXPECTED_NODE_TAG" "$EXPECTED_NGINX_TAG"; do
+    if awk 'toupper($1) == "FROM" { i = 2; if ($i ~ /^--platform=/) i++; print $i }' "$df" | grep -qxF "$expected"; then
+      pass "frontend image present: $df → $expected"
+    else
+      fail "frontend image present: $df must use $expected"
+    fi
+  done
+  if sed 's/#.*$//' "$df" | grep -qE 'npm[[:space:]]+ci([[:space:];&]|$)' &&
+     ! sed 's/#.*$//' "$df" | grep -qE 'npm[[:space:]]+(install|i|add)([[:space:];&]|$)'; then
+    pass "frontend reproducibility: $df uses npm ci"
+  else
+    fail "frontend reproducibility: $df must use npm ci, without npm install"
+  fi
+done
+
+if command -v python3 >/dev/null 2>&1; then
+  if python3 - "$EXPECTED_NODE_TAG" $FRONTENDS <<'PYTHON'
+import json
+from pathlib import Path
+import re
+import sys
+
+node_tag, *frontends = sys.argv[1:]
+node = Path(".node-version").read_text().strip()
+if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", node):
+    raise SystemExit(".node-version must contain an exact patch version")
+if node_tag != f"node:{node}-alpine3.24":
+    raise SystemExit(f".node-version {node} does not match {node_tag}")
+workflow = Path(".github/workflows/build-and-test.yml").read_text()
+setup_count = len(re.findall(r"uses: actions/setup-node@", workflow))
+if setup_count == 0 or len(re.findall(r"node-version-file: \.node-version\s*$", workflow, re.M)) != setup_count or re.search(r"node-version:", workflow):
+    raise SystemExit("every setup-node step must read .node-version")
+
+# Compare shared packages, allowing templates to omit packages they do not use
+# (for example fullstack-chat has no router). Also validate each lock's root.
+seen = {}
+resolved = {}
+for frontend in frontends:
+    path = Path(frontend)
+    package = json.loads((path / "package.json").read_text())
+    lock = json.loads((path / "package-lock.json").read_text())["packages"]
+    for section in ("dependencies", "devDependencies"):
+        deps = package.get(section, {})
+        if deps != lock[""].get(section, {}):
+            raise SystemExit(f"{path}: {section} differs from lockfile root")
+        for name, version in deps.items():
+            if name in seen and seen[name][0] != version:
+                raise SystemExit(f"{path}: {name} {version} differs from {seen[name]}")
+            seen[name] = (version, str(path))
+            entry = lock.get(f"node_modules/{name}")
+            if not entry or entry.get("link") or not entry.get("integrity"):
+                raise SystemExit(f"{path}: {name} needs an integrity-checked lock entry")
+            version = entry["version"]
+            if name in resolved and resolved[name] != version:
+                raise SystemExit(f"{path}: locked {name} {version} differs from {resolved[name]}")
+            resolved[name] = version
+PYTHON
+  then
+    pass "frontend manifests and lockfile roots: shared dependency versions agree"
+  else
+    fail "frontend dependency or CI Node version parity (see diagnostic above)"
+  fi
+else
+  fail "frontend dependency and CI Node parity requires python3"
+fi
+
+# ---------------------------------------------------------------------------
+# React Compiler stays wired. @vitejs/plugin-react 6 dropped its `babel` option:
+# a config that still passes it builds and tests green while the compiler is
+# silently off, and the templates tell authors not to memoize by hand.
+# ---------------------------------------------------------------------------
+for fe in $FRONTENDS; do
+  cfg="$fe/vite.config.ts"
+  if grep -q "babel({ presets: \[reactCompilerPreset()\] })" "$cfg" \
+    && grep -q '"@rolldown/plugin-babel"' "$fe/package.json" \
+    && grep -q '"babel-plugin-react-compiler"' "$fe/package.json" \
+    && ! grep -q "react({ *babel" "$cfg"; then
+    pass "React Compiler wired through reactCompilerPreset: $cfg"
+  else
+    fail "React Compiler not wired (expected babel({ presets: [reactCompilerPreset()] }) and its packages): $cfg"
+  fi
 done
 
 # ---------------------------------------------------------------------------

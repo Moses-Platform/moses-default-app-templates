@@ -54,7 +54,7 @@ A multi-service fullstack scaffold: nginx-served React 19 frontend + Go backend 
 - **Styling**: Moses design tokens (4px grid, system font stack, indigo primary)
 
 ### Backend Stack
-- **Language**: Go 1.27 (go.mod `1.27.3`)
+- **Language**: Go 1.27 (go.mod `1.27.4`)
 - **Dependencies**: net/http mux + pgx v5 (`jackc/pgx/v5/stdlib`) for PostgreSQL
 - **Runtime**: alpine:3.24.4
 - **Middleware**: Moses headers, CSRF rejection, CORS allowlist (off by default), logging
@@ -180,8 +180,8 @@ fullstack-showcase/
 ├── moses-app.config.json          # V2 config: hybrid app, 2 docker files, postgres dep
 ├── moses-app.config.with-secrets.example.json  # secrets.external[] example
 ├── backend/
-│   ├── Dockerfile                 # Multi-stage Go build (golang:1.27.3-alpine3.24 → alpine:3.24.4)
-│   ├── go.mod                     # Go 1.27.3, pgx v5
+│   ├── Dockerfile                 # Multi-stage Go build (golang:1.27.4-alpine3.24 → alpine:3.24.4)
+│   ├── go.mod                     # Go 1.27.4, pgx v5
 │   ├── cmd/server/
 │   │   ├── main.go                # Server entry + buildMux (health/openapi dual-mount)
 │   │   ├── demo_routes.go         # Your API route registration hook

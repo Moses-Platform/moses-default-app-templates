@@ -1,4 +1,4 @@
-# Single-stage builder running npm install then the Vite/TS build,
+# Single-stage builder running npm ci then the Vite/TS build,
 # then a slim nginx runtime.
 #
 # Standard two-step build (Kaniko hardlink workaround removed
@@ -7,7 +7,7 @@
 # separate RUN layers for proper layer caching on source-only changes.
 
 # --- Builder ------------------------------------------------------------
-FROM node:24-alpine AS builder
+FROM node:26.13.1-alpine3.24 AS builder
 WORKDIR /app
 
 # Manifests first: the npm-install layer is invalidated only when
@@ -19,7 +19,7 @@ ARG NPM_REGISTRY=""
 
 # Install deps (registry-aware) in its own layer.
 RUN if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi \
-    && npm install
+    && npm ci
 
 COPY . .
 
@@ -35,7 +35,7 @@ RUN VITE_MOSES_CHART_ID="$VITE_MOSES_CHART_ID" \
     sh -c 'npx tsc -p tsconfig.build.json && npx vite build'
 
 # --- Runtime ------------------------------------------------------------
-FROM nginx:1.28-alpine
+FROM nginx:1.30.7-alpine3.24
 
 # CHAT-pbup: nginx config is rendered at container start by entrypoint.sh
 # from MOSES_EMBEDDING_FRAMING + MOSES_EMBEDDING_ALLOWED_ANCESTORS so a
