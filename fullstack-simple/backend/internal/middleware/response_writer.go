@@ -15,7 +15,8 @@ type responseWriter struct {
 
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.ResponseWriter.WriteHeader(code)
-	if code < 100 || code >= 200 {
+	// 1xx responses are interim, except 101 Switching Protocols, which is final.
+	if code < 100 || code >= 200 || code == http.StatusSwitchingProtocols {
 		rw.recordStatus(code)
 	}
 }

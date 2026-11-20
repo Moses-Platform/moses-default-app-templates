@@ -62,7 +62,7 @@ type informationalRecorder struct {
 }
 
 func (w *informationalRecorder) WriteHeader(code int) {
-	if code >= 100 && code < 200 {
+	if code >= 100 && code < 200 && code != http.StatusSwitchingProtocols {
 		w.informational = append(w.informational, code)
 		return
 	}
@@ -85,6 +85,7 @@ func TestLoggingCommittedStatus(t *testing.T) {
 		{"informational then write", func(w http.ResponseWriter) { w.WriteHeader(103); _, _ = w.Write([]byte("ok")) }, 200, 1},
 		{"informational then flush", func(w http.ResponseWriter) { w.WriteHeader(103); w.(http.Flusher).Flush() }, 200, 1},
 		{"informational only", func(w http.ResponseWriter) { w.WriteHeader(103) }, 200, 1},
+		{"switching protocols is final", func(w http.ResponseWriter) { w.WriteHeader(101); w.WriteHeader(500) }, 101, 0},
 		{"no write", func(http.ResponseWriter) {}, 200, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
