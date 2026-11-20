@@ -73,7 +73,7 @@ func MyHandler(w http.ResponseWriter, r *http.Request) {
     }
     rows := store.GetByTenant(mosesCtx.SelfTenantID) // storage scope: env-pinned
     log.Printf("[%s] user=%s caller_tenant=%s",
-        mosesCtx.RequestID, mosesCtx.UserID, mosesCtx.CallerTenantID) // audit
+        mosesCtx.RequestID, mosesCtx.UntrustedUserID, mosesCtx.CallerTenantID) // audit
     ...
 }
 ```
@@ -157,7 +157,7 @@ Headers injected by the platform's WorkspaceToolProxy on MCP-driven calls
 | Header | MosesContext field | Purpose |
 |--------|--------------------|---------|
 | `X-Moses-Tenant-ID` | `CallerTenantID` | Caller's tenant — audit + 403 cross-check only |
-| `X-Moses-User-ID` | `UserID` | User who initiated the call |
+| `X-Moses-User-ID` | `UntrustedUserID` | Caller-supplied audit context; never authentication |
 | `X-Moses-Chart-ID` | `ChartID` | Project/workspace ID |
 | `X-Moses-Tool-ID` | `ToolID` | Workspace tool deployment ID |
 | `X-Moses-Request-ID` | `RequestID` | Request trace ID — use in logs |

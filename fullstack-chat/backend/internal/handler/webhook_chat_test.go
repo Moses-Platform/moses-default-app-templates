@@ -6,6 +6,10 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -319,5 +323,56 @@ func TestChatWebhook_AcceptsMatchingAppSlug(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+type failingSink struct{}
+
+func (failingSink) Record(context.Context, ChatCompletionPayload, bool) error {
+	return errors.New("private database detail\nforged")
+}
+
+type failingBody struct{}
+
+func (failingBody) Read([]byte) (int, error) { return 0, errors.New("private read detail\nforged") }
+func (failingBody) Close() error             { return nil }
+func TestWebhookGenericErrors(t *testing.T) {
+	for _, name := range []string{"read", "json", "persist"} {
+		t.Run(name, func(t *testing.T) {
+			var logs bytes.Buffer
+			old := log.Writer()
+			log.SetOutput(&logs)
+			defer log.SetOutput(old)
+			secret := []byte("test-secret")
+			body := makePayload(t)
+			var reader io.Reader = bytes.NewReader(body)
+			want, status, detail := "internal server error", 500, "private database detail"
+			if name == "json" {
+				reader = strings.NewReader(`{"v":"invalid"}`)
+				want, status, detail = "invalid JSON", 400, "cannot unmarshal"
+			}
+			r := httptest.NewRequest("POST", "/api/v1/webhooks/chat-complete", reader)
+			if name == "read" {
+				r.Body = failingBody{}
+				want, status, detail = "invalid request body", 400, "private read detail"
+			}
+			r.Header.Set("X-Moses-Signature", sign(secret, body))
+			h := &ChatWebhookHandler{Secret: secret, Sink: failingSink{}}
+			w := httptest.NewRecorder()
+			h.Handle(w, r)
+			var got map[string]any
+			if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			if w.Code != status || got["error"] != want {
+				t.Fatalf("status %d body %s", w.Code, w.Body.String())
+			}
+			if !strings.Contains(logs.String(), detail) {
+				t.Fatalf("missing detail: %q", logs.String())
+			}
+			if strings.Count(logs.String(), "\n") != 1 {
+				t.Fatalf("log injection: %q", logs.String())
+			}
+		})
 	}
 }

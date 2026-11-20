@@ -109,6 +109,7 @@ func main() {
 	// must not rely on the platform edge alone — the access_token cookie is
 	// SameSite=None). Kept inside Logging so blocked requests are still logged.
 	h = middleware.RejectCrossSiteCSRF(h)
+	h = middleware.LimitRequestBody(h)
 	h = middleware.Logging(h)
 	h = middleware.MosesHeaders(h)
 	h = middleware.CORS(h)

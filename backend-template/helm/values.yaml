@@ -81,3 +81,23 @@ readinessProbe:
   periodSeconds: 5
   timeoutSeconds: 5
   failureThreshold: 3
+
+# Runtime defaults. Service/sidecar securityContext maps can override these.
+automountServiceAccountToken: false
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+  seccompProfile:
+    type: RuntimeDefault
+  readOnlyRootFilesystem: true

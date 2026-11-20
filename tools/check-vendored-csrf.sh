@@ -4,7 +4,7 @@
 #
 # Exit 0 if all vendored copies are in sync. Exit non-zero with a diff if not.
 #
-# Layout: shared/csrf-go/csrf.go (package csrf) is canonical; five templates
+# Layout: shared/csrf-go/csrf.go (package csrf) is canonical; six templates
 # carry a VENDORED COPY (package middleware, or package main for
 # fullstack-unified). The ONLY intentional deltas between copies/canonical:
 #   - the package clause (csrf / middleware / main);
@@ -17,12 +17,12 @@
 #   - the canonical csrf_test.go has an okHandler helper + 2 extra cases the
 #     vendored tests lack (pre-existing structural drift). Canonical/vendored
 #     TESTS are therefore intentionally NOT cross-compared here; Check A
-#     keeps the five vendored tests in lockstep with each other instead.
+#     keeps the six vendored tests in lockstep with each other instead.
 #
 # Drift remediation: fix shared/csrf-go/csrf.go first, re-apply the two helper
-# renames above, copy the body into all five vendored copies (keeping each
+# renames above, copy the body into all six vendored copies (keeping each
 # file's VENDORED COPY header + package clause), and mirror the test body
-# across the five vendored csrf_test.go files. If you add a SIXTH vendored
+# across the six vendored csrf_test.go files. If you add a SEVENTH vendored
 # copy, extend VENDORED_COPIES/VENDORED_TESTS below and keep its deltas to the
 # documented set — new intentional deltas need a new normalization rule here,
 # not a silent exemption.
@@ -36,7 +36,7 @@ set -euo pipefail
 
 CANONICAL="shared/csrf-go/csrf.go"
 
-# Reference vendored copy: the other four are compared against it (Check A),
+# Reference vendored copy: the other five are compared against it (Check A),
 # and it alone is compared against the canonical (Check B).
 REFERENCE="backend-template/internal/middleware/csrf.go"
 REFERENCE_TEST="backend-template/internal/middleware/csrf_test.go"
@@ -45,12 +45,14 @@ VENDORED_COPIES=(
   "fullstack-simple/backend/internal/middleware/csrf.go"
   "fullstack-showcase/backend/internal/middleware/csrf.go"
   "fullstack-chat/backend/internal/middleware/csrf.go"
+  "fullstack-oidc/backend/internal/middleware/csrf.go"
   "fullstack-unified/csrf.go"
 )
 VENDORED_TESTS=(
   "fullstack-simple/backend/internal/middleware/csrf_test.go"
   "fullstack-showcase/backend/internal/middleware/csrf_test.go"
   "fullstack-chat/backend/internal/middleware/csrf_test.go"
+  "fullstack-oidc/backend/internal/middleware/csrf_test.go"
   "fullstack-unified/csrf_test.go"
 )
 
@@ -87,7 +89,7 @@ code_only() {
 }
 
 # ---------------------------------------------------------------------------
-# Check A — lockstep among the 5 vendored copies (strict, incl. comments).
+# Check A — lockstep among the 6 vendored copies (strict, incl. comments).
 # ---------------------------------------------------------------------------
 ref_body="$(body "${REFERENCE}" | normalize_qualifier)"
 for v in "${VENDORED_COPIES[@]}"; do
@@ -144,7 +146,7 @@ if [[ ${drift} -ne 0 ]]; then
   echo "Vendored csrf-go copies are out of sync."
   echo "Fix shared/csrf-go/csrf.go first, re-apply the helper renames"
   echo "(isUnsafeMethod->csrfIsUnsafeMethod, isCrossSite->csrfIsCrossSite),"
-  echo "then copy the body into all five vendored copies, preserving each"
+  echo "then copy the body into all six vendored copies, preserving each"
   echo "file's VENDORED COPY header and package clause."
   exit 1
 fi

@@ -57,7 +57,10 @@ COPY nginx.conf /etc/nginx/nginx.conf.template
 
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh \
+    && test "$(id -u nginx)" = 101 && test "$(id -g nginx)" = 101
+
+USER 101:101
 
 # Expose port
 EXPOSE 8080

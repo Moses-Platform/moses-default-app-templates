@@ -1,4 +1,15 @@
 {{- if .Values.redis.enabled }}
+{{- if or (empty .Values.redis.auth.password) (eq .Values.redis.auth.password "__MOSES_GENERATE_PASSWORD__") }}
+{{- fail "Set redis.auth.password to a generated password before installing (Moses substitutes the sentinel before Helm)." }}
+{{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "agent-deployed-app.fullname" . }}-redis
+type: Opaque
+data:
+  redis-password: {{ .Values.redis.auth.password | b64enc | quote }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -22,9 +33,27 @@ spec:
         moses-manager.eu/execution-id: {{ .Values.moses.executionId | quote }}
         moses-manager.eu/managed-by: moses
     spec:
+      automountServiceAccountToken: {{ .Values.redis.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml .Values.redis.podSecurityContext | nindent 8 }}
       containers:
         - name: redis
+          securityContext:
+            {{- toYaml .Values.redis.securityContext | nindent 12 }}
           image: "{{ .Values.redis.image.repository | default "valkey/valkey" }}:{{ .Values.redis.image.tag | default "8-alpine" }}"
+          # Kubernetes expands this env reference without shell interpolation.
+          args: ["valkey-server", "--requirepass", "$(REDIS_PASSWORD)"]
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agent-deployed-app.fullname" . }}-redis
+                  key: redis-password
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: data
+              mountPath: /data
           ports:
             - name: redis
               containerPort: 6379
@@ -41,6 +70,11 @@ spec:
             periodSeconds: 10
           resources:
             {{- toYaml .Values.redis.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: data
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

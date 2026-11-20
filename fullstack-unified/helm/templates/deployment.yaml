@@ -27,8 +27,19 @@ spec:
         {{- end }}
         moses-manager.eu/managed-by: moses
     spec:
+      automountServiceAccountToken: {{ $.Values.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml (mergeOverwrite (deepCopy $.Values.podSecurityContext) (.podSecurityContext | default dict)) | nindent 8 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
       containers:
         - name: {{ .name }}
+          securityContext:
+            {{- toYaml (mergeOverwrite (deepCopy $.Values.securityContext) (.securityContext | default dict)) | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           {{- $imgSpec := dict "repository" "placeholder" "tag" "latest" "pullPolicy" "IfNotPresent" }}
           {{- if and $.Values.images (hasKey $.Values.images .name) }}
           {{- $imgSpec = index $.Values.images .name }}

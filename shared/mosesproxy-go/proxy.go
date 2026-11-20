@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -143,7 +144,8 @@ func NewHandler(cfg Config) http.HandlerFunc {
 			return
 		}
 		if err := cfg.Validate(); err != nil {
-			writeErr(w, http.StatusServiceUnavailable, "moses_unconfigured", err.Error())
+			log.Printf("moses_unconfigured: %q", err.Error())
+			writeErr(w, http.StatusServiceUnavailable, "moses_unconfigured", "service unavailable")
 			return
 		}
 		if cfg.RequireRequestedWith && r.Header.Get(RequestedWithHeader) != RequestedWithValue {
@@ -162,7 +164,8 @@ func NewHandler(cfg Config) http.HandlerFunc {
 		var in inboundRequest
 		dec := json.NewDecoder(io.LimitReader(r.Body, maxBodyBytes))
 		if err := dec.Decode(&in); err != nil {
-			writeErr(w, http.StatusBadRequest, "bad_request", err.Error())
+			log.Printf("bad_request: %q", err.Error())
+			writeErr(w, http.StatusBadRequest, "bad_request", "invalid request body")
 			return
 		}
 		if in.ActionID == "" {
@@ -172,7 +175,8 @@ func NewHandler(cfg Config) http.HandlerFunc {
 
 		body, err := json.Marshal(forwardRequest{Variables: in.Variables, ChartID: cfg.ChartID})
 		if err != nil {
-			writeErr(w, http.StatusInternalServerError, "marshal_failed", err.Error())
+			log.Printf("marshal_failed: %q", err.Error())
+			writeErr(w, http.StatusInternalServerError, "marshal_failed", "internal server error")
 			return
 		}
 
@@ -184,7 +188,8 @@ func NewHandler(cfg Config) http.HandlerFunc {
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 		if err != nil {
-			writeErr(w, http.StatusInternalServerError, "request_build_failed", err.Error())
+			log.Printf("request_build_failed: %q", err.Error())
+			writeErr(w, http.StatusInternalServerError, "request_build_failed", "internal server error")
 			return
 		}
 		req.Header.Set("Authorization", "Bearer "+jwt)
@@ -195,7 +200,8 @@ func NewHandler(cfg Config) http.HandlerFunc {
 
 		resp, err := client.Do(req)
 		if err != nil {
-			writeErr(w, http.StatusBadGateway, "moses_unreachable", err.Error())
+			log.Printf("moses_unreachable: %q", err.Error())
+			writeErr(w, http.StatusBadGateway, "moses_unreachable", "upstream unavailable")
 			return
 		}
 		defer resp.Body.Close()

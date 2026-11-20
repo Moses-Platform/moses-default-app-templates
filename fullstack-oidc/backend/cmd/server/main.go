@@ -78,16 +78,7 @@ func main() {
 
 	mux := buildMux(basePath, oidcCfg.Enabled(), db)
 
-	// Middleware order (outermost first):
-	//   Logging -> CORS -> MosesHeaders -> OIDCAuth -> mux
-	// OIDCAuth is INSIDE MosesHeaders so the header-trust decision can
-	// see the X-Moses-* headers; it owns /auth/* and gates protected
-	// routes before the mux runs.
-	var h http.Handler = mux
-	h = auth.Handler(h)
-	h = middleware.MosesHeaders(h)
-	h = middleware.CORS(h)
-	h = middleware.Logging(h)
+	h := buildHandler(auth, mux)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -157,4 +148,21 @@ func buildMux(basePath string, oidcEnabled bool, db *sql.DB) *http.ServeMux {
 	registerDemoRoutes(mux, basePath, oidcEnabled, db)
 
 	return mux
+}
+
+func buildHandler(auth *oidcauth.Middleware, next http.Handler) http.Handler {
+	// Middleware order (outermost first):
+	//   Logging -> CORS -> MosesHeaders -> LimitRequestBody -> CSRF -> OIDCAuth -> mux
+	// CSRF runs before all OIDC routes and session/gateway decisions. The
+	// authorization-code callback is GET, so it needs no exemption.
+	// OIDCAuth owns /auth/* and gates protected routes before the mux runs.
+	var h http.Handler = next
+	h = auth.Handler(h)
+	h = middleware.RejectCrossSiteCSRF(h)
+	h = middleware.LimitRequestBody(h)
+	h = middleware.MosesHeaders(h)
+	h = middleware.CORS(h)
+	h = middleware.Logging(h)
+
+	return h
 }

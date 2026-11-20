@@ -211,9 +211,9 @@ func main() {
 		// SameSite=None). Wrapped innermost so it guards the API + static routes
 		// while the outer middleware still runs on blocked (403) requests; only
 		// unsafe methods are blocked, so static-asset / SPA GETs pass through.
-		// corsMiddleware (cors.go) is outermost: OFF by default (same-origin
+		// Logging is outermost. CORS is OFF by default (same-origin
 		// deployment model), opt-in via CORS_ALLOWED_ORIGINS.
-		Handler:      corsMiddleware(withEmbeddingHeaders(RejectCrossSiteCSRF(mux))),
+		Handler:      Logging(corsMiddleware(withEmbeddingHeaders(LimitRequestBody(RejectCrossSiteCSRF(mux))))),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -292,21 +292,22 @@ func registerAPIRoutes(mux *http.ServeMux, baseURL string) {
 // via screenshots / log channels / cross-pod aggregation. The
 // caller-tenant value is still observable via the X-Moses-Tenant-ID
 // request header they sent in.
+// UntrustedUserID is caller-controlled audit context, NOT an authenticated identity.
 type mosesContext struct {
-	SelfTenantID   string `json:"-"`
-	CallerTenantID string `json:"-"`
-	UserID         string `json:"user_id"`
-	ChartID        string `json:"chart_id"`
-	RequestID      string `json:"request_id"`
+	SelfTenantID    string `json:"-"`
+	CallerTenantID  string `json:"-"`
+	UntrustedUserID string `json:"untrusted_user_id"`
+	ChartID         string `json:"chart_id"`
+	RequestID       string `json:"request_id"`
 }
 
 func getMosesContext(r *http.Request) mosesContext {
 	return mosesContext{
-		SelfTenantID:   config.SelfTenantID(),
-		CallerTenantID: r.Header.Get("X-Moses-Tenant-ID"),
-		UserID:         r.Header.Get("X-Moses-User-ID"),
-		ChartID:        r.Header.Get("X-Moses-Chart-ID"),
-		RequestID:      r.Header.Get("X-Moses-Request-ID"),
+		SelfTenantID:    config.SelfTenantID(),
+		CallerTenantID:  r.Header.Get("X-Moses-Tenant-ID"),
+		UntrustedUserID: r.Header.Get("X-Moses-User-ID"),
+		ChartID:         r.Header.Get("X-Moses-Chart-ID"),
+		RequestID:       r.Header.Get("X-Moses-Request-ID"),
 	}
 }
 
