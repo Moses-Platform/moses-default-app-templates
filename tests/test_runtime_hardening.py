@@ -41,7 +41,8 @@ class Hardening(unittest.TestCase):
     values=read(template+'/helm/values.yaml')
     self.assertIn('MOSES_MAX_BODY_BYTES: "1048576"', values)
     if '/frontend' in f:
-     self.assertIn('if ne $key "MOSES_MAX_BODY_BYTES"', read(template+'/helm/templates/deployment.yaml'))
+     self.assertIn('hasKey (.env | default dict) "MOSES_MAX_BODY_BYTES"', read(template+'/helm/templates/deployment.yaml'))
+     self.assertIn('fail "move MOSES_MAX_BODY_BYTES to globalEnv: one value now applies to the frontend proxy and the backend"', read(template+'/helm/templates/deployment.yaml'))
      self.assertIn('globalEnv.MOSES_MAX_BODY_BYTES', read(template+'/README.md'))
  def test_redis_enablement_docs(self):
   for term in ['redis.auth.password', 'REDIS_PASSWORD', 'coordinated', '__MOSES_GENERATE_PASSWORD__']:

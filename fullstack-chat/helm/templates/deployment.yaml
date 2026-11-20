@@ -1,4 +1,7 @@
 {{- range .Values.services }}
+{{- if hasKey (.env | default dict) "MOSES_MAX_BODY_BYTES" }}
+{{- fail "move MOSES_MAX_BODY_BYTES to globalEnv: one value now applies to the frontend proxy and the backend" }}
+{{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -110,11 +113,8 @@ spec:
             {{- end }}
             {{- end }}
             {{- range $key, $value := .env }}
-            {{- /* The body cap comes only from globalEnv so both hops agree. */}}
-            {{- if ne $key "MOSES_MAX_BODY_BYTES" }}
             - name: {{ $key }}
               value: {{ $value | quote }}
-            {{- end }}
             {{- end }}
             {{- /* DB credentials are BACKEND-ONLY (same frontend-name
                    convention as above): the nginx container never talks to

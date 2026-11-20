@@ -462,9 +462,12 @@ health checks remain anonymous. The default body cap is 1 MiB; override
 
 For this split frontend/backend chart, change only
 `globalEnv.MOSES_MAX_BODY_BYTES` in `helm/values.yaml` (for example `"52428800"`
-for 50 MiB). The chart injects that value into both containers and ignores a
-per-service override of this key. At startup, the frontend entrypoint validates
-it and renders nginx's `client_max_body_size` in bytes; Go reads the same
+for 50 MiB). The chart injects that value into both containers. Rendering fails
+if any service-local `env` sets this key, including retained values from an older
+chart: "move MOSES_MAX_BODY_BYTES to globalEnv: one value now applies to the frontend proxy and the backend".
+Remove the service-local key and move its value to `globalEnv` before deploying.
+At startup, the frontend entrypoint validates it and renders nginx's
+`client_max_body_size` in bytes; Go reads the same
 `MOSES_MAX_BODY_BYTES`. Both default to **1048576 bytes (1 MiB)**. Invalid,
 zero, negative or overflowing values fall back to that default; nginx startup
 logs `Invalid MOSES_MAX_BODY_BYTES; using default 1048576`. With standalone

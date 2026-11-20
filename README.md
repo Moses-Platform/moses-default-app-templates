@@ -228,9 +228,12 @@ never buffers the whole body. Endpoint-specific smaller limits still apply.
 
 The split simple/showcase/chat/OIDC charts use **one values key**:
 `globalEnv.MOSES_MAX_BODY_BYTES: "52428800"` raises both hops to 50 MiB. The
-chart injects this into frontend and backend; per-service overrides of this
-key are ignored to prevent mismatched limits. The frontend entrypoint
-validates the value and renders nginx's `client_max_body_size` in bytes,
+chart injects this into frontend and backend. Rendering fails if any service-local
+`env` sets this key, including retained values from an older chart:
+"move MOSES_MAX_BODY_BYTES to globalEnv: one value now applies to the frontend proxy and the backend".
+Remove the service-local key and move its value to `globalEnv` before deploying.
+The frontend entrypoint validates the value and renders nginx's
+`client_max_body_size` in bytes,
 with the same **1048576-byte** default as Go. Malformed, zero, negative or
 overflowing values retain the default and the entrypoint logs
 `Invalid MOSES_MAX_BODY_BYTES; using default 1048576`. For standalone
@@ -417,8 +420,10 @@ toolchain selection). The Docker builder selects the versioned image above.
 
 Frontend builders use `node:26.13.1-alpine3.24`, with CI reading the same
 Node patch from `.node-version`; nginx uses the stable `nginx:1.30.7-alpine3.24`.
-Parity rules 5 and 15 enforce these image tags, `npm ci` in each frontend
+Parity rules 5 and 15 check these image tags, `npm ci` in each frontend
 Dockerfile, shared direct-dependency versions, and package/lockfile agreement.
+The Dockerfile check guards against regressions to `npm install`; it does not
+prove shell execution or that dependencies were installed.
 Update image expectations and `.node-version` together when changing Node.
 CI also runs standalone `govulncheck` for all eight Go modules and
 `npm audit --audit-level=high` (including development dependencies) for each

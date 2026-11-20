@@ -9,8 +9,6 @@ from pathlib import Path
 
 def docker_uses_npm_ci(source):
     # Join Docker continuations, then inspect only executable RUN instructions.
-    # Shell tokenization keeps quoted echo text together; it cannot masquerade
-    # as a separate npm command after && or a semicolon.
     source = re.sub(r'\\\n', ' ', source)
     commands = []
     for line in source.splitlines():
@@ -38,6 +36,7 @@ def docker_uses_npm_ci(source):
         while command and (command[0] in ('then', 'else', 'do', '!')
                            or re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', command[0])):
             command.pop(0)
+    # This check guards against regressing to npm install; it is not a shell parser.
     return (any(c[:2] == ['npm', 'ci'] for c in commands)
             and not any(c[:2] in (['npm', 'install'], ['npm', 'i'], ['npm', 'add']) for c in commands))
 
