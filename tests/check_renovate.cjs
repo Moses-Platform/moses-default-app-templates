@@ -1,0 +1,20 @@
+// Run after npm ci in frontend-template; json5 is already in its locked tree.
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
+const { createRequire } = require('node:module')
+const root = path.resolve(__dirname, '..')
+const frontendRequire = createRequire(path.join(root, 'frontend-template/package.json'))
+const config = frontendRequire('json5').parse(fs.readFileSync(path.join(root, '.github/renovate.json5'), 'utf8'))
+assert.ok(config.extends.includes(':dependencyDashboard'))
+for (const image of ['node', 'nginx', 'golang', 'alpine']) {
+  const rules = config.packageRules.filter(rule => rule.matchManagers?.includes('dockerfile') && rule.matchPackageNames?.includes(image))
+  assert.ok(rules.length, `missing rule for ${image}`)
+  const rule = Object.assign({}, ...rules)
+  assert.notEqual(rule.enabled, false, `${image}: disabled lookup hides releases`)
+  assert.equal(rule.dependencyDashboardApproval, true, `${image}: require approval before PRs`)
+}
+const goRule = config.packageRules.find(rule => rule.matchDatasources?.includes('golang-version'))
+assert.notEqual(goRule.enabled, false)
+assert.equal(goRule.dependencyDashboardApproval, true)
+console.log('Renovate JSON5 parsed; pinned images/toolchain require dashboard approval.')

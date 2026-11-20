@@ -33,5 +33,35 @@ for t in frontend-template backend-template fullstack-simple fullstack-unified f
   helm template check "$t/helm" "${args[@]}" --set automountServiceAccountToken=true --set securityContext.readOnlyRootFilesystem=false > "$tmp/overrides"
   grep -q 'automountServiceAccountToken: true' "$tmp/overrides"
   grep -q 'readOnlyRootFilesystem: false' "$tmp/overrides"
+  case "$t" in
+    frontend-template|backend-template|fullstack-unified)
+      key=env
+      container=agent-deployed-app
+      if [ "$t" = fullstack-unified ]; then key=globalEnv; container=app; fi
+      ruby tests/verify_helm_body_limit.rb "$tmp/rendered" 1048576 "$container"
+      helm template check "$t/helm" "${args[@]}" --set-string "$key.MOSES_MAX_BODY_BYTES=52428800" > "$tmp/body-limit"
+      ruby tests/verify_helm_body_limit.rb "$tmp/body-limit" 52428800 "$container"
+      ;;
+    fullstack-simple|fullstack-showcase|fullstack-chat|fullstack-oidc)
+      ruby tests/verify_helm_body_limit.rb "$tmp/rendered" 1048576
+      # Retained service-local values must fail, even with a global override.
+      for service in frontend backend; do
+        for value in 52428800 '' 0; do
+          ruby -ryaml -e 'v=YAML.load_file(ARGV[0]); s=v.fetch("services").find { |s| s["name"] == ARGV[1] }; (s["env"] ||= {})["MOSES_MAX_BODY_BYTES"]=ARGV[2]; puts({"services"=>v["services"]}.to_yaml)' "$t/helm/values.yaml" "$service" "$value" > "$tmp/service-override.yaml"
+          for global in '' 52428800; do
+            override=("${args[@]}")
+            if [ -n "$global" ]; then override+=(--set-string "globalEnv.MOSES_MAX_BODY_BYTES=$global"); fi
+            if helm template check "$t/helm" "${override[@]}" -f "$tmp/service-override.yaml" > "$tmp/legacy-limit" 2>&1; then
+              echo "FAIL: $t accepted $service service-local body limit '$value' (global='$global')"; exit 1
+            fi
+            grep -Fq 'move MOSES_MAX_BODY_BYTES to globalEnv: one value now applies to the frontend proxy and the backend' "$tmp/legacy-limit"
+          done
+        done
+      done
+      # Move the retained 50 MiB value to globalEnv; both containers receive it.
+      helm template check "$t/helm" "${args[@]}" --set-string globalEnv.MOSES_MAX_BODY_BYTES=52428800 > "$tmp/body-limit"
+      ruby tests/verify_helm_body_limit.rb "$tmp/body-limit" 52428800
+      ;;
+  esac
   echo "PASS: $t render, guards, security and overrides"
 done

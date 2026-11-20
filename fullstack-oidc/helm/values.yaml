@@ -132,6 +132,8 @@ services:
       path: /health
 
 globalEnv:
+  # Shared nginx / Go request-body cap in bytes; change this one value.
+  MOSES_MAX_BODY_BYTES: "1048576"
   # CHAT-pbup: BASE_URL deprecated alias, MOSES_BASE_PATH canonical.
   BASE_URL: ""
   MOSES_BASE_PATH: ""

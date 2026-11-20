@@ -94,6 +94,9 @@ jobs:
       - name: npm ci
         working-directory: ${{ matrix.frontend }}
         run: npm ci
+      - name: pinned image notification contract (JSON5)
+        if: matrix.frontend == 'frontend-template'
+        run: node tests/check_renovate.cjs
       - name: lint (tsc, production sources)
         working-directory: ${{ matrix.frontend }}
         run: npm run lint

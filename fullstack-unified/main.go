@@ -213,7 +213,7 @@ func main() {
 		// unsafe methods are blocked, so static-asset / SPA GETs pass through.
 		// Logging is outermost. CORS is OFF by default (same-origin
 		// deployment model), opt-in via CORS_ALLOWED_ORIGINS.
-		Handler:      Logging(corsMiddleware(withEmbeddingHeaders(LimitRequestBody(RejectCrossSiteCSRF(mux))))),
+		Handler:      buildHandler(mux),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -417,4 +417,9 @@ func handleOpenAPI(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	w.Write(openapiSpec)
+}
+
+// buildHandler is the production middleware chain, also exercised by streaming tests.
+func buildHandler(next http.Handler) http.Handler {
+	return Logging(corsMiddleware(withEmbeddingHeaders(LimitRequestBody(RejectCrossSiteCSRF(next)))))
 }

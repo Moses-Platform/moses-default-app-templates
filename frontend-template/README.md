@@ -377,3 +377,13 @@ For issues or questions:
 ---
 
 This template is production-ready. Customize it to fit your application's needs while maintaining Moses platform integration.
+
+### Request body limit
+
+Set `env.MOSES_MAX_BODY_BYTES` in `helm/values.yaml` (or the container's
+`MOSES_MAX_BODY_BYTES`) to a positive byte count. The entrypoint validates it
+and renders nginx's `client_max_body_size`, defaulting to **1048576 bytes
+(1 MiB)**. Invalid, zero, negative and overflowing values retain the default
+and log `Invalid MOSES_MAX_BODY_BYTES; using default 1048576`. If you add a Go
+backend, give it the same environment value and keep both caps within the
+outer ingress limit.

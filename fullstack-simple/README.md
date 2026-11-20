@@ -64,7 +64,23 @@ The frontend nginx proxies `/api/*` → `http://${BACKEND_SERVICE_HOST}:${BACKEN
 
 ## Optional Redis sidecar
 
-Set `redis.enabled: true` in `values.yaml`. The chart provisions a Valkey 8-alpine Deployment (`helm/templates/redis.yaml`) and the deployment template auto-injects `REDIS_HOST`, `REDIS_PORT`, `REDIS_ADDR` env vars into every container. Agents should NEVER hardcode the service name — it derives from `{fullname}-redis`.
+Set `redis.enabled: true` **and** supply `redis.auth.password` in
+`helm/values.yaml` for a standalone install. Helm intentionally rejects an
+empty password or the `__MOSES_GENERATE_PASSWORD__` sentinel when Redis is
+enabled. Moses replaces that sentinel before Helm rendering during template
+injection; standalone installs must provide their own password.
+
+The chart provisions a Valkey 8-alpine Deployment (`helm/templates/redis.yaml`)
+with AUTH required. It auto-injects `REDIS_HOST`, `REDIS_PORT`, `REDIS_ADDR`
+and `REDIS_PASSWORD` (from a Kubernetes Secret via `secretKeyRef`) into
+services. Redis clients must use `REDIS_PASSWORD` to authenticate; an address
+alone produces `NOAUTH`. Never hardcode the service name — it derives from
+`{fullname}-redis`.
+
+For an existing app, use a coordinated server/client rollout: update the
+client to authenticate with the injected password when enabling server AUTH.
+Coordinate password rotations on both sides as well. This scaffold does not
+ship a Redis client; enabling the chart does not add client authentication code.
 
 ## Running locally (without Moses)
 
@@ -124,3 +140,17 @@ The default body cap is 1 MiB (`http.MaxBytesReader`). Set
 `MOSES_MAX_BODY_BYTES` to a positive byte count to override it. Handlers
 must handle `*http.MaxBytesError` as 413 before committing responses or
 side effects; chunked bodies are limited while read, without buffering.
+
+For this split frontend/backend chart, change only
+`globalEnv.MOSES_MAX_BODY_BYTES` in `helm/values.yaml` (for example `"52428800"`
+for 50 MiB). The chart injects that value into both containers. Rendering fails
+if any service-local `env` sets this key, including retained values from an older
+chart: "move MOSES_MAX_BODY_BYTES to globalEnv: one value now applies to the frontend proxy and the backend".
+Remove the service-local key and move its value to `globalEnv` before deploying.
+At startup, the frontend entrypoint validates it and renders nginx's
+`client_max_body_size` in bytes; Go reads the same
+`MOSES_MAX_BODY_BYTES`. Both default to **1048576 bytes (1 MiB)**. Invalid,
+zero, negative or overflowing values fall back to that default; nginx startup
+logs `Invalid MOSES_MAX_BODY_BYTES; using default 1048576`. With standalone
+containers, pass the same environment value to both containers. Keep the cap
+within the outer ingress limit; smaller endpoint-specific limits still apply.

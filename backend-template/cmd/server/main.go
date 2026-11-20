@@ -64,15 +64,7 @@ func main() {
 	// per MOSES_EMBEDDING_FRAMING (and X-Frame-Options for "denied"). API
 	// templates default to "denied" since they're never iframed. CHAT-pbup
 	// Bug 3 — previously this template emitted neither header.
-	var h http.Handler = mux
-	// RejectCrossSiteCSRF blocks cross-site state-changing requests (the app
-	// must not rely on the platform edge alone — the access_token cookie is
-	// SameSite=None). Kept inside Logging so blocked requests are still logged.
-	h = middleware.RejectCrossSiteCSRF(h)
-	h = middleware.LimitRequestBody(h)
-	h = middleware.MosesHeaders(h)
-	h = middleware.WithEmbeddingHeaders(h)
-	h = middleware.Logging(h)
+	h := buildHandler(mux)
 
 	// Create server
 	server := &http.Server{
@@ -156,4 +148,18 @@ func buildMux(basePath string) *http.ServeMux {
 	registerDemoRoutes(mux, basePath)
 
 	return mux
+}
+
+// buildHandler is the production middleware chain, also exercised by streaming tests.
+func buildHandler(next http.Handler) http.Handler {
+	var h http.Handler = next
+	// RejectCrossSiteCSRF blocks cross-site state-changing requests (the app
+	// must not rely on the platform edge alone — the access_token cookie is
+	// SameSite=None). Kept inside Logging so blocked requests are still logged.
+	h = middleware.RejectCrossSiteCSRF(h)
+	h = middleware.LimitRequestBody(h)
+	h = middleware.MosesHeaders(h)
+	h = middleware.WithEmbeddingHeaders(h)
+	h = middleware.Logging(h)
+	return h
 }

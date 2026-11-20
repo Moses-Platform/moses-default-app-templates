@@ -503,8 +503,7 @@ for frontend in $FRONTENDS; do
       fail "frontend image present: $df must use $expected"
     fi
   done
-  if sed 's/#.*$//' "$df" | grep -qE 'npm[[:space:]]+ci([[:space:];&]|$)' &&
-     ! sed 's/#.*$//' "$df" | grep -qE 'npm[[:space:]]+(install|i|add)([[:space:];&]|$)'; then
+  if python3 tests/frontend_contracts.py docker "$df"; then
     pass "frontend reproducibility: $df uses npm ci"
   else
     fail "frontend reproducibility: $df must use npm ci, without npm install"
@@ -569,15 +568,20 @@ fi
 # ---------------------------------------------------------------------------
 for fe in $FRONTENDS; do
   cfg="$fe/vite.config.ts"
-  if grep -q "babel({ presets: \[reactCompilerPreset()\] })" "$cfg" \
+  if python3 tests/frontend_contracts.py compiler "$cfg" \
     && grep -q '"@rolldown/plugin-babel"' "$fe/package.json" \
-    && grep -q '"babel-plugin-react-compiler"' "$fe/package.json" \
-    && ! grep -q "react({ *babel" "$cfg"; then
+    && grep -q '"babel-plugin-react-compiler"' "$fe/package.json"; then
     pass "React Compiler wired through reactCompilerPreset: $cfg"
   else
     fail "React Compiler not wired (expected babel({ presets: [reactCompilerPreset()] }) and its packages): $cfg"
   fi
 done
+
+if python3 tests/test_frontend_contracts.py && bash tools/check-vendored-frontend-tests.sh; then
+  pass "frontend regression gates and compiler fixture parity"
+else
+  fail "frontend regression gates and compiler fixture parity"
+fi
 
 # ---------------------------------------------------------------------------
 # Runtime behavior and Helm defaults (stdlib Python; no Docker required).

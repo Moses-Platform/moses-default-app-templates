@@ -1,4 +1,7 @@
 {{- range .Values.services }}
+{{- if hasKey (.env | default dict) "MOSES_MAX_BODY_BYTES" }}
+{{- fail "move MOSES_MAX_BODY_BYTES to globalEnv: one value now applies to the frontend proxy and the backend" }}
+{{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -32,11 +32,29 @@ class Hardening(unittest.TestCase):
     for path,expected in [('/assets/index-Ab12_cd3.js',True),('/assets/logo-12345678.svg',True),('/assets/plain.js',False),('/public/app.js',False),('/logo.svg',False),('/index.html',False)]:
      self.assertEqual(bool(re.search(pattern,path)),expected,(f,path))
     self.assertIn('add_header Cache-Control "no-cache";',c)
+ def test_upload_configuration_and_docs(self):
+  for f in FRONTENDS:
+   with self.subTest(frontend=f):
+    self.assertIn('client_max_body_size ${MOSES_MAX_BODY_BYTES};', read(f+'/nginx.conf'))
+    template=f.removesuffix('/frontend')
+    self.assertIn('MOSES_MAX_BODY_BYTES', read(template+'/README.md'))
+    values=read(template+'/helm/values.yaml')
+    self.assertIn('MOSES_MAX_BODY_BYTES: "1048576"', values)
+    if '/frontend' in f:
+     self.assertIn('hasKey (.env | default dict) "MOSES_MAX_BODY_BYTES"', read(template+'/helm/templates/deployment.yaml'))
+     self.assertIn('fail "move MOSES_MAX_BODY_BYTES to globalEnv: one value now applies to the frontend proxy and the backend"', read(template+'/helm/templates/deployment.yaml'))
+     self.assertIn('globalEnv.MOSES_MAX_BODY_BYTES', read(template+'/README.md'))
+ def test_redis_enablement_docs(self):
+  for term in ['redis.auth.password', 'REDIS_PASSWORD', 'coordinated', '__MOSES_GENERATE_PASSWORD__']:
+   self.assertIn(term, read('fullstack-simple/README.md'))
  def test_go_wiring_and_ignores(self):
   for g in GO:
    with self.subTest(module=g):
     main=read(g+('/main.go' if g=='fullstack-unified' else '/cmd/server/main.go'))
     self.assertIn('LimitRequestBody(',main)
+    self.assertIn('buildHandler(', main)
+    server=g if g=='fullstack-unified' else g+'/cmd/server'
+    self.assertIn('testStreaming(t,', read(server+'/streaming_chain_test.go'))
     self.assertIn('RejectCrossSiteCSRF(',main)
     self.assertIn('.env*',read(g+'/.dockerignore').splitlines())
   self.assertIn('fullstack-oidc/backend/internal/middleware/csrf.go',read('tools/check-vendored-csrf.sh'))

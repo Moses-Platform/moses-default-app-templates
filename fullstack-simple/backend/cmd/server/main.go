@@ -45,18 +45,7 @@ func main() {
 
 	mux := buildMux(basePath)
 
-	var h http.Handler = mux
-	// RejectCrossSiteCSRF blocks cross-site state-changing requests (the app
-	// must not rely on the platform edge alone — the access_token cookie is
-	// SameSite=None). Kept inside CORS so blocked requests still get CORS
-	// headers (when an allowlist is configured) and so OPTIONS preflight is
-	// handled by the outer layer.
-	h = middleware.RejectCrossSiteCSRF(h)
-	h = middleware.LimitRequestBody(h)
-	// CORS is OFF by default (same-origin deployment model); opt in via the
-	// CORS_ALLOWED_ORIGINS env — see internal/middleware/cors.go.
-	h = middleware.CORS(h)
-	h = middleware.Logging(h)
+	h := buildHandler(mux)
 
 	srv := &http.Server{
 		Addr:         ":" + port,
@@ -126,4 +115,21 @@ func buildMux(basePath string) *http.ServeMux {
 	registerDemoRoutes(mux, basePath)
 
 	return mux
+}
+
+// buildHandler is the production middleware chain, also exercised by streaming tests.
+func buildHandler(next http.Handler) http.Handler {
+	var h http.Handler = next
+	// RejectCrossSiteCSRF blocks cross-site state-changing requests (the app
+	// must not rely on the platform edge alone — the access_token cookie is
+	// SameSite=None). Kept inside CORS so blocked requests still get CORS
+	// headers (when an allowlist is configured) and so OPTIONS preflight is
+	// handled by the outer layer.
+	h = middleware.RejectCrossSiteCSRF(h)
+	h = middleware.LimitRequestBody(h)
+	// CORS is OFF by default (same-origin deployment model); opt in via the
+	// CORS_ALLOWED_ORIGINS env — see internal/middleware/cors.go.
+	h = middleware.CORS(h)
+	h = middleware.Logging(h)
+	return h
 }

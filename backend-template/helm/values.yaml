@@ -36,6 +36,8 @@ service:
   targetPort: 8080
 
 env:
+  # Request-body cap in bytes.
+  MOSES_MAX_BODY_BYTES: "1048576"
   PORT: "8080"
   # BASE_URL is the legacy alias; MOSES_BASE_PATH is canonical (CHAT-pbup).
   BASE_URL: ""
