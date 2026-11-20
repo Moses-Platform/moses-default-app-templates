@@ -246,3 +246,14 @@ The default body cap is 1 MiB (`http.MaxBytesReader`). Set
 `MOSES_MAX_BODY_BYTES` to a positive byte count to override it. Handlers
 must handle `*http.MaxBytesError` as 413 before committing responses or
 side effects; chunked bodies are limited while read, without buffering.
+
+For this split frontend/backend chart, change only
+`globalEnv.MOSES_MAX_BODY_BYTES` in `helm/values.yaml` (for example `"52428800"`
+for 50 MiB). The chart injects that value into both containers and ignores a
+per-service override of this key. At startup, the frontend entrypoint validates
+it and renders nginx's `client_max_body_size` in bytes; Go reads the same
+`MOSES_MAX_BODY_BYTES`. Both default to **1048576 bytes (1 MiB)**. Invalid,
+zero, negative or overflowing values fall back to that default; nginx startup
+logs `Invalid MOSES_MAX_BODY_BYTES; using default 1048576`. With standalone
+containers, pass the same environment value to both containers. Keep the cap
+within the outer ingress limit; smaller endpoint-specific limits still apply.

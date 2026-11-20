@@ -6,17 +6,6 @@ import (
 	"time"
 )
 
-// responseWriter wraps http.ResponseWriter to capture status code
-type responseWriter struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rw *responseWriter) WriteHeader(code int) {
-	rw.statusCode = code
-	rw.ResponseWriter.WriteHeader(code)
-}
-
 // Logging is a middleware that logs HTTP requests with method, path, status, and duration.
 // It also includes the Moses Request ID if present for request tracing.
 func Logging(next http.Handler) http.Handler {

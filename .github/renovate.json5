@@ -10,8 +10,8 @@
   // it keeps minting stale repos.
   //
   // Why this config is unusually restrictive: the repo has hard version-PARITY
-  // rules enforced by tests/test_template_parity.sh (208 assertions). Several of
-  // them span files no dependency manager can see. Read the "PINNED" block at
+  // rules enforced by tests/test_template_parity.sh and executable regression
+  // checks. Several span files no dependency manager can see. Read the "PINNED" block at
   // the bottom before enabling anything new.
   // ---------------------------------------------------------------------------
 
@@ -100,7 +100,7 @@
     //
     // The organising principle is LOCKSTEP. The five frontends ship
     // matching versions for shared dependencies (react 19.3.1, vite 8.3.8, vitest 5.1.1, ...)
-    // and the three database-backed Go backends all pin pgx v5.12.0. That sameness
+    // and the three database-backed Go backends all pin pgx v5.13.0. That sameness
     // is a feature of the template set — parity rule 15 checks shared package
     // versions and lockfile roots. Ungrouped,
     // Renovate would open five separate "react" PRs that merge at five different
@@ -204,18 +204,21 @@ vendored twin fails the drift gate.',
     // Frontend Dockerfiles use npm ci; rule 15 rejects npm install regressions.
     //
     // These stay visible on the Dependency Dashboard, so a new patch release is
-    // still surfaced — it just does not open a PR that cannot pass CI.
+    // still surfaced. dependencyDashboardApproval keeps release lookup enabled
+    // but prevents PR creation until a maintainer approves the dashboard item.
+    // Prefer the coordinated manual bump above; approval alone cannot update
+    // the parity constants or the other repositories.
     // -------------------------------------------------------------------------
     {
       description: 'PINNED: `go` / `toolchain` directive in go.mod + go.work — see block above',
       matchDatasources: ['golang-version'],
-      enabled: false,
+      dependencyDashboardApproval: true,
     },
     {
       description: 'PINNED: Go, alpine, Node and nginx images — see parity contract above',
       matchManagers: ['dockerfile'],
       matchPackageNames: ['golang', 'alpine', 'node', 'nginx'],
-      enabled: false,
+      dependencyDashboardApproval: true,
     },
   ],
 }

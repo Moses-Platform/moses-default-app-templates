@@ -21,6 +21,25 @@ set -eu
 # The template's appType (frontend / hybrid) defaults to "moses-only" when
 # the env var is empty, mirroring the platform's resolver default.
 
+# BEGIN shared request body limit (kept in sync by check-vendored-runtime.sh).
+# Match Go's positive int64 byte count (including an optional + / leading zeros).
+# Never substitute unchecked input into nginx syntax; malformed values fail closed.
+: "${MOSES_MAX_BODY_BYTES:=1048576}"
+body_limit="${MOSES_MAX_BODY_BYTES#+}"
+case "$body_limit" in
+  ''|*[!0-9]*) body_limit="" ;;
+  *) body_limit="$(printf '%s' "$body_limit" | sed 's/^0*//')" ;;
+esac
+if [ -n "$body_limit" ] && [ "$body_limit" -gt 0 ] 2>/dev/null &&
+   [ "$body_limit" -le 9223372036854775807 ] 2>/dev/null; then
+  MOSES_MAX_BODY_BYTES="$body_limit"
+else
+  echo 'Invalid MOSES_MAX_BODY_BYTES; using default 1048576' >&2
+  MOSES_MAX_BODY_BYTES=1048576
+fi
+export MOSES_MAX_BODY_BYTES
+# END shared request body limit.
+
 : "${MOSES_BASE_PATH:=/}"
 : "${MOSES_EMBEDDING_FRAMING:=}"
 : "${MOSES_EMBEDDING_ALLOWED_ANCESTORS:=}"
@@ -145,7 +164,7 @@ export BACKEND_SERVICE_HOST
 export BACKEND_SERVICE_PORT
 
 # Substitute env vars into the nginx config.
-envsubst '${BACKEND_SERVICE_HOST} ${BACKEND_SERVICE_PORT} ${MOSES_BASE_PATH} ${MOSES_BASE_PATH_PREFIX} ${MOSES_CSP_FRAME_ANCESTORS} ${MOSES_CSP_REPORT_URI} ${MOSES_X_FRAME_OPTIONS_LINE} ${MOSES_SUBPATH_LOCATION_BLOCK}' \
+envsubst '${MOSES_MAX_BODY_BYTES} ${BACKEND_SERVICE_HOST} ${BACKEND_SERVICE_PORT} ${MOSES_BASE_PATH} ${MOSES_BASE_PATH_PREFIX} ${MOSES_CSP_FRAME_ANCESTORS} ${MOSES_CSP_REPORT_URI} ${MOSES_X_FRAME_OPTIONS_LINE} ${MOSES_SUBPATH_LOCATION_BLOCK}' \
   < /etc/nginx/nginx.conf.template > /tmp/nginx.conf
 
 # CHAT-pbup: render Moses-base-path meta tag into index.html so the React

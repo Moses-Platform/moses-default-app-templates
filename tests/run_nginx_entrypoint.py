@@ -8,7 +8,8 @@ import subprocess
 import sys
 import tempfile
 
-template, framing, ancestors, report, output, base, domain = sys.argv[1:]
+template, framing, ancestors, report, output, base, domain = sys.argv[1:8]
+body_limit = sys.argv[8] if len(sys.argv) > 8 else ""
 p=Path(template)
 with tempfile.TemporaryDirectory() as tmp:
  root=Path(tmp)
@@ -29,9 +30,10 @@ with tempfile.TemporaryDirectory() as tmp:
  entry=root/'entrypoint.sh'; entry.write_text(script)
  for f in [source, config]: f.chmod(0o444)
  for d in [source.parent,config.parent]: d.chmod(0o555)
- env=dict(os.environ,PATH=str(root/'bin')+':'+os.environ['PATH'],MOSES_BASE_PATH=base,MOSES_EMBEDDING_FRAMING=framing,MOSES_EMBEDDING_ALLOWED_ANCESTORS=ancestors,MOSES_EMBEDDING_REPORT_URI=report,MOSES_DOMAIN=domain,BACKEND_SERVICE_HOST='example-backend',BACKEND_SERVICE_PORT='8080')
+ env=dict(os.environ,PATH=str(root/'bin')+':'+os.environ['PATH'],MOSES_BASE_PATH=base,MOSES_EMBEDDING_FRAMING=framing,MOSES_EMBEDDING_ALLOWED_ANCESTORS=ancestors,MOSES_EMBEDDING_REPORT_URI=report,MOSES_DOMAIN=domain,MOSES_MAX_BODY_BYTES=body_limit,BACKEND_SERVICE_HOST='example-backend',BACKEND_SERVICE_PORT='8080')
  try:
-  subprocess.run(['sh',str(entry)],env=env,check=True)
+  result = subprocess.run(['sh',str(entry)],env=env,check=True,capture_output=True,text=True)
+  Path(output+'.log').write_text(result.stdout+result.stderr)
   rendered=root/'tmp/html/index.html'
   assert source.read_text()==original, 'image asset changed'
   assert rendered.read_text()==original.replace('__MOSES_BASE_PATH__',base)

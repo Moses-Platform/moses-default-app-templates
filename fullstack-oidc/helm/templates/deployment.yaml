@@ -112,8 +112,11 @@ spec:
             {{- end }}
             {{- end }}
             {{- range $key, $value := .env }}
+            {{- /* The body cap comes only from globalEnv so both hops agree. */}}
+            {{- if ne $key "MOSES_MAX_BODY_BYTES" }}
             - name: {{ $key }}
               value: {{ $value | quote }}
+            {{- end }}
             {{- end }}
             {{- if $.Values.postgresql }}
             {{- if $.Values.postgresql.enabled }}

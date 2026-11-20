@@ -20,7 +20,7 @@ fi
 
 # Execute each real entrypoint, with immutable image inputs and only nginx stubbed.
 render_template() {
-  python3 "${REPO_ROOT}/tests/run_nginx_entrypoint.py" "$1" "$2" "$3" "$4" "$5" "${6:-/}" "${7:-}"
+  python3 "${REPO_ROOT}/tests/run_nginx_entrypoint.py" "$1" "$2" "$3" "$4" "$5" "${6:-/}" "${7:-}" "${8:-}"
 }
 
 assert() {
@@ -48,7 +48,7 @@ assert() {
     head -80 "$out"
     FAIL=$((FAIL + 1))
   fi
-  rm -f "$out"
+  rm -f "$out" "$out.log"
 }
 
 # frontend-template
@@ -212,6 +212,36 @@ for ep in fullstack-simple/frontend/entrypoint.sh fullstack-showcase/frontend/en
   else
     PASS=$((PASS + 1))
   fi
+done
+
+# Exercise real startup validation, including the malformed-value fallback branch.
+for tmpl in frontend-template fullstack-simple/frontend fullstack-showcase/frontend fullstack-chat/frontend fullstack-oidc/frontend; do
+  for value in default 52428800 '+00052428800' '1m; injected on;' 0 -1 9223372036854775808; do
+    expected=1048576
+    invalid=yes
+    case "$value" in
+      default) value=""; invalid=no ;;
+      52428800|+00052428800) expected=52428800; invalid=no ;;
+    esac
+    out=$(mktemp)
+    render_template "${REPO_ROOT}/${tmpl}/nginx.conf" moses-only '' '' "$out" / '' "$value"
+    if grep -qxE "[[:space:]]*client_max_body_size ${expected};" "$out" &&
+       ! grep -q 'injected on' "$out"; then
+      PASS=$((PASS + 1))
+    else
+      echo "FAIL: $tmpl body limit '$value' expected $expected"; FAIL=$((FAIL + 1))
+    fi
+    if [ "$invalid" = yes ]; then
+      if grep -qF 'Invalid MOSES_MAX_BODY_BYTES; using default 1048576' "$out.log"; then
+        PASS=$((PASS + 1))
+      else
+        echo "FAIL: $tmpl malformed body limit did not log fallback"; FAIL=$((FAIL + 1))
+      fi
+    elif grep -qF 'Invalid MOSES_MAX_BODY_BYTES' "$out.log"; then
+      echo "FAIL: $tmpl valid body limit logged fallback"; FAIL=$((FAIL + 1))
+    fi
+    rm -f "$out" "$out.log"
+  done
 done
 
 echo

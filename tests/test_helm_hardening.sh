@@ -33,5 +33,13 @@ for t in frontend-template backend-template fullstack-simple fullstack-unified f
   helm template check "$t/helm" "${args[@]}" --set automountServiceAccountToken=true --set securityContext.readOnlyRootFilesystem=false > "$tmp/overrides"
   grep -q 'automountServiceAccountToken: true' "$tmp/overrides"
   grep -q 'readOnlyRootFilesystem: false' "$tmp/overrides"
+  case "$t" in
+    fullstack-simple|fullstack-showcase|fullstack-chat|fullstack-oidc)
+      ruby tests/verify_helm_body_limit.rb "$tmp/rendered" 1048576
+      ruby -ryaml -e 'v=YAML.load_file(ARGV[0]); v["services"].each { |s| (s["env"] ||= {})["MOSES_MAX_BODY_BYTES"]="7" }; puts({"services"=>v["services"]}.to_yaml)' "$t/helm/values.yaml" > "$tmp/service-override.yaml"
+      helm template check "$t/helm" "${args[@]}" --set-string globalEnv.MOSES_MAX_BODY_BYTES=52428800 -f "$tmp/service-override.yaml" > "$tmp/body-limit"
+      ruby tests/verify_helm_body_limit.rb "$tmp/body-limit" 52428800
+      ;;
+  esac
   echo "PASS: $t render, guards, security and overrides"
 done

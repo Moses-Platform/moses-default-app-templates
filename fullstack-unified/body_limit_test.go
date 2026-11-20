@@ -23,6 +23,9 @@ func TestLimitRequestBody(t *testing.T) {
 		{"zero override", "0", 1<<20 + 1, true, true},
 		{"negative override", "-1", 1<<20 + 1, true, true},
 		{"override", "2097152", 1<<20 + 1, true, false},
+		{"signed padded override", "+00052428800", 2 << 20, true, false},
+		{"nginx syntax rejected", "1m; injected on;", 1<<20 + 1, true, true},
+		{"overflow override", "9223372036854775808", 1<<20 + 1, true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("MOSES_MAX_BODY_BYTES", tc.limit)

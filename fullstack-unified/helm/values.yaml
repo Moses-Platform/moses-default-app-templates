@@ -46,6 +46,8 @@ services:
     ingress: true
 
 globalEnv:
+  # Request-body cap in bytes.
+  MOSES_MAX_BODY_BYTES: "1048576"
   # CHAT-pbup: BASE_URL deprecated alias, MOSES_BASE_PATH canonical.
   BASE_URL: ""
   MOSES_BASE_PATH: ""

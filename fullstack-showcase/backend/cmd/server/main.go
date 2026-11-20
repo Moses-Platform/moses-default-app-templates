@@ -68,15 +68,7 @@ func main() {
 	mux := buildMux(basePath, db)
 
 	// Apply middleware
-	var h http.Handler = mux
-	// RejectCrossSiteCSRF blocks cross-site state-changing requests (the app
-	// must not rely on the platform edge alone — the access_token cookie is
-	// SameSite=None). Kept inside Logging so blocked requests are still logged.
-	h = middleware.RejectCrossSiteCSRF(h)
-	h = middleware.LimitRequestBody(h)
-	h = middleware.Logging(h)
-	h = middleware.MosesHeaders(h)
-	h = middleware.CORS(h)
+	h := buildHandler(mux)
 
 	// Create server
 	port := os.Getenv("PORT")
@@ -158,4 +150,18 @@ func buildMux(basePath string, db *sql.DB) *http.ServeMux {
 	registerDemoRoutes(mux, basePath, db)
 
 	return mux
+}
+
+// buildHandler is the production middleware chain, also exercised by streaming tests.
+func buildHandler(next http.Handler) http.Handler {
+	var h http.Handler = next
+	// RejectCrossSiteCSRF blocks cross-site state-changing requests (the app
+	// must not rely on the platform edge alone — the access_token cookie is
+	// SameSite=None). Kept inside Logging so blocked requests are still logged.
+	h = middleware.RejectCrossSiteCSRF(h)
+	h = middleware.LimitRequestBody(h)
+	h = middleware.Logging(h)
+	h = middleware.MosesHeaders(h)
+	h = middleware.CORS(h)
+	return h
 }
