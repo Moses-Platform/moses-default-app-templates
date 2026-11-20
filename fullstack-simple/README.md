@@ -22,7 +22,7 @@ fullstack-simple/
 │   ├── src/                  # React 19 + TypeScript + Vite
 │   └── index.html            # contains <meta name="moses-base-path" content="__MOSES_BASE_PATH__">
 └── backend/
-    ├── Dockerfile            # multi-stage: golang:1.27.3-alpine3.24 → alpine:3.24.4, non-root
+    ├── Dockerfile            # multi-stage: golang:1.27.4-alpine3.24 → alpine:3.24.4, non-root
     ├── api/
     │   ├── api.go            # //go:embed openapi.json
     │   └── openapi.json      # OpenAPI 3.x spec → MCP tool autoreg
@@ -113,7 +113,7 @@ Self-maintenance is enabled via the Moses UI toggle (the wrench on the app card)
 ## Conventions enforced by `tests/test_template_parity.sh`
 
 - Helm chart name is **`agent-deployed-app`** v1.0.0 (must match the platform's expected chart).
-- All Go modules use `go 1.27.3`; all Go Dockerfiles use `golang:1.27.3-alpine3.24` (runtime `alpine:3.24.4`).
+- All Go modules use `go 1.27.4`; all Go Dockerfiles use `golang:1.27.4-alpine3.24` (runtime `alpine:3.24.4`).
 - All backend Dockerfiles run as a non-root `appuser` (uid 1000) with HEALTHCHECK.
 - No `"name": "my-app"` placeholder in `moses-app.config.json` (must be a per-template instance name).
 - No literal credentials in `helm/values.yaml` — use `__MOSES_GENERATE_PASSWORD__` for any password Moses should generate.

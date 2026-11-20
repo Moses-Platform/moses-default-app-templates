@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   # Every Go module listed in go.work, built/vetted/tested standalone
   # (GOWORK=off) — templates must compile outside the monorepo workspace,
@@ -13,6 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         module:
           - backend-template
@@ -24,13 +28,23 @@ jobs:
           - shared/csrf-go
           - shared/mosesproxy-go
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.work
           # Several modules are stdlib-only (no go.sum), so the per-module
           # module cache is skipped rather than pointing at missing files.
           cache: false
+      - name: go build
+        working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: "off"
+        run: go build ./...
+      - name: go mod verify
+        working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: "off"
+        run: go mod verify
       - name: go vet
         working-directory: ${{ matrix.module }}
         env:
@@ -51,7 +65,7 @@ jobs:
   #               = exactly what `npm run build` type-checks, so a build break
   #                 is attributable to a lint failure.
   #   typecheck → tsc -p tsconfig.json        (includes *.test.* / *.spec.*)
-  #               = the test files. `npm test` runs vitest, which esbuild-
+  #               = the test files. `npm test` runs vitest, which
   #                 transpiles TS (types are STRIPPED, never checked), so
   #                 without this step a type error inside a test file is
   #                 invisible to every gate in this repo.
@@ -62,6 +76,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         frontend:
           - frontend-template
@@ -70,10 +85,10 @@ jobs:
           - fullstack-chat/frontend
           - fullstack-oidc/frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: lts/*
+          node-version-file: .node-version
           cache: npm
           cache-dependency-path: ${{ matrix.frontend }}/package-lock.json
       - name: npm ci
@@ -87,7 +102,7 @@ jobs:
         run: npm run typecheck
       - name: test (vitest)
         working-directory: ${{ matrix.frontend }}
-        run: npm test --if-present
+        run: npm test
       - name: build
         working-directory: ${{ matrix.frontend }}
         run: npm run build
@@ -97,7 +112,7 @@ jobs:
     name: contract (nginx entrypoint)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: install envsubst
         run: sudo apt-get update && sudo apt-get install -y gettext-base
       - run: bash tests/test_nginx_entrypoint.sh
@@ -106,7 +121,7 @@ jobs:
     name: contract (template parity)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - run: bash tests/test_template_parity.sh
 
   # .github/renovate.json5 is only ever exercised by Renovate itself, on a
@@ -118,8 +133,63 @@ jobs:
     name: contract (renovate config)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: lts/*
+          node-version-file: .node-version
       - run: npx --yes --package renovate -- renovate-config-validator --strict .github/renovate.json5
+
+  govulncheck:
+    name: security Go (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        module:
+          - backend-template
+          - fullstack-chat/backend
+          - fullstack-oidc/backend
+          - fullstack-showcase/backend
+          - fullstack-simple/backend
+          - fullstack-unified
+          - shared/csrf-go
+          - shared/mosesproxy-go
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.work
+          cache: false
+      - name: govulncheck
+        working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: "off"
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  npm-audit:
+    name: security npm (${{ matrix.frontend }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        frontend:
+          - frontend-template
+          - fullstack-simple/frontend
+          - fullstack-showcase/frontend
+          - fullstack-chat/frontend
+          - fullstack-oidc/frontend
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: ${{ matrix.frontend }}/package-lock.json
+      - name: npm ci
+        working-directory: ${{ matrix.frontend }}
+        run: npm ci
+      - name: npm audit (including development dependencies)
+        working-directory: ${{ matrix.frontend }}
+        run: npm audit --audit-level=high

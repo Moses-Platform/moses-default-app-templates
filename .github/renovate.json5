@@ -10,7 +10,7 @@
   // it keeps minting stale repos.
   //
   // Why this config is unusually restrictive: the repo has hard version-PARITY
-  // rules enforced by tests/test_template_parity.sh (171 assertions). Several of
+  // rules enforced by tests/test_template_parity.sh (208 assertions). Several of
   // them span files no dependency manager can see. Read the "PINNED" block at
   // the bottom before enabling anything new.
   // ---------------------------------------------------------------------------
@@ -21,6 +21,7 @@
     // Dependency Dashboard issue = the single place to see what is pending,
     // including everything the PINNED rules below suppress.
     ':dependencyDashboard',
+    'helpers:pinGitHubActionDigests',
   ],
 
   timezone: 'Europe/Berlin',
@@ -97,10 +98,11 @@
     // -------------------------------------------------------------------------
     // GROUPING
     //
-    // The organising principle is LOCKSTEP. The five frontends ship byte-for-byte
-    // identical dependency blocks (react 19.2.4, vite 7.3.1, vitest 3.2.0, ...)
-    // and the three database-backed Go backends all pin pgx v5.9.2. That sameness
-    // is a feature of the template set — a human reviews it by eye. Ungrouped,
+    // The organising principle is LOCKSTEP. The five frontends ship
+    // matching versions for shared dependencies (react 19.3.1, vite 8.3.8, vitest 5.1.1, ...)
+    // and the three database-backed Go backends all pin pgx v5.12.0. That sameness
+    // is a feature of the template set — parity rule 15 checks shared package
+    // versions and lockfile roots. Ungrouped,
     // Renovate would open five separate "react" PRs that merge at five different
     // times and leave the templates permanently out of sync with each other.
     // Grouping by *dependency across modules* is what keeps them level.
@@ -108,7 +110,7 @@
     {
       // `bump` (not the default in-range-only behaviour) so the `^` floors in
       // package.json move too, not just package-lock.json. The five package.json
-      // files are compared by eye for parity; leaving updates lockfile-only would
+      // files are checked by parity rule 15; leaving updates lockfile-only would
       // let them keep reading as identical while resolving differently.
       // (Renovate forbids rangeStrategy in a rule that also matches update types,
       // hence its own rule here.)
@@ -149,15 +151,6 @@ vendored twin fails the drift gate.',
       groupSlug: 'gomod-major-{{depNameSanitized}}',
     },
     {
-      description: 'Container base images that are NOT parity-pinned (node build stage, \
-nginx runtime). All five frontend Dockerfiles use the same two tags — group them so they \
-cannot drift apart.',
-      matchManagers: ['dockerfile'],
-      matchPackageNames: ['node', 'nginx'],
-      groupName: 'docker base images (node, nginx)',
-      groupSlug: 'docker-base-images',
-    },
-    {
       description: 'GitHub Actions — one PR for all workflows',
       matchManagers: ['github-actions'],
       groupName: 'github actions',
@@ -170,12 +163,12 @@ cannot drift apart.',
     // The Go toolchain version appears in FOUR kinds of file, and one of them is
     // a shell script:
     //
-    //   1. eight go.mod files + go.work  `go 1.27.3`       (parity rule 4)
-    //   2. six Go Dockerfiles          `FROM golang:1.27.3-alpine3.24` (rule 5)
+    //   1. eight go.mod files + go.work  `go 1.27.4`       (parity rule 4)
+    //   2. six Go Dockerfiles          `FROM golang:1.27.4-alpine3.24` (rule 5)
     //   3. six Go Dockerfiles          `FROM alpine:3.24.4`            (rule 5)
     //   4. tests/test_template_parity.sh
-    //        EXPECTED_GO_VERSION="1.27.3"
-    //        EXPECTED_GOLANG_TAG="golang:1.27.3-alpine3.24"
+    //        EXPECTED_GO_VERSION="1.27.4"
+    //        EXPECTED_GOLANG_TAG="golang:1.27.4-alpine3.24"
     //        EXPECTED_ALPINE_TAG="alpine:3.24.4"
     //
     // GROUPING WAS CONSIDERED AND REJECTED, for three reasons:
@@ -203,6 +196,12 @@ cannot drift apart.',
     //      EXPECTED_GOLANG_TAG in tests/test_template_parity.sh,
     //   3. `bash tests/test_template_parity.sh` must still report 0 failed.
     // Same procedure for alpine (EXPECTED_ALPINE_TAG).
+    // Node and nginx are now also parity-pinned (rules 5 and 15):
+    //   node:26.13.1-alpine3.24, nginx:1.30.7-alpine3.24 in five Dockerfiles;
+    //   EXPECTED_NODE_TAG and EXPECTED_NGINX_TAG in the parity test.
+    // Node additionally updates .node-version, which every setup-node CI step
+    // reads via node-version-file. Keep these files together in a manual bump.
+    // Frontend Dockerfiles use npm ci; rule 15 rejects npm install regressions.
     //
     // These stay visible on the Dependency Dashboard, so a new patch release is
     // still surfaced — it just does not open a PR that cannot pass CI.
@@ -213,9 +212,9 @@ cannot drift apart.',
       enabled: false,
     },
     {
-      description: 'PINNED: golang builder and alpine runtime base images — see block above',
+      description: 'PINNED: Go, alpine, Node and nginx images — see parity contract above',
       matchManagers: ['dockerfile'],
-      matchPackageNames: ['golang', 'alpine'],
+      matchPackageNames: ['golang', 'alpine', 'node', 'nginx'],
       enabled: false,
     },
   ],

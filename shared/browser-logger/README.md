@@ -52,13 +52,13 @@ VITE_MOSES_API_BASE=http://localhost
 ## Cache-friendly Dockerfile pattern
 
 In your template's `Dockerfile`, declare these as `ARG` only inside the
-final build stage — **not** above `npm install` — so dependency layers stay
+final build stage — **not** above `npm ci` — so dependency layers stay
 cached across builds:
 
 ```dockerfile
-FROM node:20-alpine AS deps
-COPY package.json package-lock.json* ./
-RUN npm install
+FROM node:26.13.1-alpine3.24 AS deps
+COPY package.json package-lock.json ./
+RUN npm ci
 
 FROM deps AS build
 COPY . .
