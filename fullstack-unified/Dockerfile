@@ -1,4 +1,4 @@
-FROM golang:1.26.4-alpine AS builder
+FROM golang:1.27.3-alpine3.24 AS builder
 WORKDIR /build
 # CHAT-s6qf3: optional Moses in-cluster package cache (Nexus). Empty = upstream default.
 ARG GOPROXY=""
@@ -11,7 +11,7 @@ COPY . .
 RUN go mod verify
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o server .
 
-FROM alpine:3.21
+FROM alpine:3.24.4
 RUN apk add --no-cache ca-certificates wget
 WORKDIR /app
 COPY --from=builder /build/server .

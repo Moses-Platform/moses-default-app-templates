@@ -97,55 +97,49 @@ for t in $TEMPLATES; do
 done
 
 # ---------------------------------------------------------------------------
-# 4. Go module + Dockerfile version parity. The platform itself pins Go
-#    1.26.4 (moses-platform-prep/backend/go.mod + agent-base/Dockerfile);
-#    we keep the templates on the same exact patch so a template that adopts
-#    a transitive dependency requiring `go 1.26+` doesn't fail builds and so
-#    builds stay reproducible across the fleet.
-#
-#    All `go.mod` files must declare exactly `go 1.26.4`. The check below
-#    is exact-match — when bumping to 1.26 or later, update both
-#    EXPECTED_GO_MAJOR_MINOR AND the Dockerfile golang base tag in this file
-#    in the same PR (see rule #5 below).
+# 4. Go module + workspace version parity with the platform's backend/go.mod
+#    and agent-base builder. The directive sets a minimum compiler version,
+#    not an exact toolchain lock; older developer compilers must upgrade.
+#    Update this expected directive and both image tags together.
 # ---------------------------------------------------------------------------
-EXPECTED_GO_MAJOR_MINOR="1.26.4"
-for gm in $(find . -maxdepth 4 -name go.mod -not -path './node_modules/*' -not -path '*/.template-clean/*' 2>/dev/null); do
+EXPECTED_GO_VERSION="1.27.3"
+for gm in go.work $(find . -maxdepth 4 -name go.mod -not -path './node_modules/*' -not -path '*/.template-clean/*' 2>/dev/null); do
+  if [ ! -f "$gm" ]; then
+    fail "Go directive: missing $gm"
+    continue
+  fi
   declared=$(awk '/^go [0-9]/ { print $2 }' "$gm")
-  if [ "$declared" = "$EXPECTED_GO_MAJOR_MINOR" ]; then
-    pass "go.mod: $gm → go $declared"
+  if [ "$declared" = "$EXPECTED_GO_VERSION" ]; then
+    pass "Go directive: $gm → go $declared"
   else
-    fail "go.mod: $gm has 'go $declared' (expected $EXPECTED_GO_MAJOR_MINOR)"
+    fail "Go directive: $gm has 'go $declared' (expected $EXPECTED_GO_VERSION)"
   fi
 done
 
 # ---------------------------------------------------------------------------
 # 5. Dockerfile base image parity. Every Dockerfile that uses golang must
 #    pin the same major.minor.patch as go.mod. Every Dockerfile that uses
-#    alpine runtime must pin the same alpine tag (3.21) so security scanning
+#    alpine runtime must pin the same alpine tag (3.24.4) so security scanning
 #    is consistent with the platform's agent-base image.
 # ---------------------------------------------------------------------------
-EXPECTED_GOLANG_TAG="golang:1.26.4-alpine"
-EXPECTED_ALPINE_TAG="alpine:3.21"
+EXPECTED_GOLANG_TAG="golang:1.27.3-alpine3.24"
+EXPECTED_ALPINE_TAG="alpine:3.24.4"
 
 for df in $(find . -maxdepth 4 -name Dockerfile -not -path './node_modules/*' -not -path '*/.template-clean/*' 2>/dev/null); do
-  # Only check FROM lines that reference golang.
-  if grep -qE '^FROM golang:' "$df"; then
-    if grep -qE "^FROM $EXPECTED_GOLANG_TAG" "$df"; then
-      pass "Dockerfile golang base: $df"
+  # Compare every literal image token, not a regex/prefix. Accept optional
+  # --platform before the image and AS after it without weakening equality.
+  for image in $(awk 'toupper($1) == "FROM" { i = 2; if ($i ~ /^--platform=/) i++; print $i }' "$df"); do
+    case "$image" in
+      golang:*) expected="$EXPECTED_GOLANG_TAG" ;;
+      alpine:*) expected="$EXPECTED_ALPINE_TAG" ;;
+      *) continue ;;
+    esac
+    if [ "$image" = "$expected" ]; then
+      pass "Dockerfile base: $df → $image"
     else
-      bad=$(grep -E '^FROM golang:' "$df" | head -1)
-      fail "Dockerfile golang base: $df has '$bad' (expected $EXPECTED_GOLANG_TAG)"
+      fail "Dockerfile base: $df has '$image' (expected $expected)"
     fi
-  fi
-  # Only check FROM lines that reference plain alpine (not nginx:alpine).
-  if grep -qE '^FROM alpine:' "$df"; then
-    if grep -qE "^FROM $EXPECTED_ALPINE_TAG" "$df"; then
-      pass "Dockerfile alpine base: $df"
-    else
-      bad=$(grep -E '^FROM alpine:' "$df" | head -1)
-      fail "Dockerfile alpine base: $df has '$bad' (expected $EXPECTED_ALPINE_TAG)"
-    fi
-  fi
+  done
 done
 
 # ---------------------------------------------------------------------------

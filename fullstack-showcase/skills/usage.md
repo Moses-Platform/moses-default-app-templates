@@ -1,6 +1,6 @@
 # Fullstack Showcase Template — Usage
 
-Go 1.26 backend (net/http + pgx v5) + React 19 frontend + per-app PostgreSQL,
+Go 1.27 backend (net/http + pgx v5) + React 19 frontend + per-app PostgreSQL,
 deployed as a two-service Helm chart.
 
 ## What you start with

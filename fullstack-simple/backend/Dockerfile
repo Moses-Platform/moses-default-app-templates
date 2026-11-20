@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.26.4-alpine AS builder
+FROM golang:1.27.3-alpine3.24 AS builder
 
 WORKDIR /build
 
@@ -20,7 +20,7 @@ RUN go mod verify
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server
 
 # Runtime stage
-FROM alpine:3.21
+FROM alpine:3.24.4
 
 RUN apk --no-cache add ca-certificates wget
 

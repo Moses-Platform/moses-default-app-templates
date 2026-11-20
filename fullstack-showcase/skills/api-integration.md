@@ -118,7 +118,7 @@ for sub-path callers) and returns a small JSON status —
 
 ## Stack notes
 
-- Backend: Go 1.26 (`go.mod` 1.26.4), `net/http` mux + **pgx v5**
+- Backend: Go 1.27 (`go.mod` 1.27.3), `net/http` mux + **pgx v5**
   (`jackc/pgx/v5/stdlib`) for PostgreSQL — not stdlib-only.
 - DB bootstrap: `internal/database/db.go` — retry loop with 28P01
   (invalid_password) fail-fast; schema lives in `migrate_demo.go`.

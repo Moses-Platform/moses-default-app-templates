@@ -298,16 +298,20 @@ shape for Go. Weekly, Monday morning, with a 7-day minimum release age;
 security fixes bypass both.
 
 **The Go toolchain and the alpine runtime are deliberately NOT updated by
-Renovate.** `go 1.26.4` / `golang:1.26.4-alpine` / `alpine:3.21` are pinned
-in `go.mod`, in the Dockerfiles, *and* in `EXPECTED_GO_MAJOR_MINOR` /
+Renovate.** `go 1.27.3` / `golang:1.27.3-alpine3.24` / `alpine:3.24.4` are pinned
+in all eight `go.mod` files, `go.work`, the Dockerfiles, *and* in `EXPECTED_GO_VERSION` /
 `EXPECTED_GOLANG_TAG` / `EXPECTED_ALPINE_TAG` inside
 `tests/test_template_parity.sh` — no dependency manager can edit that last
 one, so any bot-authored bump lands a PR that cannot pass its own parity
 gate. The pin is also a cross-repo contract with `moses-platform-prep`
 (same patch in its `backend/go.mod` and agent-base image). Bumping it is a
-deliberate, human, one-commit change; the procedure is written out in
+deliberate, coordinated change; the procedure is written out in
 `renovate.json5`'s `PINNED` block. Renovate still surfaces new releases on
 the Dependency Dashboard.
+
+The `go 1.27.3` directive sets the minimum compiler version; it is not an
+exact toolchain lock. Older developer toolchains must upgrade (or allow Go
+toolchain selection). The Docker builder selects the versioned image above.
 
 The config is schema-validated on every PR by the `contract (renovate
 config)` CI job (`renovate-config-validator --strict`).

@@ -10,7 +10,7 @@
   // it keeps minting stale repos.
   //
   // Why this config is unusually restrictive: the repo has hard version-PARITY
-  // rules enforced by tests/test_template_parity.sh (169 assertions). Several of
+  // rules enforced by tests/test_template_parity.sh (171 assertions). Several of
   // them span files no dependency manager can see. Read the "PINNED" block at
   // the bottom before enabling anything new.
   // ---------------------------------------------------------------------------
@@ -170,13 +170,13 @@ cannot drift apart.',
     // The Go toolchain version appears in FOUR kinds of file, and one of them is
     // a shell script:
     //
-    //   1. eight go.mod files          `go 1.26.4`         (parity rule 4)
-    //   2. six Go Dockerfiles          `FROM golang:1.26.4-alpine` (rule 5)
-    //   3. six Go Dockerfiles          `FROM alpine:3.21`          (rule 5)
+    //   1. eight go.mod files + go.work  `go 1.27.3`       (parity rule 4)
+    //   2. six Go Dockerfiles          `FROM golang:1.27.3-alpine3.24` (rule 5)
+    //   3. six Go Dockerfiles          `FROM alpine:3.24.4`            (rule 5)
     //   4. tests/test_template_parity.sh
-    //        EXPECTED_GO_MAJOR_MINOR="1.26.4"
-    //        EXPECTED_GOLANG_TAG="golang:1.26.4-alpine"
-    //        EXPECTED_ALPINE_TAG="alpine:3.21"
+    //        EXPECTED_GO_VERSION="1.27.3"
+    //        EXPECTED_GOLANG_TAG="golang:1.27.3-alpine3.24"
+    //        EXPECTED_ALPINE_TAG="alpine:3.24.4"
     //
     // GROUPING WAS CONSIDERED AND REJECTED, for three reasons:
     //
@@ -198,8 +198,8 @@ cannot drift apart.',
     //
     // TO BUMP THE GO TOOLCHAIN (a deliberate, human, ecosystem-wide change):
     //   1. bump moses-platform-prep first (backend/go.mod + agent-base image),
-    //   2. here, in ONE commit: all eight go.mod `go` directives, every
-    //      `FROM golang:` line, and EXPECTED_GO_MAJOR_MINOR +
+    //   2. here, in ONE commit: all eight go.mod `go` directives and go.work,
+    //      every `FROM golang:` line, and EXPECTED_GO_VERSION +
     //      EXPECTED_GOLANG_TAG in tests/test_template_parity.sh,
     //   3. `bash tests/test_template_parity.sh` must still report 0 failed.
     // Same procedure for alpine (EXPECTED_ALPINE_TAG).
