@@ -22,7 +22,7 @@ func Logging(next http.Handler) http.Handler {
 
 		next.ServeHTTP(wrapped, r)
 
-		log.Printf("[%s] %s %s %d %s (request_id=%s)",
+		log.Printf("[%q] %q %q %d %s (request_id=%q)",
 			r.Method,
 			r.URL.Path,
 			r.RemoteAddr,

@@ -290,3 +290,13 @@ cd frontend && npm run dev
 ## License
 
 Apache-2.0 — see the repository-root `LICENSE`. Exceptions: `frontend/src/moses-browser-logger.ts` and the Go files under `backend/cmd/server/` that carry an explicit header (`validate_env.go`, `validate_env_test.go`, `main_test.go`, `moses_proxy_integration_test.go`) are licensed under the Business Source License 1.1 as stated in their headers.
+
+## UserID is not authentication
+
+`UntrustedUserID` contains the caller-supplied `X-Moses-User-ID` for audit
+context only. Never use it to authorize a request or identify a verified
+user. This template has no documented gateway-marker contract; use OIDC or
+another verified authentication mechanism for protected features. Public
+health checks remain anonymous. The default body cap is 1 MiB; override
+`MOSES_MAX_BODY_BYTES` with a positive byte count and handle
+`*http.MaxBytesError` as 413 before side effects.

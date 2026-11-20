@@ -146,19 +146,21 @@ export BACKEND_SERVICE_PORT
 
 # Substitute env vars into the nginx config.
 envsubst '${BACKEND_SERVICE_HOST} ${BACKEND_SERVICE_PORT} ${MOSES_BASE_PATH} ${MOSES_BASE_PATH_PREFIX} ${MOSES_CSP_FRAME_ANCESTORS} ${MOSES_CSP_REPORT_URI} ${MOSES_X_FRAME_OPTIONS_LINE} ${MOSES_SUBPATH_LOCATION_BLOCK}' \
-  < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+  < /etc/nginx/nginx.conf.template > /tmp/nginx.conf
 
 # CHAT-pbup: render Moses-base-path meta tag into index.html so the React
 # Router basename helper picks up the correct value at runtime.
-INDEX_HTML="/usr/share/nginx/html/index.html"
+# Image files stay immutable. /tmp is an emptyDir in Helm (tmpfs for Docker).
+mkdir -p /tmp/html
+cp -R /usr/share/nginx/html/. /tmp/html/
+INDEX_HTML="/tmp/html/index.html"
 if [ -f "$INDEX_HTML" ]; then
   TMP="$(mktemp)"
   sed "s|__MOSES_BASE_PATH__|${MOSES_BASE_PATH}|g" "$INDEX_HTML" > "$TMP"
   mv "$TMP" "$INDEX_HTML"
-  # mktemp creates files mode 0600 owned by root; nginx workers run as a
-  # non-root uid (101) and would 403 on every fresh container without this.
+  # Keep the rendered document readable (mktemp defaults to 0600).
   chmod 644 "$INDEX_HTML"
 fi
 
 # Start nginx
-exec nginx -g 'daemon off;'
+exec nginx -c /tmp/nginx.conf -g 'daemon off;'

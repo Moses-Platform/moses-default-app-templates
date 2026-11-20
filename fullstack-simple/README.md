@@ -117,3 +117,10 @@ Self-maintenance is enabled via the Moses UI toggle (the wrench on the app card)
 - All backend Dockerfiles run as a non-root `appuser` (uid 1000) with HEALTHCHECK.
 - No `"name": "my-app"` placeholder in `moses-app.config.json` (must be a per-template instance name).
 - No literal credentials in `helm/values.yaml` — use `__MOSES_GENERATE_PASSWORD__` for any password Moses should generate.
+
+## Request body limits
+
+The default body cap is 1 MiB (`http.MaxBytesReader`). Set
+`MOSES_MAX_BODY_BYTES` to a positive byte count to override it. Handlers
+must handle `*http.MaxBytesError` as 413 before committing responses or
+side effects; chunked bodies are limited while read, without buffering.

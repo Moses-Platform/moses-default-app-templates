@@ -52,9 +52,11 @@ func main() {
 	// headers (when an allowlist is configured) and so OPTIONS preflight is
 	// handled by the outer layer.
 	h = middleware.RejectCrossSiteCSRF(h)
+	h = middleware.LimitRequestBody(h)
 	// CORS is OFF by default (same-origin deployment model); opt in via the
 	// CORS_ALLOWED_ORIGINS env — see internal/middleware/cors.go.
 	h = middleware.CORS(h)
+	h = middleware.Logging(h)
 
 	srv := &http.Server{
 		Addr:         ":" + port,

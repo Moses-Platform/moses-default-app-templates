@@ -217,10 +217,17 @@ app (nginx `proxy-body-size: 50m`; Envoy Gateway `ClientTrafficPolicy`
 `bufferLimit: 50Mi`). Your app's own body parser is the authoritative limiter
 **below** that ceiling — the platform will not raise a 413 under 50 MB.
 
-These templates are Go `net/http` services and impose **no** default body
-limit, so nothing here 413s today. But if you add an upload endpoint (images,
-archives, multipart forms), cap the body explicitly at or below 50 MB and
-return a structured JSON error on overflow:
+Every Go template applies `LimitRequestBody` (`http.MaxBytesReader`) with a
+**1 MiB default**. Set `MOSES_MAX_BODY_BYTES` to a positive byte count at
+startup to override it (for example `52428800` for 50 MiB); unset, invalid,
+zero and negative values keep the default. Known oversized Content-Length
+requests receive 413 immediately. Streaming/chunked bodies fail with
+`*http.MaxBytesError` while being read: handlers must check that error and
+return 413 before committing a response or side effects. The middleware
+never buffers the whole body. Endpoint-specific smaller limits still apply.
+
+For upload endpoints (images, archives, multipart forms), choose a cap at or
+below the platform ceiling and handle overflow explicitly:
 
 ```go
 const (
@@ -245,9 +252,76 @@ proxy limits must change in lock-step (nginx `proxy-body-size` in
 `moses-platform-prep` `buildIngressAnnotations`, and the chart's
 `ClientTrafficPolicy bufferLimit`).
 
+## UserID is not authentication
+
+The non-OIDC templates expose `X-Moses-User-ID` as **`UntrustedUserID`**
+(`untrusted_user_id` in unified JSON). It is caller-supplied audit context,
+never proof of identity and never a basis for access control. Tenant storage
+must still use the deploy-pinned `MOSES_TENANT_ID`. Public `/health` and
+OpenAPI endpoints remain public. `fullstack-simple` does not read a user ID.
+
+The repo documents gateway authentication for `fullstack-oidc`: its
+`oidcauth` package requires a non-empty `MOSES_GATEWAY_AUTH_SECRET` and a
+constant-time match against `X-Moses-Gateway-Auth` before trusting user
+headers. With no configured secret that trust path is disabled. The repo
+does **not** establish that marker injection for non-OIDC apps, nor a
+universal guarantee that every edge strips inbound `X-Moses-*` headers.
+Do not infer either guarantee or invent a marker for another template.
+Apps needing identity should use OIDC or another verified authentication
+mechanism. A future coordinated platform contract could supply that same
+secret/marker to non-OIDC apps, which could then populate a separate
+verified identity while leaving unmatched requests anonymous.
+
+## Container and chart runtime defaults
+
+All app containers start non-root: Go uses UID/GID 1000; nginx uses the
+existing image's UID/GID 101 and keeps port **8080**. nginx writes its
+rendered config, copied static tree, PID and temporary files only under
+`/tmp`, with logs on stdout/stderr. Helm mounts an `emptyDir` at `/tmp` and
+sets read-only root filesystems. For Docker, supply a writable `/tmp`
+(e.g. `--read-only --tmpfs /tmp:rw,nosuid,nodev,mode=1777`).
+
+Charts default to `runAsNonRoot`, explicit user/group IDs, dropped `ALL`
+capabilities, `allowPrivilegeEscalation: false`, `RuntimeDefault` seccomp,
+and `automountServiceAccountToken: false`. Override `podSecurityContext`,
+`securityContext` and `automountServiceAccountToken` in values. Multi-service
+charts merge each `services[].podSecurityContext` / `securityContext` over
+chart defaults; frontend entries select UID/GID 101. Preserve those entries
+when replacing the services list. Optional sidecars inherit container
+defaults and can override `sidecars[].securityContext` for their image.
+
+Bundled PostgreSQL alpine uses UID/GID 70; Valkey alpine uses UID 999/GID
+1000. Their corresponding `postgresql.*` / `redis.*` security values are
+independently overridable. Datastore root filesystems are read-only, but
+data **cannot** be: PostgreSQL mounts `/var/lib/postgresql/data`,
+`/var/run/postgresql`, and `/tmp`; Valkey mounts `/data` and `/tmp`. These
+are ephemeral `emptyDir` volumes; use properly owned persistent volumes
+for real data. Image users and entrypoint behavior need container validation
+when changing image variants/tags.
+
+Enabled datastores reject an empty password or the literal
+`__MOSES_GENERATE_PASSWORD__` during Helm rendering. Moses replaces that
+sentinel via `SanitizeTemplateCredentials` during template injection,
+**before** Helm; no insecure platform bypass flag is provided. Standalone
+installs must supply `postgresql.auth.password` or `redis.auth.password`.
+Valkey requires the password from a Kubernetes Secret and services receive
+`REDIS_PASSWORD` through `secretKeyRef`; future Redis clients must use it.
+Chat's bundled PostgreSQL now matches the other charts' `17-alpine`; an
+existing PostgreSQL 16 data volume requires an explicit major-version
+migration rather than being attached to 17.
+
+nginx sends `nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`,
+hides its version, and applies immutable one-year caching only to
+`/assets/<name>-<hash>.<extension>` (Vite's content-hash naming convention).
+Unhashed public files and HTML revalidate. Reserve that naming convention
+for content-hashed build outputs. CSP remains `frame-ancestors`: a generic
+`script-src` / `connect-src` policy would break the inline theme bootstrap,
+Moses SDK connections, or app-specific resources. Set an app-specific CSP
+with nonces/hashes and explicit connection origins when those are known.
+
 ## Test surface
 
-The repo ships two repo-level test scripts (both run in CI via
+The repo ships repo-level test scripts (both run in CI via
 `.github/workflows/build-and-test.yml`, alongside per-module `go vet`/`go
 test` and per-frontend `npm run lint`/`npm run typecheck`/`npm test`/`npm run
 build`):
@@ -266,7 +340,10 @@ TypeScript, which strips types without ever verifying them.
 
 Renders each Moses-aware template's `nginx.conf` template under several
 `MOSES_EMBEDDING_FRAMING` combinations and asserts the resulting CSP +
-`X-Frame-Options` headers match the framing matrix. Requires `envsubst`
+`X-Frame-Options` headers match the framing matrix. It runs the real
+entrypoints against immutable fixture inputs, verifies writable output and
+static-file preservation, and stubs only nginx itself. Requires Python 3
+and `envsubst`
 (part of `gettext` on most distros).
 
 ```bash
@@ -279,10 +356,19 @@ version parity, Dockerfile hardening and reproducibility, no literal
 credentials in values files, and `.dockerignore` coverage per declared build
 context.
 
+`tests/test_runtime_hardening.py` extends parity with runtime wiring,
+identity naming, error disclosure, nginx caching, chart defaults and
+maintenance assertions. `tests/test_helm_hardening.sh` lints and renders all
+seven charts, verifies security/volumes/service ports, tests password guards,
+and exercises value overrides (Helm + Ruby's standard YAML library required).
+Parity runs these checks; Helm rendering is skipped explicitly if Helm is absent.
+
 The `tools/check-vendored-*.sh` gates (csrf, browser-logger, mosesproxy,
-base-path) additionally keep each template's vendored copies in sync with
-the canonical `shared/` sources; they run in their own path-filtered
-workflows.
+base-path, runtime) additionally keep each template's vendored copies in sync.
+Runtime middleware uses `backend-template` (body limits) and `fullstack-chat`
+(logging) as canonical copies; the other gates use `shared/` sources.
+Runtime parity runs from the template-parity job; the existing shared-source
+gates retain their path-filtered workflows.
 
 ## Dependency updates (Renovate)
 

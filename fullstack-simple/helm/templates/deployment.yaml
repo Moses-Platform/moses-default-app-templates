@@ -27,8 +27,19 @@ spec:
         {{- end }}
         moses-manager.eu/managed-by: moses
     spec:
+      automountServiceAccountToken: {{ $.Values.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml (mergeOverwrite (deepCopy $.Values.podSecurityContext) (.podSecurityContext | default dict)) | nindent 8 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
       containers:
         - name: {{ .name }}
+          securityContext:
+            {{- toYaml (mergeOverwrite (deepCopy $.Values.securityContext) (.securityContext | default dict)) | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           {{- $imgSpec := dict "repository" "placeholder" "tag" "latest" "pullPolicy" "IfNotPresent" }}
           {{- if and $.Values.images (hasKey $.Values.images .name) }}
           {{- $imgSpec = index $.Values.images .name }}
@@ -104,6 +115,11 @@ spec:
               value: "{{ include "agent-deployed-app.fullname" $ }}-redis"
             - name: REDIS_PORT
               value: "6379"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agent-deployed-app.fullname" $ }}-redis
+                  key: redis-password
             - name: REDIS_ADDR
               value: "{{ include "agent-deployed-app.fullname" $ }}-redis:6379"
             {{- end }}
@@ -133,6 +149,11 @@ spec:
         {{- if .sidecars }}
         {{- range .sidecars }}
         - name: {{ .name }}
+          securityContext:
+            {{- toYaml (mergeOverwrite (deepCopy $.Values.securityContext) (.securityContext | default dict)) | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           image: "{{ .image }}"
           {{- if .ports }}
           ports:

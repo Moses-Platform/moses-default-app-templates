@@ -115,3 +115,13 @@ Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tu
 ## Conventions enforced by `tests/test_template_parity.sh`
 
 Same as fullstack-simple: chart name `agent-deployed-app` v1.0.0, Go 1.27.4 (`golang:1.27.4-alpine3.24` → `alpine:3.24.4`), non-root + HEALTHCHECK in Dockerfile, no `"name": "my-app"` placeholder, no literal credentials in `helm/values.yaml`.
+
+## UserID is not authentication
+
+`UntrustedUserID` contains the caller-supplied `X-Moses-User-ID` for audit
+context only. Never use it to authorize a request or identify a verified
+user. This template has no documented gateway-marker contract; use OIDC or
+another verified authentication mechanism for protected features. Public
+health checks remain anonymous. The default body cap is 1 MiB; override
+`MOSES_MAX_BODY_BYTES` with a positive byte count and handle
+`*http.MaxBytesError` as 413 before side effects.

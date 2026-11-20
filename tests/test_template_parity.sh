@@ -147,23 +147,18 @@ for df in $(find . -maxdepth 4 -name Dockerfile -not -path './node_modules/*' -n
 done
 
 # ---------------------------------------------------------------------------
-# 6. Backend Dockerfile hardening: every backend (Go) Dockerfile must run
-#    as a non-root user and declare a HEALTHCHECK. fullstack-unified used
-#    to lack both — the parity rule prevents regression.
-#
-#    Frontend Dockerfiles are excluded: the nginx:alpine base image already
-#    drops to a non-root worker after a brief root-uid startup window, and
-#    the entrypoint chmods rendered config files for that worker.
+# 6. Every runtime, including nginx, starts as an unprivileged user.
 # ---------------------------------------------------------------------------
-for df in backend-template/Dockerfile fullstack-unified/Dockerfile fullstack-simple/backend/Dockerfile fullstack-showcase/backend/Dockerfile fullstack-chat/backend/Dockerfile fullstack-oidc/backend/Dockerfile; do
+for df in frontend-template/Dockerfile fullstack-simple/frontend/Dockerfile fullstack-showcase/frontend/Dockerfile fullstack-chat/frontend/Dockerfile fullstack-oidc/frontend/Dockerfile backend-template/Dockerfile fullstack-unified/Dockerfile fullstack-simple/backend/Dockerfile fullstack-showcase/backend/Dockerfile fullstack-chat/backend/Dockerfile fullstack-oidc/backend/Dockerfile; do
   if [ ! -f "$df" ]; then
-    fail "backend Dockerfile: missing at $df"
+    fail "Dockerfile: missing at $df"
     continue
   fi
-  if grep -qE '^USER appuser' "$df"; then
+  runtime_user=$(awk 'toupper($1) == "FROM" { user = "" } toupper($1) == "USER" { user = $2 } END { print user }' "$df")
+  if [ "$runtime_user" = "appuser" ] || [ "$runtime_user" = "101:101" ]; then
     pass "Dockerfile non-root user: $df"
   else
-    fail "Dockerfile non-root user: $df is missing 'USER appuser' (USER directive must follow adduser)"
+    fail "Dockerfile non-root user: $df is missing an approved non-root USER directive"
   fi
   if grep -qE '^HEALTHCHECK' "$df"; then
     pass "Dockerfile HEALTHCHECK: $df"
@@ -583,6 +578,26 @@ for fe in $FRONTENDS; do
     fail "React Compiler not wired (expected babel({ presets: [reactCompilerPreset()] }) and its packages): $cfg"
   fi
 done
+
+# ---------------------------------------------------------------------------
+# Runtime behavior and Helm defaults (stdlib Python; no Docker required).
+# ---------------------------------------------------------------------------
+if python3 tests/test_runtime_hardening.py; then
+  pass "runtime hardening contracts"
+else
+  fail "runtime hardening contracts"
+fi
+
+if bash tools/check-vendored-runtime.sh; then
+  pass "runtime middleware parity"
+else
+  fail "runtime middleware parity"
+fi
+if bash tests/test_helm_hardening.sh; then
+  pass "Helm runtime hardening (when Helm is available)"
+else
+  fail "Helm runtime hardening"
+fi
 
 # ---------------------------------------------------------------------------
 # Summary

@@ -3,7 +3,9 @@ package mosesproxy
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -210,8 +212,8 @@ func TestMissingAppSlug(t *testing.T) {
 	}
 }
 
-// 8. Upstream returns 4xx with structured envelope → status + envelope
-//    pass through verbatim.
+//  8. Upstream returns 4xx with structured envelope → status + envelope
+//     pass through verbatim.
 func TestUpstream4xxPassthrough(t *testing.T) {
 	cap := &upstreamCapture{}
 	body := `{"error":"rate limited","code":"rate_limited","hint":"slow down","retryAfterSeconds":42}`
@@ -565,5 +567,49 @@ func TestTrailingSlashOnInternalAPIBase(t *testing.T) {
 
 	if want := "/api/v1/apps/based-quotes/actions/a/invoke"; cap.path != want {
 		t.Fatalf("path: got %q want %q", cap.path, want)
+	}
+}
+
+// Transport errors often contain internal hosts/URLs. Keep those in logs only.
+type failingTransport struct{}
+
+func (failingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("private-host:5432 detail\nforged")
+}
+func TestGenericLocalErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		cfg                Config
+		body, want, detail string
+		status             int
+	}{
+		{"unconfigured", Config{}, `{}`, "service unavailable", "MOSES_INTERNAL_API_BASE", 503},
+		{"bad json", Config{InternalAPIBase: "http://upstream", AppSlug: "app"}, `{`, "invalid request body", "unexpected EOF", 400},
+		{"invalid URL", Config{InternalAPIBase: "://private-host", AppSlug: "app"}, `{"actionId":"test"}`, "internal server error", "missing protocol", 500},
+		{"transport", Config{InternalAPIBase: "http://private-host", AppSlug: "app", HTTPClient: &http.Client{Transport: failingTransport{}}}, `{"actionId":"test"}`, "upstream unavailable", "private-host:5432", 502},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			old := log.Writer()
+			log.SetOutput(&logs)
+			defer log.SetOutput(old)
+			r := httptest.NewRequest("POST", InvokePath, strings.NewReader(tc.body))
+			r.Header.Set("Authorization", "Bearer test")
+			w := httptest.NewRecorder()
+			NewHandler(tc.cfg).ServeHTTP(w, r)
+			var got map[string]string
+			if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			if w.Code != tc.status || got["error"] != tc.want {
+				t.Fatalf("status %d body %s", w.Code, w.Body.String())
+			}
+			if !strings.Contains(logs.String(), tc.detail) {
+				t.Fatalf("missing detail in log %q", logs.String())
+			}
+			if strings.Count(logs.String(), "\n") != 1 {
+				t.Fatalf("log injection: %q", logs.String())
+			}
+		})
 	}
 }

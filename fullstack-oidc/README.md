@@ -239,3 +239,10 @@ both images in-cluster, deploys the multi-service Helm chart, registers a
 confidential Keycloak client (because `access.oidc` is declared), and
 injects the `MOSES_OIDC_*` env. The app then enforces OIDC with zero
 further configuration.
+
+## Request body limits
+
+The default body cap is 1 MiB (`http.MaxBytesReader`). Set
+`MOSES_MAX_BODY_BYTES` to a positive byte count to override it. Handlers
+must handle `*http.MaxBytesError` as 413 before committing responses or
+side effects; chunked bodies are limited while read, without buffering.

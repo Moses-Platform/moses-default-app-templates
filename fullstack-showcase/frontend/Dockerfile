@@ -50,13 +50,16 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh \
+    && test "$(id -u nginx)" = 101 && test "$(id -g nginx)" = 101
 
 # BACKEND_SERVICE_HOST / BACKEND_SERVICE_PORT are injected per-deploy by the
 # Helm chart. entrypoint.sh has shell-default fallbacks so standalone runs work.
 # We deliberately do NOT set ENV defaults here because they would pollute
 # non-K8s environments with Moses-specific DNS names that don't resolve outside
 # the cluster.
+
+USER 101:101
 
 EXPOSE 8080
 

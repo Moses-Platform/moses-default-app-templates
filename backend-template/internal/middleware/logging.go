@@ -49,7 +49,7 @@ func Logging(next http.Handler) http.Handler {
 			tenantField = mosesCtx.SelfTenantID + " (caller=" + mosesCtx.CallerTenantID + ")"
 		}
 		log.Printf(
-			"[%s] %s %s %d %v %s",
+			"[%q] %q %q %d %v %q",
 			requestID,
 			r.Method,
 			r.URL.Path,

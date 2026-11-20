@@ -49,7 +49,7 @@ type LogCompletionSink struct{}
 
 // Record implements CompletionSink.
 func (LogCompletionSink) Record(_ context.Context, p ChatCompletionPayload, sigValid bool) error {
-	log.Printf("[chat-webhook] sink=log conv=%s action=%s sigValid=%t reason=%s",
+	log.Printf("[chat-webhook] sink=log conv=%q action=%q sigValid=%t reason=%q",
 		p.ConversationID, p.ActionID, sigValid, p.FinishReason)
 	return nil
 }
@@ -114,7 +114,8 @@ func (h *ChatWebhookHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "read_failed", err.Error())
+		log.Printf("read_failed: %q", err.Error())
+		writeError(w, http.StatusBadRequest, "read_failed", "invalid request body")
 		return
 	}
 	defer r.Body.Close()
@@ -124,7 +125,8 @@ func (h *ChatWebhookHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 	var payload ChatCompletionPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		log.Printf("invalid_json: %q", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_json", "invalid JSON")
 		return
 	}
 
@@ -171,11 +173,12 @@ func (h *ChatWebhookHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.recordErr(r.Context(), payload, true); err != nil {
-		writeError(w, http.StatusInternalServerError, "persist_failed", err.Error())
+		log.Printf("persist_failed: %q", err.Error())
+		writeError(w, http.StatusInternalServerError, "persist_failed", "internal server error")
 		return
 	}
 
-	log.Printf("[chat-webhook] conv=%s reason=%s model=%s latency=%dms",
+	log.Printf("[chat-webhook] conv=%q reason=%q model=%q latency=%dms",
 		payload.ConversationID, payload.FinishReason, payload.Model, payload.LatencyMs)
 
 	writeJSON(w, http.StatusOK, map[string]any{

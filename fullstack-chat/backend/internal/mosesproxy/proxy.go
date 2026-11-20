@@ -4,9 +4,10 @@
 // (relative to the templates monorepo root)
 //
 // To re-sync after upstream changes, run (from the templates monorepo root):
-//   cp shared/mosesproxy-go/proxy.go fullstack-chat/backend/internal/mosesproxy/proxy.go
-//   cp shared/mosesproxy-go/proxy_test.go fullstack-chat/backend/internal/mosesproxy/proxy_test.go
-//   cd fullstack-chat/backend && go build ./... && go test ./...
+//
+//	cp shared/mosesproxy-go/proxy.go fullstack-chat/backend/internal/mosesproxy/proxy.go
+//	cp shared/mosesproxy-go/proxy_test.go fullstack-chat/backend/internal/mosesproxy/proxy_test.go
+//	cd fullstack-chat/backend && go build ./... && go test ./...
 //
 // IMPORTANT: when re-syncing, preserve this header comment block — drop
 // only the canonical file's package comment so the "VENDORED COPY" notice
@@ -14,7 +15,9 @@
 //
 // To verify this copy is in sync with the canonical source, run from the
 // templates repo root:
-//   ./tools/check-vendored-mosesproxy.sh
+//
+//	./tools/check-vendored-mosesproxy.sh
+//
 // CI runs the same check on PRs that touch either shared/ or this file.
 //
 // Why vendored: fullstack-chat ships as a standalone repo (via
@@ -44,6 +47,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -170,7 +174,8 @@ func NewHandler(cfg Config) http.HandlerFunc {
 			return
 		}
 		if err := cfg.Validate(); err != nil {
-			writeErr(w, http.StatusServiceUnavailable, "moses_unconfigured", err.Error())
+			log.Printf("moses_unconfigured: %q", err.Error())
+			writeErr(w, http.StatusServiceUnavailable, "moses_unconfigured", "service unavailable")
 			return
 		}
 		if cfg.RequireRequestedWith && r.Header.Get(RequestedWithHeader) != RequestedWithValue {
@@ -189,7 +194,8 @@ func NewHandler(cfg Config) http.HandlerFunc {
 		var in inboundRequest
 		dec := json.NewDecoder(io.LimitReader(r.Body, maxBodyBytes))
 		if err := dec.Decode(&in); err != nil {
-			writeErr(w, http.StatusBadRequest, "bad_request", err.Error())
+			log.Printf("bad_request: %q", err.Error())
+			writeErr(w, http.StatusBadRequest, "bad_request", "invalid request body")
 			return
 		}
 		if in.ActionID == "" {
@@ -199,7 +205,8 @@ func NewHandler(cfg Config) http.HandlerFunc {
 
 		body, err := json.Marshal(forwardRequest{Variables: in.Variables, ChartID: cfg.ChartID})
 		if err != nil {
-			writeErr(w, http.StatusInternalServerError, "marshal_failed", err.Error())
+			log.Printf("marshal_failed: %q", err.Error())
+			writeErr(w, http.StatusInternalServerError, "marshal_failed", "internal server error")
 			return
 		}
 
@@ -211,7 +218,8 @@ func NewHandler(cfg Config) http.HandlerFunc {
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 		if err != nil {
-			writeErr(w, http.StatusInternalServerError, "request_build_failed", err.Error())
+			log.Printf("request_build_failed: %q", err.Error())
+			writeErr(w, http.StatusInternalServerError, "request_build_failed", "internal server error")
 			return
 		}
 		req.Header.Set("Authorization", "Bearer "+jwt)
@@ -222,7 +230,8 @@ func NewHandler(cfg Config) http.HandlerFunc {
 
 		resp, err := client.Do(req)
 		if err != nil {
-			writeErr(w, http.StatusBadGateway, "moses_unreachable", err.Error())
+			log.Printf("moses_unreachable: %q", err.Error())
+			writeErr(w, http.StatusBadGateway, "moses_unreachable", "upstream unavailable")
 			return
 		}
 		defer resp.Body.Close()

@@ -2,7 +2,7 @@
   "name": "fullstack-chat-instance",
   "version": "1.0.0",
   "displayName": "Moses Chat App",
-  "description": "Full-stack Moses app scaffold with the iframe-SDK round-trip wired: platform SDK in the iframe, /__moses/invoke proxy in the backend, and an HMAC-verified completion webhook receiver. Declare a chat_prompt action in platformActions to activate it — see moses-app.config.with-secrets.example.json.",
+  "description": "Full-stack Moses app scaffold with the iframe-SDK round-trip wired: platform SDK in the iframe, /__moses/invoke proxy in the backend, and an HMAC-verified completion webhook receiver. Declare a chat_prompt action in platformActions to activate it \u2014 see moses-app.config.with-secrets.example.json.",
   "appType": "hybrid",
   "entrypoint": "index.html",
   "templateApiVersion": "moses-manager.eu/v1",
@@ -124,5 +124,18 @@
         "required": true
       }
     ]
+  },
+  "maintenance": {
+    "renovate": {
+      "enabled": true,
+      "schedule": "0 4 * * 1",
+      "context": "Chat app with React frontend, Go backend, and PostgreSQL. Update npm packages, Go modules, Docker images, and Helm chart dependencies."
+    },
+    "logMonitor": {
+      "enabled": true,
+      "lookbackMinutes": 15,
+      "minErrorCount": 5,
+      "context": "Chat integration plumbing: monitor database connection and migration errors, platform proxy failures, and rejected or failed completion webhooks."
+    }
   }
 }

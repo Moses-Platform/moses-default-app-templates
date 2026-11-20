@@ -23,3 +23,5 @@ vendor/
 *.swo
 
 # One-shot demo cleanout machinery (ships in the repo, never in images)
+
+.env*

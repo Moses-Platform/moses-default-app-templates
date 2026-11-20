@@ -37,6 +37,13 @@ images:
 # changed here: Recreate causes user-visible downtime on every release.
 services:
   - name: frontend
+    podSecurityContext:
+      runAsUser: 101
+      runAsGroup: 101
+      fsGroup: 101
+    securityContext:
+      runAsUser: 101
+      runAsGroup: 101
     image:
       repository: "fullstack-chat-frontend"
       tag: "latest"
@@ -83,10 +90,28 @@ globalEnv:
   MOSES_EMBEDDING_REPORT_URI: ""
 
 postgresql:
+  automountServiceAccountToken: false
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 70
+    runAsGroup: 70
+    fsGroup: 70
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 70
+    runAsGroup: 70
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
+    seccompProfile:
+      type: RuntimeDefault
+    readOnlyRootFilesystem: true
   enabled: true
   image:
     repository: postgres
-    tag: "16-alpine"
+    tag: "17-alpine"
     pullPolicy: IfNotPresent
   auth:
     # CHAT-59o2 (DEPS-B2): align with platform convention. Moses' provisioner
@@ -113,3 +138,23 @@ postgresql:
     requests:
       cpu: "100m"
       memory: "128Mi"
+
+# Runtime defaults. Service/sidecar securityContext maps can override these.
+automountServiceAccountToken: false
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+  seccompProfile:
+    type: RuntimeDefault
+  readOnlyRootFilesystem: true

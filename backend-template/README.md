@@ -136,7 +136,8 @@ ONCE, under `MOSES_BASE_PATH` only (CHAT-8qiu0).
 
 ### Header Injection
 
-When deployed on Moses, all API calls automatically receive these headers:
+Moses workspace-tool calls carry headers such as these. This template treats
+them as untrusted caller context; their presence is not authentication:
 
 ```
 X-Moses-Tenant-ID: 550e8400-e29b-41d4-a716-446655440000
@@ -165,8 +166,8 @@ func MyHandler(w http.ResponseWriter, r *http.Request) {
     rows := store.GetByTenant(mosesCtx.SelfTenantID)
 
     // Audit only: caller context from the X-Moses-Tenant-ID header
-    log.Printf("[%s] Request from user %s, caller_tenant=%s",
-        mosesCtx.RequestID, mosesCtx.UserID, mosesCtx.CallerTenantID)
+    log.Printf("[%q] Claimed user %q, caller_tenant=%q",
+        mosesCtx.RequestID, mosesCtx.UntrustedUserID, mosesCtx.CallerTenantID)
 }
 ```
 
@@ -411,3 +412,13 @@ For issues or questions about this template:
 1. Check the [skills/usage.md](skills/usage.md) documentation
 2. Review Moses platform documentation
 3. Open an issue in the repository
+
+## UserID is not authentication
+
+`UntrustedUserID` contains the caller-supplied `X-Moses-User-ID` for audit
+context only. Never use it to authorize a request or identify a verified
+user. This template has no documented gateway-marker contract; use OIDC or
+another verified authentication mechanism for protected features. Public
+health checks remain anonymous. The default body cap is 1 MiB; override
+`MOSES_MAX_BODY_BYTES` with a positive byte count and handle
+`*http.MaxBytesError` as 413 before side effects.

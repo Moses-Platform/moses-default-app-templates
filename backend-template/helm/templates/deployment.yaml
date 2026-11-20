@@ -22,8 +22,19 @@ spec:
         {{- end }}
         moses-manager.eu/managed-by: moses
     spec:
+      automountServiceAccountToken: {{ .Values.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml (.Values.podSecurityContext) | nindent 8 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
       containers:
         - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml (.Values.securityContext) | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
@@ -98,6 +109,11 @@ spec:
         {{- if .Values.sidecars }}
         {{- range .Values.sidecars }}
         - name: {{ .name }}
+          securityContext:
+            {{- toYaml (mergeOverwrite (deepCopy $.Values.securityContext) (.securityContext | default dict)) | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           image: "{{ .image }}"
           {{- if .ports }}
           ports:

@@ -6,14 +6,15 @@ import (
 )
 
 // MosesContext holds Moses-specific request context
+// UntrustedUserID is caller-controlled audit context, NOT an authenticated identity.
 type MosesContext struct {
-	TenantID    string
-	UserID      string
-	ChartID     string
-	ToolID      string
-	RequestID   string
-	MCPSource   string
-	APIKeyID    string
+	TenantID        string
+	UntrustedUserID string
+	ChartID         string
+	ToolID          string
+	RequestID       string
+	MCPSource       string
+	APIKeyID        string
 }
 
 type contextKey string
@@ -24,13 +25,13 @@ const mosesContextKey contextKey = "moses"
 func MosesHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mosesCtx := MosesContext{
-			TenantID:   r.Header.Get("X-Moses-Tenant-ID"),
-			UserID:     r.Header.Get("X-Moses-User-ID"),
-			ChartID:    r.Header.Get("X-Moses-Chart-ID"),
-			ToolID:     r.Header.Get("X-Moses-Tool-ID"),
-			RequestID:  r.Header.Get("X-Moses-Request-ID"),
-			MCPSource:  r.Header.Get("X-Moses-MCP-Source"),
-			APIKeyID:   r.Header.Get("X-Moses-API-Key-ID"),
+			TenantID:        r.Header.Get("X-Moses-Tenant-ID"),
+			UntrustedUserID: r.Header.Get("X-Moses-User-ID"),
+			ChartID:         r.Header.Get("X-Moses-Chart-ID"),
+			ToolID:          r.Header.Get("X-Moses-Tool-ID"),
+			RequestID:       r.Header.Get("X-Moses-Request-ID"),
+			MCPSource:       r.Header.Get("X-Moses-MCP-Source"),
+			APIKeyID:        r.Header.Get("X-Moses-API-Key-ID"),
 		}
 
 		ctx := context.WithValue(r.Context(), mosesContextKey, mosesCtx)

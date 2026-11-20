@@ -18,3 +18,5 @@ vendor/
 .idea/
 *.swp
 *.swo
+
+.env*

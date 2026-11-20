@@ -32,6 +32,13 @@ images:
 # vanish from the old pod when the rollout completes.
 services:
   - name: frontend
+    podSecurityContext:
+      runAsUser: 101
+      runAsGroup: 101
+      fsGroup: 101
+    securityContext:
+      runAsUser: 101
+      runAsGroup: 101
     image:
       repository: "fullstack-simple-frontend"
       tag: "latest"
@@ -82,6 +89,27 @@ globalEnv:
 # REDIS_ADDR is auto-injected into all service containers using the fullname helper.
 # Agents should NEVER hardcode service names — they are dynamic.
 redis:
+  auth:
+    # Substituted by Moses before Helm rendering; override for standalone installs.
+    password: __MOSES_GENERATE_PASSWORD__
+  automountServiceAccountToken: false
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 1000
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
+    seccompProfile:
+      type: RuntimeDefault
+    readOnlyRootFilesystem: true
   enabled: false
   image:
     repository: "valkey/valkey"
@@ -94,3 +122,23 @@ redis:
     requests:
       cpu: "50m"
       memory: "64Mi"
+
+# Runtime defaults. Service/sidecar securityContext maps can override these.
+automountServiceAccountToken: false
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+  seccompProfile:
+    type: RuntimeDefault
+  readOnlyRootFilesystem: true

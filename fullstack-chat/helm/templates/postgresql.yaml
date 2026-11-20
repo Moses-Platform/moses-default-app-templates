@@ -1,5 +1,8 @@
 {{- if .Values.postgresql }}
 {{- if .Values.postgresql.enabled }}
+{{- if or (empty .Values.postgresql.auth.password) (eq .Values.postgresql.auth.password "__MOSES_GENERATE_PASSWORD__") }}
+{{- fail "Set postgresql.auth.password to a generated password before installing (Moses substitutes the sentinel before Helm)." }}
+{{- end }}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -30,9 +33,14 @@ spec:
         {{- include "agent-deployed-app.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: postgresql
     spec:
+      automountServiceAccountToken: {{ .Values.postgresql.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml .Values.postgresql.podSecurityContext | nindent 8 }}
       containers:
         - name: postgresql
-          image: "{{ .Values.postgresql.image.repository | default "postgres" }}:{{ .Values.postgresql.image.tag | default "16-alpine" }}"
+          securityContext:
+            {{- toYaml .Values.postgresql.securityContext | nindent 12 }}
+          image: "{{ .Values.postgresql.image.repository | default "postgres" }}:{{ .Values.postgresql.image.tag | default "17-alpine" }}"
           ports:
             - containerPort: 5432
           env:
@@ -70,9 +78,17 @@ spec:
           resources:
             {{- toYaml .Values.postgresql.resources | nindent 12 }}
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: postgres-run
+              mountPath: /var/run/postgresql
             - name: data
               mountPath: /var/lib/postgresql/data
       volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: postgres-run
+          emptyDir: {}
         - name: data
           # EPHEMERAL DATA: emptyDir lives and dies with the pod — every
           # postgres pod restart/reschedule wipes the demo feed. That is
