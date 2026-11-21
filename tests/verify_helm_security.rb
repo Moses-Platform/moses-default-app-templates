@@ -29,7 +29,7 @@ workloads.each do |d|
     mounts.each { |m| raise 'volume missing' unless pod.fetch('volumes').any? { |v| v['name']==m['name'] } }
     if c['name']=='redis'
       raise 'redis port missing' unless c.fetch('ports').any? { |p| p['containerPort']==6379 && p['name']=='redis' }
-      raise 'no auth' unless c.fetch('args').join(' ').include?('--requirepass') && c.fetch('env').any? { |e| e['name']=='REDIS_PASSWORD' && e.dig('valueFrom','secretKeyRef','key')=='redis-password' }
+      raise 'no auth' unless c.fetch('args').join(' ').include?('--requirepass') && c.fetch('env').any? { |e| e['name']=='REDIS_PASSWORD' && e.dig('valueFrom','secretKeyRef','key')=='password' }
     end
     if c['name']=='frontend' || ARGV[1]=='frontend-template'
       raise 'frontend port changed' unless c.fetch('ports').first['containerPort']==8080

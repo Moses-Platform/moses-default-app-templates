@@ -207,13 +207,13 @@ Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tu
 ```bash
 cd backend  && go build ./... && go test ./...
 cd frontend && npm install && npm run build && npm test
-helm lint helm
+helm lint helm --set postgresql.enabled=false
 ```
 
 ## Running standalone (without Moses)
 
 ```bash
-# Backend (terminal 1)
+# Backend (terminal 1): supply DB_PASSWORD from your local PostgreSQL Secret.
 cd backend && go run cmd/server/main.go
 # No MOSES_OIDC_* env -> oidcauth runs in pass-through mode.
 
@@ -221,9 +221,10 @@ cd backend && go run cmd/server/main.go
 cd frontend && npm install && npm run dev
 # Access: http://localhost:3000 (Vite proxy -> backend:8080)
 
-# Helm, standalone:
+# Helm, standalone: precreate app-postgresql-credentials in the release
+# namespace with key password (or set postgresql.auth.passwordKey).
 helm install oidc-demo helm \
-  --set postgresql.auth.password=$(openssl rand -hex 24)
+  --set postgresql.auth.existingSecret=app-postgresql-credentials
 ```
 
 ## SameSite

@@ -63,7 +63,7 @@ spec:
                  (provisionPlatformAPISecretIntoValues / provisionAppOIDCIntoValues).
                  Each entry must be mounted as a secretRef so the Secret's keys
                  become container env vars. The singular secrets.secretName /
-                 secrets.configMapName are kept for backward compatibility. */}}
+                 secrets.configMapName are optional additional env sources. */}}
           {{- if $.Values.secrets }}
           {{- if or $.Values.secrets.secretName $.Values.secrets.secretNames $.Values.secrets.configMapName }}
           envFrom:
@@ -71,13 +71,14 @@ spec:
             - secretRef:
                 name: {{ $.Values.secrets.secretName }}
             {{- end }}
-            {{- range $.Values.secrets.secretNames }}
-            - secretRef:
-                name: {{ . }}
-            {{- end }}
             {{- if $.Values.secrets.configMapName }}
             - configMapRef:
                 name: {{ $.Values.secrets.configMapName }}
+            {{- end }}
+            {{- /* Keep the platform canonical signing-key Secret last in secretNames. */}}
+            {{- range $.Values.secrets.secretNames }}
+            - secretRef:
+                name: {{ . }}
             {{- end }}
           {{- end }}
           {{- end }}
@@ -131,8 +132,8 @@ spec:
             - name: DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "agent-deployed-app.fullname" $ }}-postgresql
-                  key: postgresql-password
+                  name: {{ required "postgresql.auth.existingSecret is required when postgresql.enabled=true (precreate a namespace Secret)" $.Values.postgresql.auth.existingSecret | quote }}
+                  key: {{ $.Values.postgresql.auth.passwordKey | default "password" | quote }}
             - name: DATABASE_URL
               value: "postgresql://{{ $.Values.postgresql.auth.username | default "app" }}:$(DATABASE_PASSWORD)@{{ include "agent-deployed-app.fullname" $ }}-postgresql:5432/{{ $.Values.postgresql.auth.database | default "appdb" }}"
             - name: DB_HOST
@@ -148,8 +149,8 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "agent-deployed-app.fullname" $ }}-postgresql
-                  key: postgresql-password
+                  name: {{ required "postgresql.auth.existingSecret is required when postgresql.enabled=true (precreate a namespace Secret)" $.Values.postgresql.auth.existingSecret | quote }}
+                  key: {{ $.Values.postgresql.auth.passwordKey | default "password" | quote }}
             {{- end }}
             {{- end }}
             {{- /* CHAT-t5d1u.28.21 (C1) / .28.22 (B1): OIDC relying-party env

@@ -46,7 +46,7 @@ To start building:
 | `MOSES_BASE_PATH` | main.go, oidcauth | deploy sub-path (`/apps/<tenant>/<slug>`); `BASE_URL` is a deprecated alias |
 | `MOSES_TENANT_ID` | `internal/config/moses.go` | deploy-pinned tenant id — ALL data scoping; never use the `X-Moses-Tenant-ID` header for storage keys |
 | `MOSES_DEPLOYED` | `internal/config/moses.go` | `1` on platform pods ⇒ missing `MOSES_TENANT_ID` fails startup |
-| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` / `DB_SSLMODE` | `internal/database/db.go` | PostgreSQL connection (defaults: localhost/5432/app/…/appdb/disable) |
+| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` / `DB_SSLMODE` | `internal/database/db.go` | PostgreSQL connection (defaults: localhost/5432/app/appdb/disable); `DB_PASSWORD` is required from `postgresql.auth.existingSecret` / `passwordKey`, with no default |
 | `MOSES_OIDC_ISSUER` | `oidcauth/config.go` | external issuer — browser redirects + `iss` validation |
 | `MOSES_OIDC_INTERNAL_ISSUER` | oidcauth | in-cluster issuer — JWKS + token exchange |
 | `MOSES_OIDC_CLIENT_ID` / `MOSES_OIDC_CLIENT_SECRET` | oidcauth | confidential client (platform-managed Secret via `secrets.secretNames[]` envFrom) |

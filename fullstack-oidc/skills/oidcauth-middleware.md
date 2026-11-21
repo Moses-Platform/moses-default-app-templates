@@ -41,9 +41,9 @@ owns the inject link, and your handlers do the read.
 ### 2. Inject — the Moses platform (you do nothing)
 
 At deploy time the platform registers a confidential Keycloak client and
-injects `MOSES_OIDC_*` env vars + a K8s Secret. The Helm chart's
-existing `moses.oidc` values + `oidc-secret.yaml` Secret consume them —
-see `helm/values.yaml` and `helm/templates/oidc-secret.yaml`.
+publishes the handshake `MOSES_OIDC_*` env vars in a namespace Secret
+listed in `secrets.secretNames`, mounted through `envFrom`. The chart's
+`oidc-secret.yaml` carries only the session-cookie key; see `helm/values.yaml`.
 
 ### 3. Enforce — wire the middleware in `main.go`
 

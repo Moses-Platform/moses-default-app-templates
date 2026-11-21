@@ -45,7 +45,7 @@ class Hardening(unittest.TestCase):
      self.assertIn('fail "move MOSES_MAX_BODY_BYTES to globalEnv: one value now applies to the frontend proxy and the backend"', read(template+'/helm/templates/deployment.yaml'))
      self.assertIn('globalEnv.MOSES_MAX_BODY_BYTES', read(template+'/README.md'))
  def test_redis_enablement_docs(self):
-  for term in ['redis.auth.password', 'REDIS_PASSWORD', 'coordinated', '__MOSES_GENERATE_PASSWORD__']:
+  for term in ['redis.auth.existingSecret', 'redis.auth.passwordKey', 'REDIS_PASSWORD', 'authenticate']:
    self.assertIn(term, read('fullstack-simple/README.md'))
  def test_go_wiring_and_ignores(self):
   for g in GO:
@@ -72,14 +72,19 @@ class Hardening(unittest.TestCase):
      self.assertIn(x,v)
     for x in ['podSecurityContext','securityContext','automountServiceAccountToken','emptyDir: {}','mountPath: /tmp']:
      self.assertIn(x,d)
+    self.assertLess(d.index('- configMapRef:'), d.index('range '+('$.Values' if t.startswith('fullstack-') else '.Values')+'.secrets.secretNames'))
+    self.assertNotRegex(v, r'(?mi)^\s*password\s*:')
     self.assertIn('maintenance',json.loads(read(t+'/moses-app.config.json')))
   for t in ['fullstack-chat','fullstack-showcase','fullstack-oidc']:
    self.assertIn('tag: "17-alpine"',read(t+'/helm/values.yaml'))
    p=read(t+'/helm/templates/postgresql.yaml')
-   for x in ['fail ', '__MOSES_GENERATE_PASSWORD__', 'postgresql.podSecurityContext','postgresql.securityContext','mountPath: /var/run/postgresql','mountPath: /tmp']:
+   self.assertNotIn('kind: Secret', p)
+   for x in ['required ', 'postgresql.auth.existingSecret', 'postgresql.auth.passwordKey', 'postgresql.podSecurityContext','postgresql.securityContext','mountPath: /var/run/postgresql','mountPath: /tmp']:
     self.assertIn(x,p)
   r=read('fullstack-simple/helm/templates/redis.yaml')
-  for x in ['fail ', '__MOSES_GENERATE_PASSWORD__','secretKeyRef:', '--requirepass','redis.podSecurityContext','redis.securityContext','mountPath: /data']:
+  self.assertNotIn('kind: Secret', r)
+  self.assertIn('$(REDIS_PASSWORD)', r)
+  for x in ['required ', 'redis.auth.existingSecret', 'redis.auth.passwordKey','secretKeyRef:', '--requirepass','redis.podSecurityContext','redis.securityContext','mountPath: /data']:
    self.assertIn(x,r)
   self.assertIn('name: REDIS_PASSWORD',read('fullstack-simple/helm/templates/deployment.yaml'))
 

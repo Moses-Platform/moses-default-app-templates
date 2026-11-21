@@ -7,28 +7,44 @@ if ! command -v ruby >/dev/null; then echo 'ERROR: ruby (stdlib YAML) needed for
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 for t in frontend-template backend-template fullstack-simple fullstack-unified fullstack-showcase fullstack-chat fullstack-oidc; do
-  args=(--namespace s2-test)
+  # Include every envFrom source together; the canonical signing Secret must win.
+  args=(--namespace s2-test
+    --set-string secrets.secretName=app-extra
+    --set-string secrets.configMapName=app-config
+    --set-string 'secrets.secretNames[0]=app-runtime'
+    --set-string 'secrets.secretNames[1]=canonical-interapp')
+  kind=none
   case "$t" in
-    fullstack-showcase|fullstack-chat|fullstack-oidc)
-      if helm template check "$t/helm" > "$tmp/default" 2>&1; then echo "FAIL: $t accepted sentinel"; exit 1; fi
-      grep -q 'Set postgresql.auth.password' "$tmp/default"
-      if helm template check "$t/helm" --set-string postgresql.auth.password= > "$tmp/empty" 2>&1; then echo "FAIL: $t accepted empty password"; exit 1; fi
-      grep -q 'Set postgresql.auth.password' "$tmp/empty"
-      helm template check "$t/helm" --set postgresql.enabled=false > /dev/null
-      args+=(--set-string postgresql.auth.password=render-test-password)
-      ;;
-    fullstack-simple)
-      helm template check "$t/helm" > /dev/null
-      if helm template check "$t/helm" --set redis.enabled=true > "$tmp/default" 2>&1; then echo 'FAIL: redis accepted sentinel'; exit 1; fi
-      grep -q 'Set redis.auth.password' "$tmp/default"
-      if helm template check "$t/helm" --set redis.enabled=true --set-string redis.auth.password= > "$tmp/empty" 2>&1; then echo 'FAIL: redis accepted empty password'; exit 1; fi
-      grep -q 'Set redis.auth.password' "$tmp/empty"
-      args+=(--set redis.enabled=true --set-string redis.auth.password=render-test-password)
-      ;;
+    fullstack-showcase|fullstack-chat|fullstack-oidc) kind=postgresql ;;
+    fullstack-simple) kind=redis ;;
   esac
+  disabled=("${args[@]}")
+  if [ "$kind" != none ]; then
+    disabled+=(--set "$kind.enabled=false")
+    if helm template check "$t/helm" "${args[@]}" --set "$kind.enabled=true" > "$tmp/missing" 2>&1; then
+      echo "FAIL: $t accepted missing Secret reference"; exit 1
+    fi
+    grep -q "$kind.auth.existingSecret is required" "$tmp/missing"
+    if helm template check "$t/helm" "${args[@]}" --set "$kind.enabled=true" --set-string "$kind.auth.existingSecret=" > "$tmp/empty" 2>&1; then
+      echo "FAIL: $t accepted empty Secret reference"; exit 1
+    fi
+    grep -q "$kind.auth.existingSecret is required" "$tmp/empty"
+    args+=(--set "$kind.enabled=true" --set-string "$kind.auth.existingSecret=bundled-credentials")
+  fi
+  helm lint "$t/helm" "${disabled[@]}"
+  helm template check "$t/helm" "${disabled[@]}" > "$tmp/disabled"
+  ruby tests/verify_helm_secret_refs.rb "$tmp/disabled" none password "$t"
   helm lint "$t/helm" "${args[@]}"
   helm template check "$t/helm" "${args[@]}" > "$tmp/rendered"
   ruby tests/verify_helm_security.rb "$tmp/rendered" "$t"
+  ruby tests/verify_helm_secret_refs.rb "$tmp/rendered" "$kind" password "$t"
+  if [ "$kind" != none ]; then
+    # Prove both the custom key and explicit empty-key default reach all consumers.
+    for key in custom-key ''; do
+      helm template check "$t/helm" "${args[@]}" --set-string "$kind.auth.passwordKey=$key" > "$tmp/custom-key"
+      ruby tests/verify_helm_secret_refs.rb "$tmp/custom-key" "$kind" "${key:-password}" "$t"
+    done
+  fi
   # Override booleans must not be swallowed by Helm's `default` function.
   helm template check "$t/helm" "${args[@]}" --set automountServiceAccountToken=true --set securityContext.readOnlyRootFilesystem=false > "$tmp/overrides"
   grep -q 'automountServiceAccountToken: true' "$tmp/overrides"

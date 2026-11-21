@@ -64,11 +64,12 @@ The frontend nginx proxies `/api/*` → `http://${BACKEND_SERVICE_HOST}:${BACKEN
 
 ## Optional Redis sidecar
 
-Set `redis.enabled: true` **and** supply `redis.auth.password` in
-`helm/values.yaml` for a standalone install. Helm intentionally rejects an
-empty password or the `__MOSES_GENERATE_PASSWORD__` sentinel when Redis is
-enabled. Moses replaces that sentinel before Helm rendering during template
-injection; standalone installs must provide their own password.
+Set `redis.enabled: true` and supply `redis.auth.existingSecret`, the name
+of a precreated Kubernetes Secret in the release namespace.
+`redis.auth.passwordKey` defaults to `password`. Moses creates the Secret
+and supplies the reference; standalone installs must precreate it. Helm
+rejects an empty reference when Redis is enabled. Credentials never go in
+chart values and the chart does not create a credential Secret.
 
 The chart provisions a Valkey 8-alpine Deployment (`helm/templates/redis.yaml`)
 with AUTH required. It auto-injects `REDIS_HOST`, `REDIS_PORT`, `REDIS_ADDR`
@@ -77,10 +78,9 @@ services. Redis clients must use `REDIS_PASSWORD` to authenticate; an address
 alone produces `NOAUTH`. Never hardcode the service name — it derives from
 `{fullname}-redis`.
 
-For an existing app, use a coordinated server/client rollout: update the
-client to authenticate with the injected password when enabling server AUTH.
-Coordinate password rotations on both sides as well. This scaffold does not
-ship a Redis client; enabling the chart does not add client authentication code.
+Clients must authenticate with the injected password whenever Redis is enabled.
+This scaffold does not ship a Redis client; enabling the chart does not add
+client authentication code.
 
 ## Running locally (without Moses)
 
@@ -132,7 +132,7 @@ Self-maintenance is enabled via the Moses UI toggle (the wrench on the app card)
 - All Go modules use `go 1.27.4`; all Go Dockerfiles use `golang:1.27.4-alpine3.24` (runtime `alpine:3.24.4`).
 - All backend Dockerfiles run as a non-root `appuser` (uid 1000) with HEALTHCHECK.
 - No `"name": "my-app"` placeholder in `moses-app.config.json` (must be a per-template instance name).
-- No literal credentials in `helm/values.yaml` — use `__MOSES_GENERATE_PASSWORD__` for any password Moses should generate.
+- No literal credentials in `helm/values.yaml` — use `existingSecret` / `passwordKey` references for bundled credentials.
 
 ## Request body limits
 

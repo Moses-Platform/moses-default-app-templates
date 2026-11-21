@@ -92,8 +92,9 @@ globalEnv:
 # Agents should NEVER hardcode service names — they are dynamic.
 redis:
   auth:
-    # Substituted by Moses before Helm rendering; override for standalone installs.
-    password: __MOSES_GENERATE_PASSWORD__
+    # Precreated Secret in the release namespace; Moses supplies this reference.
+    existingSecret: ""
+    passwordKey: "password"
   automountServiceAccountToken: false
   podSecurityContext:
     runAsNonRoot: true

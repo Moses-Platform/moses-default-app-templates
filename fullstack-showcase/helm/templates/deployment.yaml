@@ -66,13 +66,14 @@ spec:
                    OIDC env Secrets all arrive through this list. Without this
                    range the platform's injection is silently ignored and the
                    app boots without e.g. DATABASE_URL. */}}
-            {{- range $.Values.secrets.secretNames }}
-            - secretRef:
-                name: {{ . }}
-            {{- end }}
             {{- if $.Values.secrets.configMapName }}
             - configMapRef:
                 name: {{ $.Values.secrets.configMapName }}
+            {{- end }}
+            {{- /* Keep the platform canonical signing-key Secret last in secretNames. */}}
+            {{- range $.Values.secrets.secretNames }}
+            - secretRef:
+                name: {{ . }}
             {{- end }}
           {{- end }}
           env:
@@ -125,8 +126,8 @@ spec:
             - name: DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "agent-deployed-app.fullname" $ }}-postgresql
-                  key: postgresql-password
+                  name: {{ required "postgresql.auth.existingSecret is required when postgresql.enabled=true (precreate a namespace Secret)" $.Values.postgresql.auth.existingSecret | quote }}
+                  key: {{ $.Values.postgresql.auth.passwordKey | default "password" | quote }}
             - name: DATABASE_URL
               value: "postgresql://{{ $.Values.postgresql.auth.username | default "app" }}:$(DATABASE_PASSWORD)@{{ include "agent-deployed-app.fullname" $ }}-postgresql:5432/{{ $.Values.postgresql.auth.database | default "appdb" }}"
             - name: DB_HOST
@@ -142,8 +143,8 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "agent-deployed-app.fullname" $ }}-postgresql
-                  key: postgresql-password
+                  name: {{ required "postgresql.auth.existingSecret is required when postgresql.enabled=true (precreate a namespace Secret)" $.Values.postgresql.auth.existingSecret | quote }}
+                  key: {{ $.Values.postgresql.auth.passwordKey | default "password" | quote }}
             {{- end }}
             {{- end }}
           {{- if .healthCheck }}

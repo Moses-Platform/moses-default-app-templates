@@ -34,7 +34,7 @@ func NewConfigFromEnv() Config {
 		Host:     getEnv("DB_HOST", "localhost"),
 		Port:     getEnv("DB_PORT", "5432"),
 		User:     getEnv("DB_USER", "app"),
-		Password: getEnv("DB_PASSWORD", "oidc-secret"),
+		Password: os.Getenv("DB_PASSWORD"),
 		DBName:   getEnv("DB_NAME", "appdb"),
 		SSLMode:  getEnv("DB_SSLMODE", "disable"),
 	}
@@ -42,6 +42,10 @@ func NewConfigFromEnv() Config {
 
 // Connect establishes a database connection with retry logic.
 func Connect(cfg Config) (*sql.DB, error) {
+	if cfg.Password == "" {
+		return nil, errors.New("DB_PASSWORD is required: supply it from the PostgreSQL namespace Secret")
+	}
+
 	dsn := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,

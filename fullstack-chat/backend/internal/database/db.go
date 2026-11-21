@@ -35,7 +35,7 @@ func NewConfigFromEnv() Config {
 		// with `password authentication failed for user "app"` before
 		// postgres init created the role as a side effect.
 		User:     getEnv("DB_USER", "app"),
-		Password: getEnv("DB_PASSWORD", "fullstack_chat_dev"),
+		Password: os.Getenv("DB_PASSWORD"),
 		DBName:   getEnv("DB_NAME", "appdb"),
 		SSLMode:  getEnv("DB_SSLMODE", "disable"),
 	}
@@ -44,6 +44,10 @@ func NewConfigFromEnv() Config {
 // Connect establishes a database connection with retry logic.
 // Note: DSN is constructed but never logged to avoid credential exposure.
 func Connect(cfg Config) (*sql.DB, error) {
+	if cfg.Password == "" {
+		return nil, errors.New("DB_PASSWORD is required: supply it from the PostgreSQL namespace Secret")
+	}
+
 	dsn := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
