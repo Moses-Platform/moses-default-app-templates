@@ -278,8 +278,8 @@ The template assumes deployment via Moses' Helm pipeline. For pure local dev (no
 # MOSES_TENANT_ID is optional in local dev — omit and the sentinel
 # 'local-dev' is used. Set it to mirror a real deploy.
 DB_HOST=localhost DB_PORT=5432 DB_NAME=fullstack_chat \
-  DB_USER=postgres DB_PASSWORD=postgres \
-  MOSES_CHAT_WEBHOOK_SECRET=dev-secret \
+  DB_USER=postgres DB_PASSWORD="${DB_PASSWORD:?Supply the local PostgreSQL credential}" \
+  MOSES_CHAT_WEBHOOK_SECRET="${MOSES_CHAT_WEBHOOK_SECRET:?Supply the webhook signing key}" \
   MOSES_TENANT_ID=local-dev \
   go run ./cmd/server
 

@@ -1,19 +1,5 @@
 {{- if .Values.postgresql }}
 {{- if .Values.postgresql.enabled }}
-{{- if or (empty .Values.postgresql.auth.password) (eq .Values.postgresql.auth.password "__MOSES_GENERATE_PASSWORD__") }}
-{{- fail "Set postgresql.auth.password to a generated password before installing (Moses substitutes the sentinel before Helm)." }}
-{{- end }}
-apiVersion: v1
-kind: Secret
-metadata:
-  name: {{ include "agent-deployed-app.fullname" . }}-postgresql
-  labels:
-    {{- include "agent-deployed-app.labels" . | nindent 4 }}
-    app.kubernetes.io/component: postgresql
-type: Opaque
-data:
-  postgresql-password: {{ .Values.postgresql.auth.password | b64enc | quote }}
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -49,8 +35,8 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "agent-deployed-app.fullname" . }}-postgresql
-                  key: postgresql-password
+                  name: {{ required "postgresql.auth.existingSecret is required when postgresql.enabled=true (precreate a namespace Secret)" .Values.postgresql.auth.existingSecret | quote }}
+                  key: {{ .Values.postgresql.auth.passwordKey | default "password" | quote }}
             - name: POSTGRES_DB
               value: {{ .Values.postgresql.auth.database | default "appdb" | quote }}
             - name: PGDATA

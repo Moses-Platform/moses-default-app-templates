@@ -186,31 +186,25 @@ for df in backend-template/Dockerfile fullstack-unified/Dockerfile fullstack-sim
 done
 
 # ---------------------------------------------------------------------------
-# 8. No literal credentials in helm/values.yaml. The Moses platform's
-#    SanitizeTemplateCredentials replaces __MOSES_GENERATE_PASSWORD__ with
-#    a per-tenant random password during template injection. Anything else
-#    (real passwords, the legacy `showcase-secret` literal, `changeme`,
-#    `password`, etc.) is a security hazard if a user `helm install`s the
-#    chart standalone or copies the value into another repo.
+# 8. Bundled credentials are references only, including when disabled.
 # ---------------------------------------------------------------------------
 for t in $TEMPLATES; do
   vy="$t/helm/values.yaml"
   [ -f "$vy" ] || continue
-  # Lines like `password: <something>` where <something> is not the
-  # known-sentinel and not empty — flag them.
-  bad_pw=$(awk -F: '/password:/ {
-    val = $2
-    sub(/#.*/, "", val)
-    gsub(/^[ \t]+|[ \t]+$/, "", val)
-    if (val != "" && val != "__MOSES_GENERATE_PASSWORD__" && val != "\"\"" && val != "\"__MOSES_GENERATE_PASSWORD__\"") {
-      print val
-    }
-  }' "$vy" | head -3)
-  if [ -n "$bad_pw" ]; then
-    fail "helm/values.yaml: $vy contains a literal password value: $bad_pw (use __MOSES_GENERATE_PASSWORD__ or empty string)"
+  if grep -qiE '^[[:space:]]*password[[:space:]]*:' "$vy"; then
+    fail "helm/values.yaml: $vy contains a forbidden password value field"
   else
-    pass "helm/values.yaml: $vy has no literal password values"
+    pass "helm/values.yaml: $vy has no password value fields"
   fi
+  case "$t" in
+    fullstack-simple|fullstack-showcase|fullstack-chat|fullstack-oidc)
+      if grep -q 'existingSecret: ""' "$vy" && grep -q 'passwordKey: "password"' "$vy"; then
+        pass "helm/values.yaml: $vy declares namespace Secret references"
+      else
+        fail "helm/values.yaml: $vy is missing existingSecret/passwordKey"
+      fi
+      ;;
+  esac
 done
 
 # ---------------------------------------------------------------------------

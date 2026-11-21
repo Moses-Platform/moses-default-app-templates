@@ -92,7 +92,7 @@ add react-router.
 | `MOSES_APP_CONFIG_PATH` | optional | `validate_env.go` | Override config discovery for the chat_prompt gate |
 | `MOSES_EMBEDDING_FRAMING` / `_ALLOWED_ANCESTORS` / `_REPORT_URI`, `MOSES_DOMAIN` | optional | `frontend/entrypoint.sh` | CSP frame-ancestors rendering |
 | `CORS_ALLOWED_ORIGINS` | optional (default: no CORS) | `middleware/cors.go` | Comma-separated exact origins; `*` allowed but never with credentials |
-| `DB_HOST`/`DB_PORT`/`DB_USER`/`DB_PASSWORD`/`DB_NAME`/`DB_SSLMODE` | injected with the `postgresql` dependency | `database/db.go` | Postgres connection (defaults: `app`/`appdb` per platform convention) |
+| `DB_HOST`/`DB_PORT`/`DB_USER`/`DB_PASSWORD`/`DB_NAME`/`DB_SSLMODE` | injected with the `postgresql` dependency | `database/db.go` | Postgres connection (defaults: `app`/`appdb`); `DB_PASSWORD` is required from `postgresql.auth.existingSecret` / `passwordKey`, with no default |
 | `PORT` | optional (default 8080) | `main.go` | Listen port |
 | `BACKEND_SERVICE_HOST`/`_PORT` | injected (frontend pod) | `frontend/entrypoint.sh` | nginx → backend proxy target |
 | `NODE_ENV` | chart-set | — | Conventional; no longer drives CORS |

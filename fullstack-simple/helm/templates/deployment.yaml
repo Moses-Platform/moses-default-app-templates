@@ -66,13 +66,14 @@ spec:
                    OIDC env Secrets all arrive through this list. Without this
                    range the platform's injection is silently ignored and the
                    app boots without e.g. DATABASE_URL. */}}
-            {{- range $.Values.secrets.secretNames }}
-            - secretRef:
-                name: {{ . }}
-            {{- end }}
             {{- if $.Values.secrets.configMapName }}
             - configMapRef:
                 name: {{ $.Values.secrets.configMapName }}
+            {{- end }}
+            {{- /* Keep the platform canonical signing-key Secret last in secretNames. */}}
+            {{- range $.Values.secrets.secretNames }}
+            - secretRef:
+                name: {{ . }}
             {{- end }}
           {{- end }}
           env:
@@ -121,8 +122,8 @@ spec:
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "agent-deployed-app.fullname" $ }}-redis
-                  key: redis-password
+                  name: {{ required "redis.auth.existingSecret is required when redis.enabled=true (precreate a namespace Secret)" $.Values.redis.auth.existingSecret | quote }}
+                  key: {{ $.Values.redis.auth.passwordKey | default "password" | quote }}
             - name: REDIS_ADDR
               value: "{{ include "agent-deployed-app.fullname" $ }}-redis:6379"
             {{- end }}

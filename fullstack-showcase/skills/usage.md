@@ -52,7 +52,7 @@ Every variable the code reads, with its source file:
 | `MOSES_TENANT_ID` | `backend/internal/config/moses.go` | Deploy-pinned self tenant — the ONLY authoritative storage/lookup key (CHAT-pxeo.12) |
 | `MOSES_DEPLOYED` | `backend/internal/config/moses.go` | `1` on platform deploys → fail-fast if `MOSES_TENANT_ID` unset |
 | `MOSES_STRICT_TENANT_CHECK` | `backend/internal/handler/tenant.go` | Default on; `false` disables the 403 caller/self cross-check |
-| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` / `DB_SSLMODE` | `backend/internal/database/db.go` | PostgreSQL connection; Helm injects real values (`helm/templates/deployment.yaml`); the `showcase-secret` default is dev-only — 28P01 fail-fast guards misconfig |
+| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` / `DB_SSLMODE` | `backend/internal/database/db.go` | PostgreSQL connection; `DB_PASSWORD` is required, with no default. Helm uses `postgresql.auth.existingSecret` / `passwordKey` (default `password`) from a precreated namespace Secret; missing credentials fail immediately |
 | `CORS_ALLOWED_ORIGINS` | `backend/internal/middleware/cors.go` | Comma-separated exact origins; unset (default) = no CORS headers at all; a literal `*` allows any origin but never with credentials |
 | `MOSES_PLATFORM_API_KEY` / `MOSES_PLATFORM_API_URL` | nothing (no code in this template reads them) | Platform integration grant credentials — read them yourself if you call the Moses Platform API (see pattern below) |
 | `MOSES_EMBEDDING_FRAMING` / `MOSES_EMBEDDING_ALLOWED_ANCESTORS` / `MOSES_EMBEDDING_REPORT_URI` / `MOSES_DOMAIN` | `frontend/entrypoint.sh` | CSP frame-ancestors policy rendered at container start |

@@ -106,7 +106,10 @@ docker run -p 3000:8080 \
 # Backend (separate terminal)
 cd backend
 docker build -t showcase-backend .
-docker run -p 8080:8080 showcase-backend
+docker run -p 8080:8080 \
+  -e DB_HOST=host.docker.internal \
+  -e DB_PASSWORD="${DB_PASSWORD:?Supply the local PostgreSQL credential}" \
+  showcase-backend
 
 # Access: http://localhost:3000
 ```
@@ -116,7 +119,7 @@ docker run -p 8080:8080 showcase-backend
 ```bash
 # Backend (terminal 1)
 cd backend
-go run cmd/server/main.go
+DB_PASSWORD="${DB_PASSWORD:?Supply the local PostgreSQL credential}" go run cmd/server/main.go
 # Listening on :8080
 
 # Frontend (terminal 2)

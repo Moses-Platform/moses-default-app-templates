@@ -315,19 +315,25 @@ are ephemeral `emptyDir` volumes; use properly owned persistent volumes
 for real data. Image users and entrypoint behavior need container validation
 when changing image variants/tags.
 
-Enabled datastores reject an empty password or the literal
-`__MOSES_GENERATE_PASSWORD__` during Helm rendering. Moses replaces that
-sentinel via `SanitizeTemplateCredentials` during template injection,
-**before** Helm; no insecure platform bypass flag is provided. Standalone
-installs must supply `postgresql.auth.password` or `redis.auth.password`.
-Valkey requires the password from a Kubernetes Secret and services receive
-`REDIS_PASSWORD` through `secretKeyRef`; future Redis clients must use it.
-Adopting Redis authentication in an existing app requires a coordinated
-server/client rollout: configure clients to authenticate with that password
-when enabling server AUTH, and coordinate password rotations the same way.
-Chat's bundled PostgreSQL now matches the other charts' `17-alpine`; an
-existing PostgreSQL 16 data volume requires an explicit major-version
-migration rather than being attached to 17.
+Bundled datastores consume a precreated Kubernetes Secret in the release
+namespace. Moses creates the credential Secret and supplies only
+`postgresql.auth.existingSecret` / `redis.auth.existingSecret` and
+`auth.passwordKey` (default `password`). Standalone installs must precreate
+that Secret and pass its name. Enabled services fail Helm rendering if the
+reference is empty. Charts never render bundled credential Secrets or carry
+password values. PostgreSQL servers and applications use the same reference;
+applications receive both `DATABASE_PASSWORD` and `DB_PASSWORD`, with no
+runtime password default. Valkey requires `REDIS_PASSWORD` via `secretKeyRef`
+and `--requirepass`; Redis clients must authenticate with that variable.
+
+The inter-app signing key arrives as `MOSES_INTERAPP_SECRET` through
+`secrets.secretNames`. All seven charts render the optional singular Secret
+and ConfigMap before that ordered Secret list. The platform appends the
+canonical signing-key Secret last and rejects explicit env entries that
+would override it. Do not put the signing key in `env`, `globalEnv`, or
+service-local `env`. Chat mounts secrets only in backend services; its nginx
+frontend is not a credential consumer. This is a clean break: deploy
+installations from scratch.
 
 nginx sends `nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`,
 hides its version, and applies immutable one-year caching only to
@@ -378,8 +384,9 @@ context.
 `tests/test_runtime_hardening.py` extends parity with runtime wiring,
 identity naming, error disclosure, nginx caching, chart defaults and
 maintenance assertions. `tests/test_helm_hardening.sh` lints and renders all
-seven charts, verifies security/volumes/service ports, tests password guards,
-and exercises value overrides (Helm + Ruby's standard YAML library required).
+seven charts, verifies security/volumes/service ports, tests required Secret
+references and signing-key source ordering, and exercises value overrides
+(Helm + Ruby's standard YAML library required).
 Parity runs these checks; Helm rendering is skipped explicitly if Helm is absent.
 
 The `tools/check-vendored-*.sh` gates (csrf, browser-logger, mosesproxy,

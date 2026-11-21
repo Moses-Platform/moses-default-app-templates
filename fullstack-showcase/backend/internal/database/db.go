@@ -31,13 +31,8 @@ func NewConfigFromEnv() Config {
 		// agent_helm_provisioner.go convention (username="app",
 		// database="appdb"). Local-dev standalone runs override these
 		// via env if needed.
-		User: getEnv("DB_USER", "app"),
-		// Dev-only fallback: on a Moses deploy the Helm chart injects the
-		// real per-tenant password via the DB_PASSWORD env (see
-		// helm/templates/deployment.yaml + postgresql.yaml Secret). If this
-		// literal ever reaches a real database the 28P01 fail-fast below
-		// surfaces the mismatch immediately instead of retrying 30 times.
-		Password: getEnv("DB_PASSWORD", "showcase-secret"),
+		User:     getEnv("DB_USER", "app"),
+		Password: os.Getenv("DB_PASSWORD"),
 		DBName:   getEnv("DB_NAME", "appdb"),
 		SSLMode:  getEnv("DB_SSLMODE", "disable"),
 	}
@@ -46,6 +41,10 @@ func NewConfigFromEnv() Config {
 // Connect establishes a database connection with retry logic.
 // Note: DSN is constructed but never logged to avoid credential exposure.
 func Connect(cfg Config) (*sql.DB, error) {
+	if cfg.Password == "" {
+		return nil, errors.New("DB_PASSWORD is required: supply it from the PostgreSQL namespace Secret")
+	}
+
 	dsn := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,

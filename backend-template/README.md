@@ -265,12 +265,16 @@ pool, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
 defer pool.Close()
 ```
 
-Update `helm/values.yaml` to add database configuration:
+Precreate a namespace Secret containing `DATABASE_URL`, then reference it
+in `helm/values.yaml`. Keep credentials out of chart values:
 
 ```yaml
-env:
-  DATABASE_URL: "postgres://user:pass@postgres:5432/dbname"
+secrets:
+  secretNames: [app-database-connection]
 ```
+
+For Moses inter-app deployments, the platform appends the canonical signing-key
+Secret last in this list. Do not explicitly override `MOSES_INTERAPP_SECRET`.
 
 ### Add Authentication
 
