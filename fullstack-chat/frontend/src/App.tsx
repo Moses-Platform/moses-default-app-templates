@@ -7,7 +7,7 @@
  *   - src/moses/invoke.ts       — fire platform actions declared in
  *     moses-app.config.json via the iframe SDK (window.moses.actions.invoke
  *     → POST /__moses/invoke on this app's own backend → pod-to-pod to
- *     moses-backend with the user's JWT preserved). Use shapeInvokeError
+ *     moses-backend as the viewing user (session JWT or gateway viewer assertion)). Use shapeInvokeError
  *     for user-facing failures (prefers the platform's structured hint).
  *   - src/moses/hostMessages.ts — origin-checked `moses_embed_chat_complete`
  *     listener hook + `moses_embed_open_chat` announce helper (pin the

@@ -203,7 +203,10 @@ is empty, each template's `entrypoint.sh` defaults to the same chart-parity
 origin list the platform's resolver emits
 (`moses-platform-prep/backend/internal/services/embedding_policy_resolver.go`):
 `'self' tauri://localhost http://tauri.localhost https://tauri.localhost`,
-plus `https://*.${MOSES_DOMAIN}` when `MOSES_DOMAIN` is set. This keeps
+plus `https://${MOSES_DOMAIN} https://*.${MOSES_DOMAIN}` when `MOSES_DOMAIN` is a
+production-style domain (port-wildcarded `http://`/`https://` forms for
+localhost domains). `fullstack-unified` (no `entrypoint.sh`) defaults to
+`'self'` only. This keeps
 `helm install` of a Moses-aware template **outside** the Moses platform
 embeddable from Moses Manager and from the Tauri installer shell — without
 the default a standalone deploy would only allow `'self'` and Manager would

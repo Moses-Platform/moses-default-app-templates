@@ -114,11 +114,12 @@ for tmpl in frontend-template fullstack-simple/frontend fullstack-showcase/front
 done
 
 # Case 2: moses-only + no ancestors + MOSES_DOMAIN=example.com → four-origin
-# default PLUS https://*.example.com wildcard subdomain (mirrors the
-# resolver's mosesDomain branch for non-localhost domains).
+# default PLUS https://example.com and the https://*.example.com wildcard
+# subdomain (mirrors the resolver's mosesDomain branch for non-localhost
+# domains; a CSP wildcard host never matches the apex itself).
 for tmpl in frontend-template fullstack-simple/frontend fullstack-showcase/frontend fullstack-chat/frontend fullstack-oidc/frontend; do
   assert "$tmpl" "moses-only" "" "" \
-    "frame-ancestors 'self' tauri://localhost http://tauri.localhost https://tauri.localhost https://\\*\\.example\\.com" \
+    "frame-ancestors 'self' tauri://localhost http://tauri.localhost https://tauri.localhost https://example\\.com https://\\*\\.example\\.com" \
     "" "/" "example.com"
 done
 

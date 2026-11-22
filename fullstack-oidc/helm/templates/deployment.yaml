@@ -174,8 +174,10 @@ spec:
                    by ticket 28.5 / 28.21-S2) — silently ignore the per-app
                    access.oidc path policy (the 28.22 B1 shadowing bug).
 
-                   Only the genuinely chart-only OIDC value is rendered here:
-                   the cookie HMAC key, which is NOT in the platform Secret.
+                   Only the cookie HMAC key is rendered here, from this
+                   chart's own -oidc Secret. The platform Secret also carries
+                   MOSES_OIDC_COOKIE_SECRET, but this explicit entry wins over
+                   envFrom (ownership is an open platform/template question).
                    Standalone `helm install` without the platform leaves
                    MOSES_OIDC_PROTECTED_PATHS / PUBLIC_PATHS unset; oidcauth
                    then runs in pass-through mode, the correct standalone

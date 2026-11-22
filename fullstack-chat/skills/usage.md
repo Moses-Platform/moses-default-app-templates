@@ -67,7 +67,9 @@ embedding / docker / helm / dependencies). The shipped config's
 `platformActions` is EMPTY — the guided example actions (a `chat_prompt` with
 completion webhook and a scoped `launch_agent`) live in
 `moses-app.config.with-secrets.example.json`; copy one across when you wire
-the feedback loop.
+the feedback loop, together with that file's `integrations.required`
+`moses-platform` entry (scope `platform_actions:invoke`) — without it the
+action never activates.
 
 Note: there is deliberately NO `frontend/src/utils/baseUrl.ts` here (other
 templates have one). This app has no client-side router — it is a single
