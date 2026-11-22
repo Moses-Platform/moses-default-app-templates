@@ -119,7 +119,7 @@ gives each surface exactly one correct address:
 | Static assets | `MOSES_BASE_PATH` | the browser |
 | **All API routes** | **`MOSES_BASE_PATH` — one registration** | the browser **and** the workspace-tool proxy |
 | `/health` | the **root** `/health` **and** `{MOSES_BASE_PATH}/health` (cost-free) | K8s probes + platform health checks |
-| `/api/openapi.json` (your declared `specPath`) | the **root** `/api/openapi.json` **and** `{MOSES_BASE_PATH}/api/openapi.json` (cost-free) | platform OpenAPI discovery (canonical) + the Phase-2 reachability probe (prefixed) |
+| `/api/openapi.json` (your declared `specPath`) | the **root** `/api/openapi.json` **and** `{MOSES_BASE_PATH}/api/openapi.json` (cost-free) | platform OpenAPI discovery (canonical) + callers that reach the app through the frontend nginx (prefixed) |
 
 ### Rules
 
@@ -135,7 +135,7 @@ gives each surface exactly one correct address:
    accidentally serves everything under the base path still passes the probe.
 3. **`/api/openapi.json` at the root AND under `MOSES_BASE_PATH`.** The platform
    discovery hook fetches it canonically; the base-path alias keeps it reachable
-   through the frontend nginx (e.g. for the Phase-2 reachability probe). Like
+   through the frontend nginx. Like
    `/health`, this is a cost-free second handler for the same static spec.
 4. **Frontends use relative fetch paths** (`fetch('api/v1/...')`) so the browser
    resolves them against the prefixed page URL.
@@ -191,9 +191,10 @@ Two real failures this contract prevents:
    is correct; the failure mode is named so it is recognizable on an
    un-upgraded platform.
 
-The platform's post-deploy reachability gate (CHAT-iu0qa) probes the app
-through its real ingress URL and reports a mis-mounted app as a failed deploy —
-the safety net behind this contract.
+The platform's post-deploy reachability gate checks that the app's Service has
+a ready endpoint and GETs the served base path (`{MOSES_BASE_PATH}`) on the
+in-cluster Service; a 404 or no ready endpoint fails the deploy — the safety
+net behind this contract.
 
 ### Standalone vs Moses-managed embedding defaults
 
@@ -212,10 +213,11 @@ override wins verbatim — no auto-merge with the standalone default.
 
 ### Request body / upload size ceiling
 
-Moses-managed proxies allow request bodies up to **50 MB** to reach a deployed
-app (nginx `proxy-body-size: 50m`; Envoy Gateway `ClientTrafficPolicy`
-`bufferLimit: 50Mi`). Your app's own body parser is the authoritative limiter
-**below** that ceiling — the platform will not raise a 413 under 50 MB.
+On nginx-ingress installs, Moses-managed per-app routes allow request bodies up
+to **50 MB** (`proxy-body-size: 50m`); on Envoy Gateway installs the
+`ClientTrafficPolicy` buffer is `512Mi` and does not cap streamed bodies. Your
+app's own body parser is the authoritative limiter — the platform will not
+raise a 413 under 50 MB on either path, so keep upload caps at or below 50 MB.
 
 Every Go template applies `LimitRequestBody` (`http.MaxBytesReader`) with a
 **1 MiB default**. Set `MOSES_MAX_BODY_BYTES` to a positive byte count at
@@ -263,10 +265,9 @@ if err := r.ParseMultipartForm(multipartMem); err != nil {
 ```
 
 Do **not** set a parser limit larger than 50 MB expecting larger uploads to
-succeed — the proxy ceiling would 413 first. To raise both, the platform's
-proxy limits must change in lock-step (nginx `proxy-body-size` in
-`moses-platform-prep` `buildIngressAnnotations`, and the chart's
-`ClientTrafficPolicy bufferLimit`).
+succeed — on nginx-ingress installs the proxy ceiling would 413 first. Raising
+it is a platform change (nginx `proxy-body-size` in `moses-platform-prep`
+`buildIngressAnnotations`).
 
 ## UserID is not authentication
 

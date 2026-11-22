@@ -33,8 +33,9 @@ moses:
   # publicPaths placeholder fields are therefore REMOVED from this block
   # entirely.
   #
-  # Only cookieSecret remains — it is genuinely chart-provided (NOT in the
-  # platform Secret) and the deployment template renders it into env
+  # Only cookieSecret remains. The platform OIDC Secret also carries
+  # MOSES_OIDC_COOKIE_SECRET, but this chart's explicit env entry (from its
+  # own -oidc Secret) takes precedence over envFrom; the deployment template renders it into env
   # (MOSES_OIDC_COOKIE_SECRET). The `oidc` key itself is kept so the
   # `{{- if ... $.Values.moses.oidc }}` guard in the deployment template
   # stays truthy and the cookie-secret env is emitted.
@@ -45,9 +46,8 @@ moses:
   # routes + the X-Moses-* header path still work, browser requests are NOT
   # redirected).
   oidc:
-    # cookieSecret keys the session cookie HMAC. Chart-provided (NOT in
-    # the platform Secret); the platform may inject a per-deploy random
-    # value via --set, empty => the chart's oidc Secret supplies a value
+    # cookieSecret keys the session cookie HMAC. The platform does not set
+    # this value; set it via --set to pin one, empty => the chart's oidc Secret supplies a value
     # that is stable across `helm upgrade` (see oidc-secret.yaml).
     cookieSecret: ""
 

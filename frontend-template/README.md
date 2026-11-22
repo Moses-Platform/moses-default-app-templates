@@ -8,7 +8,7 @@ A production-ready React + TypeScript + Vite frontend template for building Mose
 - **SPA Routing** - React Router with nginx fallback for all routes
 - **Health Checks** - `/health` endpoint for Kubernetes liveness/readiness probes
 - **Moses UI Standards** - Design tokens, 4px grid, accessible colors
-- **Iframe Ready** - CSP `frame-ancestors` policy (from `MOSES_EMBEDDING_*` env) for embedding in Moses Apps page
+- **Iframe Ready** - CSP `frame-ancestors` policy (from `MOSES_EMBEDDING_*` env) for embedding in Moses app windows
 - **Production Build** - Multi-stage Docker, gzip compression, optimized caching
 
 ## Technology Stack
@@ -63,10 +63,9 @@ docker run -p 8080:8080 frontend-template:latest
 ### Option 1: Via Moses Platform UI
 
 1. Push your code to a Git repository
-2. Navigate to Moses Apps page
-3. Click "Register New App"
-4. Provide Git URL
-5. Moses will automatically:
+2. Open the Version Control app and add the repository (Repository URL),
+   or ask Moses Manager to clone it with `moses_clone`
+3. Moses will automatically:
    - Clone repository
    - Build Docker image in-cluster
    - Deploy with Helm to Kubernetes
@@ -357,8 +356,8 @@ Import CSS files in components: `import './Component.css'`
 ## Documentation
 
 - **Moses Architecture**: See `/arch.md` in main repository
-- **UI/UX Standards**: See `/coding-standards/MOSES_UI_UX_STANDARDS.md`
-- **Backend Standards**: See `/coding-standards/MOSES_BACKEND_STANDARDS.md`
+- **UI/UX Standards**: See `docs/standards/MOSES_UI_UX_STANDARDS.md` in the platform repo
+- **Backend Standards**: See `docs/standards/MOSES_BACKEND_STANDARDS.md` in the platform repo
 - **Agent Customization**: See `/skills/usage.md` in this template
 
 ## License

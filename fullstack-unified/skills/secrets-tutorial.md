@@ -9,7 +9,7 @@ key, an app-data encryption key, an app-issued JWT signing key.
 - reading the env var in Go (extend `validatePlatformEnv` / fail-fast pattern),
 - the `secrets.external[]` block + `generate` vs hand-supplied values,
 - the 5-step enable flow (declare → redeploy → `awaiting_secrets` gate →
-  admin supplies via the Apps-page shield modal → auto-resume via image reuse).
+  admin supplies via the app's shield (Access & sharing) modal → auto-resume via image reuse).
 
 Copy the sibling **`moses-app.config.with-secrets.example.json`** for a full
 diffable example.

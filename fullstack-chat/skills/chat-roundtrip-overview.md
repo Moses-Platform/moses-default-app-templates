@@ -26,7 +26,10 @@ Moses offers TWO platform-action paths under epic **CHAT-89ig**. The shipped
 (`platformActions: []`) — the guided examples live in
 `moses-app.config.with-secrets.example.json`: `ask-moses` (a `chat_prompt`)
 and `analyze-app` (a `launch_agent`). Copy one across to activate the path
-you need.
+you need, and also declare `{"type": "moses-platform", "scopes":
+["platform_actions:invoke"]}` under `integrations.required` — the action
+stays inactive until a workspace-settings administrator approves that
+request. (Platforms older than this permission model reject that scope.)
 
 - **`chat_prompt`** (Path A) — opens an interactive Moses Manager
   conversation. This is what the `ask-moses` example does, and the focus of
@@ -62,14 +65,15 @@ The rest of this file is split into:
 
 When a user types into the Moses Manager sidebar with the fullstack-chat
 app as the active context, the chat conversation is created with
-`Source != "app_action"` and resolves to one of the **full** Manager
-profiles via `getChatDefaultProfile()`:
+`Source != "app_action"` and resolves to the chat default profile
+(`MCPProfileChatDefault`):
 
-- `ProfileMosesManagerEssentials` (default) — essentials + per-conversation
+- `moses-manager-essentials` (default unless an operator pins another via
+  `MOSES_CHAT_DEFAULT_PROFILE`) — essentials + per-conversation
   `exposed_extra_tools` overlay.
-- `ProfileMosesManagerAutonomous` (auto-upgrade when the user has an
-  active autopilot session).
-- `ProfileMosesManagerFull` (CRUD-heavy direct project-management chat).
+- `moses-router` for Mara-tier chats.
+- Autopilot is a per-request elevation of the conversation (reported as a
+  `modifiers` entry), not a separate profile.
 
 Available tools include the full unified-CRUD surface (`moses_query`,
 `moses_create`, `moses_update`, `moses_delete`, `moses_batch`),
@@ -138,7 +142,7 @@ both skills). Sources of truth in the platform repo:
   `GetMosesManagerToolsForChart` chart-scoped union.
 - Parent epic: **CHAT-89ig**. Template wave: **CHAT-9oqo (AIPF-9)**.
 - Documentation epic: **CHAT-ieru** — see
-  `arch/backend/MCP_SERVER.md` § "App-invoked profiles" in the
+  `docs/architecture/backend/MCP_SERVER.md` § "App-invoked profiles" in the
   platform repo for the canonical contract.
 
 ---
@@ -214,9 +218,9 @@ This app's backend mosesproxy
 
 | Concern | Where |
 |---|---|
-| Action declaration | `moses-app.config.json` → `platformActions[].chat_prompt` |
+| Action declaration | `moses-app.config.json` → `platformActions[]` entry with `type: "chat_prompt"` + `chatPrompt` block, and `platform_actions:invoke` in the `moses-platform` entry of `integrations.required[].scopes` |
 | Variable hardening | `chatPrompt.variableEscapeMode: "fenced"` + `variables[].userSupplied: true` |
-| Per-app rate cap | `chatPrompt.rateLimit: { perMinute, perHour }` (subject to platform floor + ceiling) |
+| Per-action rate cap | `platformActions[].rateLimit: { perMinute, perHour }` (subject to platform floor + ceiling) |
 | Webhook target | `chatPrompt.completionWebhook.url` (in-cluster service URL only) |
 | App-data exposure | `appData.enabled: true`, default `manager.access: read`, `agent.access: read` |
 | Workspace-tool registration | `apiEndpoints.specPath: /api/openapi.json` (auto-discovered) |
@@ -235,7 +239,7 @@ This app's backend mosesproxy
 
 4. **Webhook secret.** The `MOSES_CHAT_WEBHOOK_SECRET` env var is the shared HMAC key. Moses provisions it at install (rotated via the admin endpoint). Recipients ignore unsigned or stale-timestamp payloads.
 
-5. **Webhook secret rotation is recipient-driven.** Schema-882 supports a 24h overlap window (`secret_previous` + `secret_previous_expires_at`), but the platform sender is single-slot — every outbound signature uses the active secret. To get true no-cutover rotation the recipient must verify against BOTH secrets during the overlap: try `MOSES_CHAT_WEBHOOK_SECRET` first, fall back to `MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS` (optional, empty outside an overlap) on mismatch, reject if both fail. **This template's `webhook_chat.go` already implements dual-slot verification** — set `MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS` during the overlap window and unset it once rotation is complete. See `moses-deployment-guide/SKILL.md` for the full recipient cookbook.
+5. **Webhook secret rotation is recipient-driven.** The platform supports a 24h overlap window (`secret_previous` + `secret_previous_expires_at`), but the platform sender is single-slot — every outbound signature uses the active secret. To get true no-cutover rotation the recipient must verify against BOTH secrets during the overlap: try `MOSES_CHAT_WEBHOOK_SECRET` first, fall back to `MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS` (optional, empty outside an overlap) on mismatch, reject if both fail. **This template's `webhook_chat.go` already implements dual-slot verification** — set `MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS` during the overlap window and unset it once rotation is complete. See `moses-deployment-guide/SKILL.md` for the full recipient cookbook.
 
 ## Manual end-to-end test recipe
 
@@ -249,10 +253,7 @@ one write path in `backend/api/openapi.json`, register it in
 
 1. Deploy this app (e.g. via marketplace install or `moses_init_repo --template fullstack-chat`).
 
-   **Activation precondition (CHAT-1j43 / DEPS-A3, A4)**: the chat_prompt action is INACTIVE on first deploy. How activation happens depends on who triggered the deploy:
-
-   - **User-initiated deploy + deployer has `MANAGE/DEPLOYMENTS` permission** → DEPS-A3 auto-grants on the deployer's behalf during the post-Helm reconcile. Action becomes invocable within seconds. Continue to step 2.
-   - **Autonomous deploy (agent-driven), or deployer without `MANAGE/DEPLOYMENTS`** → DEPS-A4 banner fires in the embedded SelectedAppPanel: "Approve permissions for <app> — 1 action inactive". Click **Approve** in the banner before continuing. The banner fires within ~2s of the post-Helm reconcile completing.
+   **Activation precondition**: the chat_prompt action is INACTIVE on first deploy, whoever deployed it. It activates only after a workspace-settings administrator approves the app's `moses-platform` integration request covering `platform_actions:invoke` for the deployed config (the request shows in the Inbox in the Agents app, as a banner in the app window, and under Administration → App Integrations). Approve it before continuing.
 
 2. Open it in the Moses UI.
 3. Supply the action's `question` variable ("what does this app do?").
@@ -262,13 +263,12 @@ one write path in `backend/api/openapi.json`, register it in
    - Sidebar: a new conversation titled per `chatPrompt.conversationTitle` appears. Its body shows the rendered prompt with the question fenced.
    - If you declared a write path, MM's workspace-tool call lands on your handler.
 6. Verify webhook receipt in the backend logs — the shipped `LogCompletionSink` logs each verified payload (swap it for your own sink in `newCompletionSink`, `backend/cmd/server/demo_routes.go`).
-7. Repeat 6 times within a minute → 6th invoke returns 429 (`rate_limited`) due to the per-action cap.
+7. Repeat 6 times within a minute → 6th invoke returns 429 (`app_chat_prompt_rate_limited`, the platform's 5/min per-app floor).
 8. Open two browser tabs, click in both within 1 second → second returns 429 (`chat_prompt_concurrency_limit`) with the in-flight conversationId.
 
 ### Troubleshooting
 
-- **Clicking the action button returns 409 `action_not_activated`**: the chat_prompt action wasn't activated. Check the post-deploy banner / App Permissions modal — see step 1's activation precondition. Manual recovery: Tenant Admin → Apps → <your app> → Approve grant.
-- **Returns 403 `action_pending_reapproval`**: the action was previously approved but the app added new actions / scopes. The DEPS-A4 banner shows the diff; approve to re-cover.
+- **Clicking the action button returns 409 `action_not_activated`**: the chat_prompt action wasn't activated. Check the app-window banner / Inbox — see step 1's activation precondition. Manual recovery: Administration → App Integrations → approve the app's request.
 
 ## Negative scenarios this template helps verify
 

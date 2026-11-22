@@ -51,10 +51,9 @@ curl http://localhost:8080/health
 
 1. **Commit to Git**: Push this repository to a Git hosting service (GitHub, GitLab, etc.)
 
-2. **Register in Moses**:
-   - Navigate to Moses workspace tools marketplace
-   - Click "Register New Tool"
-   - Enter your repository URL
+2. **Add it to Moses**:
+   - Open the Version Control app, add a repository and enter its Repository URL
+     (or ask Moses Manager to clone it with `moses_clone`)
    - Moses will automatically detect `moses-app.config.json`
 
 3. **Automatic Deployment**:
@@ -65,12 +64,12 @@ curl http://localhost:8080/health
    - MCP tools are generated from operationIds
 
 4. **Use MCP Tools** (one per `operationId` in `api/openapi.json`, named
-   `workspace_<toolKey>_<operationId>` where `<toolKey>` derives from the
-   `name` in `moses-app.config.json`). The spec ships empty, so no tools are
-   registered until you add paths. After adding, say, a `listThings`
-   operationId, agents can call:
+   `workspace_<toolKey>_<operationId>` where Moses assigns `<toolKey>`
+   (`deployed_chart_<chartID[:8]>` for agent deploys) and lowercases the
+   name). The spec ships empty, so no tools are registered until you add
+   paths. After adding, say, a `listThings` operationId, agents can call:
    ```javascript
-   workspace_my_app_listThings({})
+   workspace_deployed_chart_1a2b3c4d_listthings({})
    // NOTE: /health is intentionally NOT in the spec — it would register a
    // phantom tool. Probes hit it directly; agents don't need it.
    ```
@@ -179,13 +178,10 @@ func MyHandler(w http.ResponseWriter, r *http.Request) {
 
 ### OpenAPI Discovery
 
-Moses automatically discovers OpenAPI specs at these paths:
-1. `/api/openapi.json` ✅
-2. `/api/spec` ✅
-3. `/openapi.json`
-4. `/swagger.json`
-5. `/api/v1/openapi.json`
-6. And 6 more standard locations
+Moses tries the declared `apiEndpoints.specPath` first, then these paths:
+`/api/spec` ✅, `/openapi.json`, `/openapi.yaml`, `/api/openapi.json` ✅,
+`/api/openapi.yaml`, `/swagger.json`, `/swagger.yaml`, `/api/spec.json`,
+`/api/spec.yaml`, `/docs/openapi.json`, `/v1/openapi.json`.
 
 This template serves the spec at both primary paths for maximum compatibility.
 
@@ -209,7 +205,7 @@ Each `operationId` in the OpenAPI spec becomes an MCP tool:
 
 **Generated MCP Tool**:
 ```
-Tool Name: workspace_<toolKey>_listThings
+Tool Name: workspace_<toolKey>_listthings
 Description: List things
 Input Schema: (from OpenAPI parameters)
 Output Schema: (from OpenAPI responses)

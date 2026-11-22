@@ -32,7 +32,7 @@ Everything the template reads, and where:
 | `MOSES_EMBEDDING_ALLOWED_ANCESTORS` | `entrypoint.sh` (runtime) | Explicit CSP source list for `moses-only` (overrides the parity default) |
 | `MOSES_EMBEDDING_REPORT_URI` | `entrypoint.sh` (runtime) | Optional CSP report-uri |
 | `MOSES_DOMAIN` | `entrypoint.sh` (runtime) | Platform domain used to extend the default `moses-only` ancestors list |
-| `VITE_MOSES_CHART_ID` | `moses-browser-logger.ts` (build-time, Dockerfile ARG) | Browser-log reporter target chart; logger is a silent no-op when absent |
+| `VITE_MOSES_CHART_ID` | `moses-browser-logger.ts` (build-time, Dockerfile ARG) | Browser-log reporter target chart; when absent the logger bootstraps with a `loc` param and the platform resolves the chart server-side |
 | `VITE_MOSES_DEPLOYMENT_ID` | `moses-browser-logger.ts` (build-time, Dockerfile ARG) | Browser-log reporter deployment identity |
 | `VITE_MOSES_API_BASE` | `moses-browser-logger.ts` (build-time, Dockerfile ARG) | Log-ingest endpoint base |
 | `VITE_BASE_URL` | `src/utils/baseUrl.ts` (build-time, rare) | Legacy build-time base-path fallback; runtime meta tag is preferred |
@@ -166,7 +166,7 @@ docker build -t my-app:latest .
 docker run -p 8080:8080 my-app:latest   # nginx listens on 8080
 ```
 
-Deploy: commit to Git, register via the Moses Apps page; Moses builds
+Deploy: commit to Git, add the repository in the Version Control app; Moses builds
 in-cluster and serves the app at `/apps/{tenant}/{slug}/`.
 
 ## Security headers (what nginx actually sends)

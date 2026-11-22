@@ -133,8 +133,8 @@ This proxy widens the JWT trust window from "browser → moses" to
 "browser → app-backend → moses". That's acceptable for first-party
 templates deployed inside the same tenant cluster because:
 
-1. The app backend runs in the same Kubernetes namespace as
-   moses-backend (or an adjacent namespace under the same operator).
+1. The app backend runs in a per-project namespace in the same
+   cluster as moses-backend.
 2. The second hop never leaves the cluster — `MOSES_INTERNAL_API_BASE`
    resolves to a service DNS name, not an internet route.
 3. The proxy is `~200 LOC` of audited stdlib code with no third-party
@@ -154,10 +154,10 @@ CSRF gadget on another origin can target it the same way it could
 target any other same-origin POST your template exposes. Two defences
 are available:
 
-- **Browser defaults**: modern browsers send `SameSite=Lax` cookies on
-  cross-origin POSTs only when the request is the top-level
-  navigation. A drive-by form-POST from another origin is blocked by
-  default in Chrome/Firefox/Safari.
+- **Browser defaults do not help here**: Moses sets its `access_token`
+  cookie with `SameSite=None; Secure`, so browsers send it on
+  cross-site POSTs. Rely on the header gate below (and the template's
+  CSRF middleware), not on SameSite defaults.
 - **`X-Requested-With: moses-iframe` gate** (`Config.RequireRequestedWith`):
   when true, the proxy rejects requests that don't carry the custom
   header. A drive-by `<form>`/`<img>` cannot set custom headers, so
@@ -189,7 +189,7 @@ are available:
 - The handler does NOT reflect upstream `Set-Cookie` headers — those
   belong to moses-backend's origin, not the app's.
 - The handler does NOT rate-limit on the app side. The upstream
-  enforces per-action floors (e.g. `chat_prompt` 1/min, 5/hr); their
+  enforces per-app floors (e.g. `chat_prompt` 5/min, 20/hr per app); their
   429 envelopes pass through untouched.
 
 ## Tests

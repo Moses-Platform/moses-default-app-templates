@@ -92,7 +92,7 @@ Under epic [CHAT-89ig](../../moses-platform-prep/.beads/) Moses offers TWO platf
 | Workspace-tool surface | Chart-scoped union via `GetMosesManagerToolsForChart` (CHAT-cj8m) | Same chart-scoped union |
 | Escape hatch | `moses_discover_tools` | `moses_discover_tools` (NEW — `ProfileAgentExecution` lacked this) |
 | OUT of profile | `moses_query`/`moses_create`/`moses_update`/`moses_delete`, `moses_execute_ticket`, `moses_quick_build`, ticket/chart/lane CRUD | Same exclusions as Path A |
-| Rate limit | 5/min, 50/hr as shipped; platform floor 1/min, 5/hr, ceiling 10/min, 100/hr | Set it tighter than chat — agent pods are heavier |
+| Rate limit | 5/min, 50/hr as shipped; platform floor 5/min, 20/hr per app (plus 30/min, 200/hr per user), ceiling 10/min, 100/hr | Set it tighter than chat — agent pods are heavier |
 | Completion signal | `chatPrompt.completionWebhook` (HMAC-signed POST) + postMessage | Standard ticket completion via `moses_agent_submit_completed` + deployment pipeline |
 
 **When to use which:**
@@ -140,7 +140,7 @@ Sources of truth (read these for the canonical surface):
   body).
 - `moses-platform-prep/backend/internal/mcp/tools/workspace_tool_proxy.go`
   — `GetMosesManagerToolsForChart` chart-scoped union (CHAT-cj8m).
-- The platform repo's `arch/backend/MCP_SERVER.md` § "App-invoked
+- The platform repo's `docs/architecture/backend/MCP_SERVER.md` § "App-invoked
   profiles" subsection (CHAT-ieru) — canonical contract.
 
 The agent skill `skills/app-invoked-profiles.md` ships **inside this
@@ -200,7 +200,7 @@ All four `validation.commands` in `moses-app.config.json` are required and run b
 |---|---|
 | `platformActions[0].chatPrompt.completionWebhook.url` | Where Moses POSTs the AI completion. Internal cluster service URL only. Default: `http://fullstack-chat-backend:8080/api/v1/webhooks/chat-complete`. |
 | `platformActions[0].chatPrompt.variableEscapeMode` | `raw` / `fenced` / `stripped`. Default `fenced` here because `topic` is `userSupplied: true`. |
-| `platformActions[0].rateLimit.perMinute` | Per-action cap. Subject to platform-floor (1/min, 5/hr) and platform-ceiling (10/min, 100/hr). |
+| `platformActions[0].rateLimit.perMinute` | Per-action cap. Subject to the platform floor (5/min, 20/hr per app; 30/min, 200/hr per user) and ceiling (10/min, 100/hr). |
 | `appData.enabled` | When true, Moses provisions a `{tenantID}/app-data/{appSlug}/` git repo. MM reads via `moses_read_file`. |
 | `appData.manager.access` | `read` (default for this template) / `none`. Whether MM sees the repo in `moses_get_repositories`. |
 
@@ -208,7 +208,7 @@ Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tu
 
 ## Webhook secret rotation
 
-The platform supports a 24h overlap window for `app_webhook_secrets` rotation (schema migration `882_app_webhook_secret_rotation.sql`, `secret_previous` + `secret_previous_expires_at`). The platform-side _sender_ is single-slot — once you rotate, every outbound signature uses the new secret immediately. **No-cutover rotation is therefore a contract on the recipient**: during the overlap the recipient must accept signatures from EITHER the active or the previous secret.
+The platform supports a 24h overlap window for `app_webhook_secrets` rotation (columns `secret_previous` + `secret_previous_expires_at` on `app_webhook_secrets`). The platform-side _sender_ is single-slot — once you rotate, every outbound signature uses the new secret immediately. **No-cutover rotation is therefore a contract on the recipient**: during the overlap the recipient must accept signatures from EITHER the active or the previous secret.
 
 This template's `backend/internal/handler/webhook_chat.go` ships with dual-slot verification:
 
@@ -219,7 +219,7 @@ This template's `backend/internal/handler/webhook_chat.go` ships with dual-slot 
 
 The platform's webhook-secret publisher creates a Kubernetes Secret named `moses-webhook-secret-{appSlug}` in the app's namespace at deploy time and mounts both keys (`MOSES_CHAT_WEBHOOK_SECRET` and, during a 24h rotation overlap, `MOSES_CHAT_WEBHOOK_SECRET_PREVIOUS`) into the backend container via the chart's existing `.Values.secrets.secretName` envFrom slot.
 
-**No app redeploy or env-var change is needed during rotation.** The platform's `WebhookSecretRotationService.Rotate` (CHAT-v5al) patches the live K8s Secret with both new and previous values; the kubelet propagates the new env to the running pod within seconds. The recipient picks up the new value automatically.
+**No config change is needed during rotation.** The platform's `WebhookSecretRotationService.Rotate` patches the K8s Secret with both new and previous values. Values arriving through `envFrom` are read at container start, so a running pod keeps the old values until it restarts or is redeployed; restart the backend within the 24h overlap so it picks up the new secret (until then the dual-slot check below keeps accepting the previous one).
 
 For the canonical platform-injected runtime env contract, see `moses-deployment-guide/SKILL.md` § *"Platform-injected runtime env contract"*.
 
@@ -242,7 +242,7 @@ MOSES_CHAT_WEBHOOK_SECRET=$NEW_SECRET go run ./cmd/server
 
 ### Off-cluster recipients
 
-If your `completionWebhook.url` points at an HTTPS URL outside the cluster (rare), the K8s Secret bridge does NOT reach you. Operators recover the secret from the install-time audit log (see `moses-deployment-guide/SKILL.md` § *"Off-cluster webhook recipients"*).
+If your `completionWebhook.url` points at an HTTPS URL outside the cluster (rare), the K8s Secret bridge does NOT reach you. The signing secret is never written to logs or the audit log; the only place its cleartext is returned is the rotation response. Rotate it — a workspace-settings admin via `POST /api/v1/admin/platform/apps/{appSlug}/webhook-secret/rotate`, or the app itself with its platform key via `POST /api/v1/platform/webhook-secret/rotate` — capture `newSecret` from the response, and hand it to the recipient's env. Repeat on every rotation (see `moses-ref-app-actions/SKILL.md` § *"Off-cluster webhook recipients"*).
 
 ### Forks that drop chat_prompt (CHAT-ct5q)
 

@@ -2,8 +2,8 @@
 // backend. Self-identification (storage/lookup keys) MUST come from the
 // MOSES_TENANT_ID env var the platform injects at deploy time, NOT from
 // the X-Moses-Tenant-ID request header. The header is caller-context
-// (workspace-tool callers, audit) and is absent on browser-driven
-// requests through the platform's user-facing app proxy.
+// (workspace-tool callers, audit); on browser requests the app gateway sets
+// it to the app's tenant, and on public-mode routes it is absent.
 //
 // This mirrors fullstack-showcase/internal/config — kept identical so
 // the OIDC template's tenant story matches the rest of the fleet.

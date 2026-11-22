@@ -30,7 +30,8 @@ Update `moses-app.config.json` before committing:
 }
 ```
 
-`name` becomes the Helm release name and the MCP tool prefix. The `docker`,
+`name` identifies the app (Moses injects it as `MOSES_APP_SLUG`); Moses
+assigns the Helm release name and the App Tools prefix itself. The `docker`,
 `service`, and `validation` sections are pre-configured — only change them if
 you modify the project structure.
 
@@ -62,8 +63,10 @@ Self-identification is **env-pinned**, never header-driven:
 - **`X-Moses-Tenant-ID` header** = caller context ONLY (`mosesCtx.CallerTenantID`).
   Use it for audit logs and the 403 cross-check — never as a data scope.
 - There is no `mosesCtx.TenantID` field and no "no headers → no filtering"
-  mode; browser requests through the platform proxy carry no Moses headers at
-  all, and they still get tenant-scoped data via `SelfTenantID`.
+  mode; browser requests through the app gateway carry only `X-Moses-User-ID`,
+  `X-Moses-Tenant-ID`, `X-Moses-App-Role` and `X-Moses-Viewer-Assertion`
+  (none on public-mode routes), and they still get tenant-scoped data via
+  `SelfTenantID`.
 
 ```go
 func MyHandler(w http.ResponseWriter, r *http.Request) {
@@ -141,8 +144,9 @@ must never be listed (phantom tool):
 }
 ```
 
-The `operationId` becomes the MCP tool name:
-`workspace_<your-app-name>_listThings`.
+The `operationId` becomes the MCP tool name
+`workspace_<toolKey>_listthings` (Moses assigns `toolKey`, e.g.
+`deployed_chart_<chartID[:8]>`, and lowercases the name).
 
 ### 4. Test it
 
@@ -151,8 +155,9 @@ already fails if the spec and mux drift apart.
 
 ## Moses header reference
 
-Headers injected by the platform's WorkspaceToolProxy on MCP-driven calls
-(absent on browser-driven requests — never rely on them for scoping):
+Headers injected by the platform's WorkspaceToolProxy on MCP-driven (App
+Tools) calls. Browser requests through the app gateway carry only User-ID,
+Tenant-ID, App-Role and Viewer-Assertion. Never rely on them for scoping:
 
 | Header | MosesContext field | Purpose |
 |--------|--------------------|---------|
@@ -182,7 +187,8 @@ docker run -p 8080:8080 my-app:latest
 
 ## Deploy to Moses
 
-1. Commit to a Git repository and register it via the Moses Apps page.
+1. Commit to a Git repository and add it in the Version Control app (or have
+   Moses Manager clone it with `moses_clone`).
 2. Moses clones, builds in-cluster, deploys via Helm, discovers the spec at
    `/api/openapi.json` (alias `/api/spec`), and generates MCP tools from the
    operationIds.

@@ -19,7 +19,7 @@ app, not to the tenant.
 - Call `moses_get_session_info`. The returned `current_profile` field is one of:
   - `app-invoked-mm` (Path A — `ProfileAppInvokedMM`, this conversation came from a `chat_prompt` action),
   - `app-invoked-agent` (Path B — `ProfileAppInvokedAgent`, this agent pod came from a `launch_agent` action),
-  - `moses-manager-essentials` / `moses-manager-full` / `moses-manager-autonomous` (you are a USER-typed Manager chat — see `chat-roundtrip-overview.md` Section A),
+  - `moses-manager-essentials` / `moses-manager-full` / `moses-manager-local` / `moses-router` (you are a USER-typed chat — see `chat-roundtrip-overview.md` Section A; autopilot shows in `modifiers`, not as a profile),
   - `agent-execution` (you are a Basar / autopilot agent — out of scope here).
 - There is no direct chat-context-source signal in `moses_get_session_info`
   today (the response contains `current_profile`, `autopilot_active`,
@@ -60,9 +60,7 @@ discovery extends the runtime surface for both:
   `moses_approve_review` are discoverable).
 
 In both paths: don't abandon the task — call discover, reissue
-`tools/list`, then retry the tool. Discovery telemetry (`app_discovery_calls`)
-still records a signal so operators can spot apps whose declared
-profile is too narrow.
+`tools/list`, then retry the tool.
 
 ## Path A — `ProfileAppInvokedMM` (chat_prompt → Moses Manager)
 
@@ -130,9 +128,9 @@ If your app declared `apiEndpoints.specPath: "/api/openapi.json"` and the
 deployment exposed it, every documented operation (with a stable
 `operationId`) is callable as a workspace tool — no extra registration.
 
-## What if a tool I called returns "tool X is not available in your current profile"?
+## What if a tool I called returns "Tool not permitted for this API key profile"?
 
-That is the gate at `ai_chat_service.go ExecuteMCPTool`. The fix
+That is the profile gate in `api/mcp_tool_handlers.go`. The fix
 depends on which path you are on:
 
 **Path A (chat — `app-invoked-mm`)**:
@@ -149,8 +147,7 @@ depends on which path you are on:
 **Path B (agent pod — `app-invoked-agent`, CHAT-ymlz — symmetric with Path A)**:
 
 1. Call `moses_discover_tools` with a query like `"X"` or
-   `"<capability I need>"`. This both records the
-   `app_discovery_calls` telemetry signal AND appends the tool name to
+   `"<capability I need>"`. This appends the tool name to
    this execution's `agent_pod_executions.exposed_extra_tools` column
    (schema 888).
 2. Reissue `tools/list` (the platform unions the static profile with
@@ -176,11 +173,10 @@ depends on which path you are on:
   app-invoked system prompt).
 - `backend/internal/mcp/tools/workspace_tool_proxy.go` —
   `GetMosesManagerToolsForChart` chart-scoped union.
-- `backend/internal/api/ai_chat_service.go` — `resolveChatProfile` and
-  the `ExecuteMCPTool` gate that emits the
-  `tool %s is not available in your current profile` error.
+- `backend/internal/api/mcp_tool_handlers.go` — the profile gate that
+  answers 403 `Tool not permitted for this API key profile`.
 - Parent epic: **CHAT-89ig**. Template wave: **CHAT-9oqo (AIPF-9)**.
-- See also `arch/backend/MCP_SERVER.md` § "App-invoked profiles" in the
+- See also `docs/architecture/backend/MCP_SERVER.md` § "App-invoked profiles" in the
   platform repo (CHAT-ieru) for the canonical contract.
 
 ## Cross-reference
