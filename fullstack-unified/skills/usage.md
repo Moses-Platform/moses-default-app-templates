@@ -38,7 +38,7 @@ Update `moses-app.config.json` before committing:
 }
 ```
 
-The `name` field becomes the Helm release name and MCP tool prefix. The `docker`, `services`, and `validation` sections are pre-configured — only change them if you modify the project structure.
+The `name` field identifies the app (Moses injects it as `MOSES_APP_SLUG`); Moses assigns the Helm release name and the App Tools prefix itself. The `docker`, `services`, and `validation` sections are pre-configured — only change them if you modify the project structure.
 
 ## Overview
 
@@ -73,7 +73,7 @@ No `DB_*` variables are read — this template is DB-free until you declare `dep
 
 ## Moses request-context headers
 
-The platform injects `X-Moses-User-ID`, `X-Moses-Chart-ID`, `X-Moses-Request-ID` (and, on workspace-tool calls, `X-Moses-Tenant-ID`) into proxied requests; `getMosesContext` in `main.go` reads them. Rule (CHAT-w6gt, test-locked): **responses never contain tenant UUIDs** — `mosesContext` marks both tenant fields `json:"-"`; echo only user/chart/request IDs.
+App Tools (workspace-tool) calls carry `X-Moses-User-ID`, `X-Moses-Tenant-ID`, `X-Moses-Chart-ID` and `X-Moses-Request-ID`; browser requests through the app gateway carry only `X-Moses-User-ID`, `X-Moses-Tenant-ID`, `X-Moses-App-Role` and `X-Moses-Viewer-Assertion`; `getMosesContext` in `main.go` reads them. Rule (CHAT-w6gt, test-locked): **responses never contain tenant UUIDs** — `mosesContext` marks both tenant fields `json:"-"`; echo only user/chart/request IDs.
 
 ## Extending
 

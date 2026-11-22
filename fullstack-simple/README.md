@@ -120,11 +120,11 @@ Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tu
 
 The `moses-app.config.json` declares:
 
-- `validation.commands[]`: lint and test commands run by Moses on every agent commit (frontend lint/test + backend vet/test).
-- `maintenance.renovate`: weekly Monday 4am sweep (currently agent-driven; no Renovate bot wired).
+- `validation.commands[]`: lint and test commands Moses runs in the agent pod (pre-submit validation, from the base-branch config) before `moses_agent_submit_completed` is accepted (frontend lint/test + backend vet/test).
+- `maintenance.renovate`: weekly Monday 4am sweep (Moses runs a Renovate detection Job; updates arrive as tickets/approvals).
 - `maintenance.logMonitor`: 15-minute window log error monitor that fires Moses triggers when errors exceed 5 per window.
 
-Self-maintenance is enabled via the Moses UI toggle (the wrench on the app card); the `maintenance` block only provides its configuration — it does not turn the feature on.
+Self-maintenance is enabled via the Moses UI toggle (the app's ⋯ menu → Self-maintenance, or the Self-Maintenance app); the `maintenance` block only provides its configuration — it does not turn the feature on.
 
 ## Conventions enforced by `tests/test_template_parity.sh`
 

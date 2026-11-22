@@ -42,7 +42,7 @@ Update `moses-app.config.json` before committing:
 }
 ```
 
-The `name` field becomes the Helm release name and MCP tool prefix. The `docker.files`, `services`, and `validation` sections are pre-configured — only change them if you modify the project structure.
+The `name` field identifies the app (Moses injects it as `MOSES_APP_SLUG`); Moses assigns the Helm release name and the App Tools prefix itself. The `docker.files`, `services`, and `validation` sections are pre-configured — only change them if you modify the project structure.
 
 ## Overview
 
@@ -71,11 +71,11 @@ No `DB_*` variables are read — this template is DB-free until you declare the 
 
 ## Tenant scoping (get this right)
 
-Key every stored record by `config.SelfTenantID()` — the **`MOSES_TENANT_ID` env var pinned at deploy time** — NOT by the `X-Moses-Tenant-ID` request header (CHAT-pxeo.12). The header is caller audit context; it is absent on browser requests through the platform's app proxy and only drives the optional 403 cross-check in `tenant.go`. When you add storage, keep this contract: env for keys, header for audit.
+Key every stored record by `config.SelfTenantID()` — the **`MOSES_TENANT_ID` env var pinned at deploy time** — NOT by the `X-Moses-Tenant-ID` request header (CHAT-pxeo.12). The header is caller audit context (on browser requests the app gateway sets it to the app's tenant; on public-mode routes it is absent) and only drives the optional 403 cross-check in `tenant.go`. When you add storage, keep this contract: env for keys, header for audit.
 
 ## Moses request-context headers
 
-The platform injects `X-Moses-User-ID`, `X-Moses-Chart-ID`, `X-Moses-Request-ID` (and, on workspace-tool calls, `X-Moses-Tenant-ID`) into proxied requests — read them with `r.Header.Get(...)` in your handlers. Rule (CHAT-w6gt): **never put tenant UUIDs in a response body**; echo only user/chart/request IDs.
+App Tools (workspace-tool) calls carry `X-Moses-User-ID`, `X-Moses-Tenant-ID`, `X-Moses-Chart-ID` and `X-Moses-Request-ID`; browser requests through the app gateway carry only `X-Moses-User-ID`, `X-Moses-Tenant-ID`, `X-Moses-App-Role` and `X-Moses-Viewer-Assertion` — read them with `r.Header.Get(...)` in your handlers. Rule (CHAT-w6gt): **never put tenant UUIDs in a response body**; echo only user/chart/request IDs.
 
 nginx forwards these request headers to the backend by default — no `proxy_*` directives are needed for them (and `proxy_pass_header` would be a no-op: it controls upstream *response* headers).
 

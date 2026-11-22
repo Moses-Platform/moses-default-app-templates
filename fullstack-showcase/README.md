@@ -10,7 +10,7 @@ A multi-service fullstack scaffold: nginx-served React 19 frontend + Go backend 
 - **OpenAPI Discovery**: the backend serves `api/openapi.json`; the platform probes it after deploy and generates one MCP tool per `operationId`
 - **Multi-Tenancy**: deploy-pinned tenant identity + a 403 caller cross-check on writes
 - **Sub-path routing**: routes registered once under `MOSES_BASE_PATH`; nginx + Vite base + router basename all agree
-- **Deployment Pipelines**: agent-execution and workspace-tool pipelines with in-cluster image builds
+- **Deployment Pipelines**: agent-execution and App Store (marketplace) install pipelines with in-cluster image builds
 
 ### Technical implementation
 - **Multi-Service Deployment**: Frontend (nginx+React) + Backend (Go) in single Helm chart
@@ -133,12 +133,12 @@ npm run dev
 
 ### Via Agent Execution Pipeline
 
-When an agent completes work via `moses_agent_submit_completed`:
+When an agent pushes `agent/{ticket-id}` and calls `moses_notify_push`:
 
 1. **Config Detection**: `moses-app.config.json` parsed
-2. **Image Builds** (in-cluster):
-   - `fullstack-showcase-frontend:latest`
-   - `fullstack-showcase-backend:latest`
+2. **Image Builds** (in-cluster, Buildah):
+   - `agent-<execID[:8]>-frontend:exec-<execID[:8]>`
+   - `agent-<execID[:8]>-backend:exec-<execID[:8]>`
 3. **Helm Deploy**: Multi-service chart with:
    - Frontend deployment + service (port 8080)
    - Backend deployment + service (port 8080)
@@ -150,13 +150,13 @@ When an agent completes work via `moses_agent_submit_completed`:
    `"paths": {}`, so no tools are registered until you add paths. `/health` is
    deliberately NOT in the spec, so no phantom health tool is ever registered.
 
-### Via Workspace Tools Pipeline
+### Via App Store (marketplace) install
 
-If registered in marketplace:
+If listed in the app catalog:
 
-1. **Git Clone**: Shallow clone from registry URL
+1. **Git Clone**: Shallow clone at the listing's pinned commit
 2. **Config Validation**: `moses-app.config.json` required
-3. **Multi-Image Build**: The in-cluster image builder builds all images in parallel
+3. **Shared release pipeline**: in-cluster image build
 4. **Helm Deploy**: Services deployed to tenant namespace
 5. **OpenAPI Discovery**: 11 standard paths probed
 6. **Dynamic MCP Tools**: WorkspaceToolProxy routes calls
@@ -168,12 +168,13 @@ If registered in marketplace:
 kubectl get ingress -n {tenant-namespace}
 
 # Example URL
-https://moses-manager.eu/{tenant-id}/apps/{chart-id}/fullstack-showcase/
+https://<moses-domain>/apps/{tenant-slug}/{app-slug}/
 
-# Moses headers automatically injected:
+# Moses gateway headers on authenticated browser requests:
 # X-Moses-Tenant-ID: {tenant-uuid}
 # X-Moses-User-ID: {user-uuid}
-# X-Moses-Chart-ID: {chart-uuid}
+# X-Moses-App-Role: {role or "none"}
+# X-Moses-Viewer-Assertion: {short-lived token or "none"}
 ```
 
 ## File Structure
@@ -376,7 +377,7 @@ kubectl exec -n {namespace} {frontend-pod} -- env | grep BACKEND
 kubectl port-forward svc/agent-deployed-app-frontend 8080:8080
 
 # RIGHT: Via Moses ingress
-https://moses-manager.eu/{tenant-id}/apps/{chart-id}/fullstack-showcase/
+https://<moses-domain>/apps/{tenant-slug}/{app-slug}/
 ```
 
 ### Health Probes Failing
@@ -420,7 +421,7 @@ kubectl describe pod -n {namespace} {pod-name}
 - **Architecture**: See `arch.md` for platform overview
 - **Deployment**: See `docs/deployment/` for pipeline details
 - **MCP Tools**: See `backend/internal/mcp/` for tool implementation
-- **Multi-Tenancy**: See `arch/security/` for RBAC model
+- **Multi-Tenancy**: See `docs/architecture/security/` for RBAC model
 
 ### This Template
 - **`skills/usage.md`** — START HERE: what ships, the full env-var contract, and the tenancy model
@@ -432,8 +433,8 @@ kubectl describe pod -n {namespace} {pod-name}
 When enhancing this template:
 
 1. **Follow Moses Standards**:
-   - Backend: See `coding-standards/MOSES_BACKEND_STANDARDS.md`
-   - Frontend: See `coding-standards/MOSES_UI_UX_STANDARDS.md`
+   - Backend: See `docs/standards/MOSES_BACKEND_STANDARDS.md` (platform repo)
+   - Frontend: See `docs/standards/MOSES_UI_UX_STANDARDS.md` (platform repo)
 
 2. **Update Documentation**:
    - Keep README in sync with changes

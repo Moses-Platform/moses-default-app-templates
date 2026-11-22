@@ -9,9 +9,10 @@ not from memory.
 The backend's authoritative tenant comes from the `MOSES_TENANT_ID` env var
 the platform injects at deploy time (`internal/config/moses.go` →
 `config.SelfTenantID()`). The `X-Moses-Tenant-ID` request header is
-caller-context only (audit + the 403 cross-check) — it is ABSENT on
-browser-driven requests through the platform's user-facing app proxy, so an
-app that stores rows under the header value silently writes them under `""`.
+caller-context only (audit + the 403 cross-check) — on browser requests the
+app gateway sets it to the app's tenant, and on public-mode routes it is
+absent, so an app that stores rows under the header value can silently write
+them under `""`.
 
 ```go
 // GOOD — storage keys from the deploy-pinned env (via MosesContext):

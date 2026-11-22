@@ -22,5 +22,5 @@ The template's `internal/config.Validate()` already fail-fasts on
 app-owned secrets.
 
 For the platform-side contract (the `awaiting_secrets` gate, image reuse on
-resume, the Apps-page shield modal) see `arch.md § App-declared secrets` in the
+resume, the app's shield (Access & sharing) modal) see `arch.md § App-declared secrets` in the
 platform repo, also surfaced via the embedded **moses-deployment-guide** skill.

@@ -24,5 +24,5 @@ already on hand in every agent execution pod, plus a sibling
 `moses-app.config.with-secrets.example.json` in each fullstack template.
 
 For the platform-side contract (the `awaiting_secrets` gate, image reuse on
-resume, the Apps-page shield modal) see `arch.md § App-declared secrets` in
+resume, the app's shield (Access & sharing) modal) see `arch.md § App-declared secrets` in
 the platform repo.

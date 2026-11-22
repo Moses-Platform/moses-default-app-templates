@@ -42,8 +42,9 @@ import _ "embed"
 //     every agent tool call 404s while the browser UI keeps working.
 //  2. Never list /health — it would register a phantom workspace tool.
 //  3. Each operationId becomes an MCP tool named workspace_<toolKey>_<operationId>
-//     (toolKey derives from "name" in moses-app.config.json), so listThings is
-//     callable by agents as workspace_<toolKey>_listThings.
+//     (Moses assigns toolKey — deployed_chart_<chartID[:8]> for agent deploys —
+//     and lowercases names), so listThings is callable as
+//     workspace_<toolKey>_listthings.
 //  4. Never put a tenant UUID in a response schema (CHAT-w6gt).
 //  5. The list response is an OBJECT ({"things": [...]}), never a bare array.
 //     That is what the handler encodes (map[string]any{"things": things}) and
