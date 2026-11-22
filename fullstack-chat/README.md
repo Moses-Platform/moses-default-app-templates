@@ -2,17 +2,17 @@
 
 **Reference template that exercises every chat surface in the app↔Moses-Manager roundtrip.**
 
-A Postgres-backed scaffold that carries the whole plumbing for the `chat_prompt` platform action, the workspace-tools wedge, the completion webhook, the host-shell postMessage relays, and the per-app data git repo — with the app logic left to you. The template ships **one example action** (`example-action`, a `chat_prompt`) declared in `moses-app.config.json`; the API surface (`backend/api/openapi.json`) contains only the webhook receiver. Use it as the end-to-end verification artifact when validating any change under epic [CHAT-gfcp](../../moses-platform-prep/.beads/) (App→MM round-trip completeness).
+A Postgres-backed scaffold that carries the whole plumbing for the `chat_prompt` platform action, the workspace-tools wedge, the completion webhook, the host-shell postMessage relays, and the per-app data git repo — with the app logic left to you. The shipped `moses-app.config.json` declares **no actions** (`platformActions: []`); the guided examples — `ask-moses` (a `chat_prompt`) and `analyze-app` (a `launch_agent`) — live in `moses-app.config.with-secrets.example.json`, together with the `integrations.required` `moses-platform` entry (scope `platform_actions:invoke`) an action needs before a workspace admin can approve it. The API surface (`backend/api/openapi.json`) contains only the webhook receiver. Use it as the end-to-end verification artifact when validating any change under epic [CHAT-gfcp](../../moses-platform-prep/.beads/) (App→MM round-trip completeness).
 
 ## The round-trip, step by step
 
-Once you wire a button to `invokeAction('example-action', { topic })` (see
+Once you copy `ask-moses` and the `moses-platform` entry across, a workspace admin approves the request, and you wire a button to `invokeAction('ask-moses', { question })` (see
 [`frontend/src/moses/invoke.ts`](frontend/src/moses/invoke.ts)) and declare at
 least one API path in `backend/api/openapi.json`:
 
 1. User clicks the action button in the embedded app.
-2. The iframe SDK POSTs to `/__moses/invoke` on **this app's own backend**, which proxies pod-to-pod to `/apps/<slug>/actions/example-action/invoke` on the Moses backend.
-3. Moses creates a new visible conversation and fires the AI with the rendered prompt (user-supplied `topic` fenced via `variableEscapeMode`).
+2. The iframe SDK POSTs to `/__moses/invoke` on **this app's own backend**, which proxies pod-to-pod to `/apps/<slug>/actions/ask-moses/invoke` on the Moses backend.
+3. Moses creates a new visible conversation and fires the AI with the rendered prompt (user-supplied `question` fenced via `variableEscapeMode`).
 4. The AI calls back into your app through the workspace tools auto-discovered from `backend/api/openapi.json`.
 5. Your backend handles the call (Postgres is provisioned and wired — add tables in `backend/internal/database/migrate_demo.go`).
 6. AI replies in the chat sidebar; the conversation is visible immediately (`conversation_created` WS event).
@@ -44,25 +44,30 @@ contract. Three pieces wire together:
    comment of `backend/internal/mosesproxy/proxy.go`.
 
    Mounted by [`backend/cmd/server/main.go`](backend/cmd/server/main.go) at
-   `mosesproxy.InvokePath` (= `/__moses/invoke`). Extracts the user's JWT
-   from `Authorization: Bearer` or the `access_token` cookie, then forwards
-   pod-to-pod to `${MOSES_INTERNAL_API_BASE}/api/v1/apps/{slug}/actions/{id}/invoke`
-   with the JWT preserved. `Set-Cookie` from moses-backend is stripped so
+   `mosesproxy.InvokePath` (= `/__moses/invoke`). Takes the viewer's
+   credential — the user's JWT from `Authorization: Bearer` or the
+   `access_token` cookie, else the gateway-set `X-Moses-Viewer-Assertion`
+   (Envoy Gateway, the local and desktop default, removes the session and
+   sets the assertion instead) — and forwards it pod-to-pod to
+   `${MOSES_INTERNAL_API_BASE}/api/v1/apps/{slug}/actions/{id}/invoke`. `Set-Cookie` from moses-backend is stripped so
    the upstream's session cookie cannot bleed into the iframe's origin.
    `cfg.RequireRequestedWith = true` rejects any POST missing the custom
    header — vanilla `<form>` / `<img>` CSRF gadgets cannot satisfy that
    requirement.
 
 3. **Backend → moses-backend hop** — the proxy runs inside the cluster.
-   Moses' `AuthMiddleware` accepts the forwarded Bearer (CSRF-exempt
-   branch in `backend/internal/api/middleware.go`); the user-scoped
+   Moses' `AuthMiddleware` accepts the forwarded Bearer or viewer assertion
+   (both CSRF-exempt, `backend/internal/api/middleware.go`; the assertion only
+   on this invoke route and only for the chart it is bound to, so
+   `MOSES_CHART_ID` must reach the pod); the user-scoped
    dispatcher persists `platform_action_invocations.user_id` so the
    resulting chat conversation appears in the user's Moses Manager
    sidebar without any browser-side CSRF/Origin negotiation.
 
 The contract holds in every browser (Chrome on Minikube/Rancher, Tauri,
-production K3s) because the iframe → app-backend hop is same-origin: the
-session cookie travels normally, and the JWT is forwarded by the proxy.
+production K3s) because the iframe → app-backend hop is same-origin and the
+gateway delivers a viewer credential on it: the session cookie where the
+gateway passes it, otherwise the viewer assertion; the proxy forwards it.
 There is no Tauri-only `AUTH_HEADER_INJECTION_SHIM` dependence anymore.
 
 Two env vars must reach the backend pod or the proxy returns 503
@@ -80,11 +85,11 @@ are routine in deployed apps.
 
 ## Two paths: chat_prompt vs launch_agent
 
-Under epic [CHAT-89ig](../../moses-platform-prep/.beads/) Moses offers TWO platform-action paths. The template ships a `chat_prompt` example (`example-action`); declare a `launch_agent` action in `moses-app.config.json` to use Path B. The contracts side by side:
+Under epic [CHAT-89ig](../../moses-platform-prep/.beads/) Moses offers TWO platform-action paths. The example config carries one of each: `ask-moses` (`chat_prompt`, Path A) and `analyze-app` (`launch_agent`, Path B); copy the one you need into `moses-app.config.json`. The contracts side by side:
 
 | Concern | Path A — `chat_prompt` | Path B — `launch_agent` |
 |---|---|---|
-| `type` in `moses-app.config.json` | `chat_prompt` (shipped as `example-action`) | `launch_agent` (declare your own) |
+| `type` in `moses-app.config.json` | `chat_prompt` (example: `ask-moses`) | `launch_agent` (example: `analyze-app`) |
 | What it creates | Visible Moses Manager conversation | One-shot agent pod against a synthetic ticket |
 | User experience | Streaming AI reply in the chat sidebar | Background work; user observes via your app's UI and the execution UI |
 | Profile (CHAT-btd4) | `ProfileAppInvokedMM` (4 static tools) | `ProfileAppInvokedAgent` (9 static tools) |
@@ -199,7 +204,7 @@ All four `validation.commands` in `moses-app.config.json` are required and run b
 | Field in `moses-app.config.json` | Effect |
 |---|---|
 | `platformActions[0].chatPrompt.completionWebhook.url` | Where Moses POSTs the AI completion. Internal cluster service URL only. Default: `http://fullstack-chat-backend:8080/api/v1/webhooks/chat-complete`. |
-| `platformActions[0].chatPrompt.variableEscapeMode` | `raw` / `fenced` / `stripped`. Default `fenced` here because `topic` is `userSupplied: true`. |
+| `platformActions[0].chatPrompt.variableEscapeMode` | `raw` / `fenced` / `stripped`. Default `fenced` here because `question` is `userSupplied: true`. |
 | `platformActions[0].rateLimit.perMinute` | Per-action cap. Subject to the platform floor (5/min, 20/hr per app; 30/min, 200/hr per user) and ceiling (10/min, 100/hr). |
 | `appData.enabled` | When true, Moses provisions a `{tenantID}/app-data/{appSlug}/` git repo. MM reads via `moses_read_file`. |
 | `appData.manager.access` | `read` (default for this template) / `none`. Whether MM sees the repo in `moses_get_repositories`. |
@@ -263,7 +268,7 @@ This template targets the implemented surface of:
 - **CHAT-qrd6** — `appData` block to surface the per-app git repo to MM and agents.
 - **CHAT-uwlm** — `variableEscapeMode: "fenced"` + `userSupplied: true` flag for prompt-injection hardening.
 - **CHAT-xu9i** — exercises the `finishReason: "credential_unset"` path when AI is unconfigured.
-- **CHAT-89ig** (parent epic) — app-invoked prompt-profile architecture. The shipped `example-action` (`chat_prompt`) flows through `ProfileAppInvokedMM`; a `launch_agent` action you declare exercises `ProfileAppInvokedAgent`. Children: CHAT-btd4 (profiles), CHAT-ohlv (modes + thin prompt), CHAT-iq3i (chat wiring), CHAT-6q99 (agent wiring), CHAT-cj8m (chart-scoped workspace tools), CHAT-3h8z (symmetry test), CHAT-ieru (docs), **CHAT-9oqo (this template wave)**.
+- **CHAT-89ig** (parent epic) — app-invoked prompt-profile architecture. A `chat_prompt` action (e.g. the `ask-moses` example) flows through `ProfileAppInvokedMM`; a `launch_agent` action (e.g. `analyze-app`) exercises `ProfileAppInvokedAgent`. Children: CHAT-btd4 (profiles), CHAT-ohlv (modes + thin prompt), CHAT-iq3i (chat wiring), CHAT-6q99 (agent wiring), CHAT-cj8m (chart-scoped workspace tools), CHAT-3h8z (symmetry test), CHAT-ieru (docs), **CHAT-9oqo (this template wave)**.
 
 ## Local development
 

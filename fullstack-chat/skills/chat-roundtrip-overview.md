@@ -26,10 +26,12 @@ Moses offers TWO platform-action paths under epic **CHAT-89ig**. The shipped
 (`platformActions: []`) — the guided examples live in
 `moses-app.config.with-secrets.example.json`: `ask-moses` (a `chat_prompt`)
 and `analyze-app` (a `launch_agent`). Copy one across to activate the path
-you need, and also declare `{"type": "moses-platform", "scopes":
-["platform_actions:invoke"]}` under `integrations.required` — the action
-stays inactive until a workspace-settings administrator approves that
-request. (Platforms older than this permission model reject that scope.)
+you need, together with the example's `integrations.required` entry
+`{"type": "moses-platform", "key": "platform", "scopes":
+["platform_actions:invoke"]}` — without it the action stays inactive for
+good, and with it the action stays inactive until a workspace-settings
+administrator approves that request. If your config already has a
+`moses-platform` entry, add the scope to it: only one is allowed.
 
 - **`chat_prompt`** (Path A) — opens an interactive Moses Manager
   conversation. This is what the `ask-moses` example does, and the focus of
@@ -172,9 +174,11 @@ Frontend                 Moses backend                MM AI runtime             
 [click your action button]
   │ iframe SDK: window.moses.actions.invoke
   │ POST <base-path>/__moses/invoke  (same-origin; access_token cookie
-  ▼                                   + X-Requested-With: moses-iframe)
+  │                                   or, on Envoy, the gateway-set
+  ▼                                   X-Moses-Viewer-Assertion
+  │                                   + X-Requested-With: moses-iframe)
 This app's backend mosesproxy
-  │ pod-to-pod, user JWT lifted into Bearer
+  │ pod-to-pod, user JWT lifted into Bearer (else the assertion forwarded)
   └───────────────────►  POST /api/v1/apps/<slug>/
                          actions/<action-id>/invoke
                          (body: {variables: {question}, chartId})
@@ -243,7 +247,8 @@ This app's backend mosesproxy
 
 ## Manual end-to-end test recipe
 
-Prerequisite: copy the `ask-moses` action from
+Prerequisite: copy the `ask-moses` action and the `integrations.required`
+`moses-platform` entry (scope `platform_actions:invoke`) from
 `moses-app.config.with-secrets.example.json` into `moses-app.config.json`
 (shipped `platformActions` is empty), wire a button in the frontend that calls
 `invokeAction('ask-moses', { question })` (`frontend/src/moses/invoke.ts`),

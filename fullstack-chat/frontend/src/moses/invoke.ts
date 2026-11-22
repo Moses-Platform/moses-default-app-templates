@@ -7,7 +7,8 @@
  * /api/v1/sdk/iframe-sdk.js) installs window.moses.actions.invoke, which
  * POSTs to /__moses/invoke on this app's OWN backend (same-origin under the
  * iframe's nginx subpath). The backend's mosesproxy handler forwards
- * pod-to-pod to moses-backend with the user's JWT preserved — the iframe
+ * pod-to-pod to moses-backend as the viewing user (session JWT, or the
+ * gateway-set viewer assertion where the gateway removes the session) — the iframe
  * never contacts moses-backend directly. Ambient typings: types/moses.d.ts.
  */
 

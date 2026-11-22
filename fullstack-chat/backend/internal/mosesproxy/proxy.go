@@ -30,13 +30,18 @@
 //
 // Package mosesproxy implements the /__moses/invoke handler that
 // receives platform-action invokes from the in-iframe Moses SDK and
-// forwards them pod-to-pod to moses-backend with the user's JWT
-// preserved.
+// forwards them pod-to-pod to moses-backend as the viewing user.
+//
+// The viewer's credential is one of: the Moses session (Authorization
+// Bearer, else the access_token cookie) where the gateway lets it
+// through (nginx, Traefik), or the X-Moses-Viewer-Assertion the gateway
+// sets on every authenticated request (Envoy Gateway removes the
+// session before the request reaches the app).
 //
 // Trust boundary: this proxy runs inside the app's own pod, behind the
 // app's nginx, on the same origin as the iframe that calls it. The
-// user's JWT travels iframe → app-backend → moses-backend; it does not
-// leave the cluster on the second hop (cluster service DNS).
+// credential travels iframe/gateway → app-backend → moses-backend; it
+// does not leave the cluster on the second hop (cluster service DNS).
 //
 // Stdlib only — no third-party imports. Keep it that way.
 package mosesproxy
@@ -68,6 +73,13 @@ const RequestedWithHeader = "X-Requested-With"
 
 // RequestedWithValue is the value the SDK uses for RequestedWithHeader.
 const RequestedWithValue = "moses-iframe"
+
+// ViewerAssertionHeader carries the short-lived token the Moses gateway
+// mints for the viewer on every authenticated request to the app. The
+// gateway replaces any browser-sent value; moses-backend verifies it and
+// accepts it only on the platform-action invoke this proxy calls, pinned
+// to the chart named in the body. "none" means the gateway had none.
+const ViewerAssertionHeader = "X-Moses-Viewer-Assertion"
 
 // maxBodyBytes caps the inbound request body. The forwarded payload is
 // {actionId, variables}; 64 KiB is several orders of magnitude above
@@ -158,7 +170,7 @@ type forwardRequest struct {
 // NewHandler returns an http.HandlerFunc. Mount it at /__moses/invoke
 // — the well-known path the SDK at CHAT-pswm.2 posts to.
 //
-// The handler is intentionally minimal: extract the user JWT, validate
+// The handler is intentionally minimal: extract the viewer credential, validate
 // the request shape, forward pod-to-pod with a 30s timeout, pass the
 // upstream response through verbatim (modulo Set-Cookie, which is
 // stripped — see below).
@@ -185,9 +197,13 @@ func NewHandler(cfg Config) http.HandlerFunc {
 		}
 
 		jwt := extractUserJWT(r)
+		assertion := ""
 		if jwt == "" {
+			assertion = extractViewerAssertion(r)
+		}
+		if jwt == "" && assertion == "" {
 			writeErr(w, http.StatusUnauthorized, "no_user_jwt",
-				"no Authorization Bearer or access_token cookie")
+				"no Authorization Bearer, access_token cookie or viewer assertion")
 			return
 		}
 
@@ -222,7 +238,11 @@ func NewHandler(cfg Config) http.HandlerFunc {
 			writeErr(w, http.StatusInternalServerError, "request_build_failed", "internal server error")
 			return
 		}
-		req.Header.Set("Authorization", "Bearer "+jwt)
+		if jwt != "" {
+			req.Header.Set("Authorization", "Bearer "+jwt)
+		} else {
+			req.Header.Set(ViewerAssertionHeader, assertion)
+		}
 		req.Header.Set("Content-Type", "application/json")
 		if cfg.TenantID != "" {
 			req.Header.Set("X-Tenant-ID", cfg.TenantID)
@@ -269,6 +289,19 @@ func extractUserJWT(r *http.Request) string {
 		return c.Value
 	}
 	return ""
+}
+
+// extractViewerAssertion returns the gateway-set viewer assertion, or ""
+// when it is absent or the gateway's "none". Used only when the request
+// carries no session: moses-backend ignores an assertion that arrives
+// next to another credential, so the proxy forwards exactly one. Like
+// the JWT, it is not validated here (moses-backend holds the key).
+func extractViewerAssertion(r *http.Request) string {
+	a := strings.TrimSpace(r.Header.Get(ViewerAssertionHeader))
+	if a == "none" {
+		return ""
+	}
+	return a
 }
 
 // writeErr writes a structured JSON error envelope. Shape matches the

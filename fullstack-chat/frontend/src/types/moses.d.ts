@@ -4,7 +4,7 @@
 // moses-backend, CHAT-pswm.2). It installs window.moses.actions.invoke
 // which POSTs to /__moses/invoke on this app's own backend. The proxy
 // (mosesproxy-go, CHAT-pswm.8) forwards pod-to-pod to moses-backend
-// with the user's JWT preserved.
+// as the viewing user (session JWT or gateway viewer assertion).
 //
 // These types reflect the SDK's runtime surface so App.tsx can call
 // window.moses.actions.invoke without an "any" cast. Keep in sync with

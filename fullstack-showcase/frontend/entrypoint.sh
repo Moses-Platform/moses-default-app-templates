@@ -72,8 +72,8 @@ case "$MOSES_EMBEDDING_FRAMING" in
             MOSES_CSP_FRAME_ANCESTORS="${MOSES_CSP_FRAME_ANCESTORS} http://${MOSES_DOMAIN}:* https://${MOSES_DOMAIN}:*"
             ;;
           *)
-            # Production-style domain: subdomain wildcard only.
-            MOSES_CSP_FRAME_ANCESTORS="${MOSES_CSP_FRAME_ANCESTORS} https://*.${MOSES_DOMAIN}"
+            # Production-style domain: the apex plus the subdomain wildcard (a CSP wildcard host never matches the apex).
+            MOSES_CSP_FRAME_ANCESTORS="${MOSES_CSP_FRAME_ANCESTORS} https://${MOSES_DOMAIN} https://*.${MOSES_DOMAIN}"
             ;;
         esac
       fi

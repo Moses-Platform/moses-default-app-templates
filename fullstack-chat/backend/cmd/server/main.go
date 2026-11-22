@@ -89,9 +89,11 @@ func main() {
 
 	// CHAT-pswm.8/.9 — mosesproxy. The in-iframe SDK at
 	// /api/v1/sdk/iframe-sdk.js POSTs to InvokePath (same-origin under
-	// nginx subpath routing) with the user's access_token cookie. The
-	// proxy extracts the JWT and forwards pod-to-pod to moses-backend
-	// at ${MOSES_INTERNAL_API_BASE}, preserving the user's identity so
+	// nginx subpath routing). The proxy takes the viewer's credential
+	// (the access_token cookie / Bearer where the gateway passes it, else
+	// the gateway-set X-Moses-Viewer-Assertion — Envoy Gateway removes the
+	// session) and forwards it pod-to-pod to moses-backend at
+	// ${MOSES_INTERNAL_API_BASE}, preserving the user's identity so
 	// the resulting chat_conversation lands with user_id populated and
 	// shows up in the user's Moses-Manager sidebar.
 	//

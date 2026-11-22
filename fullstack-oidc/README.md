@@ -126,7 +126,9 @@ that template's own module path. No third-party Go dependencies. See
 
 The Moses platform delivers the seven `MOSES_OIDC_*` handshake values
 (issuer, internal issuer, client id, client secret, audience,
-protected/public paths) in a **platform-managed Kubernetes Secret**
+protected/public paths) — plus the cookie namespace, insecure-cookie
+marker, `MOSES_GATEWAY_AUTH_SECRET` and `MOSES_PUBLIC_URL(S)` — in a
+**platform-managed Kubernetes Secret**
 whose name it appends to the chart's `secrets.secretNames[]` list; the
 deployment template mounts every entry via `envFrom`, so the values
 arrive as plain env vars. They are **NOT chart values** — see the

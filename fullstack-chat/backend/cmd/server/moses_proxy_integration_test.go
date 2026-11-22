@@ -27,7 +27,8 @@ import (
 //   - cfg.RequireRequestedWith = true is the canonical fullstack-chat
 //     gate (X-Requested-With: moses-iframe required).
 //   - The forwarded request to the upstream "moses-backend" carries
-//     Authorization: Bearer <jwt>, Content-Type: application/json, and
+//     Authorization: Bearer <jwt> (or, with no session, the viewer
+//     assertion), Content-Type: application/json, and
 //     X-Tenant-ID when configured.
 //   - Set-Cookie headers from the upstream are stripped (do not leak
 //     moses-backend cookies into the iframe's origin).
@@ -66,6 +67,7 @@ type forwardCapture struct {
 	method        string
 	path          string
 	authHeader    string
+	assertion     string
 	tenantHeader  string
 	contentType   string
 	requestedWith string
@@ -88,6 +90,7 @@ func newForwardCapture(t *testing.T) *forwardCapture {
 		fc.method = r.Method
 		fc.path = r.URL.Path
 		fc.authHeader = r.Header.Get("Authorization")
+		fc.assertion = r.Header.Get(mosesproxy.ViewerAssertionHeader)
 		fc.tenantHeader = r.Header.Get("X-Tenant-ID")
 		fc.contentType = r.Header.Get("Content-Type")
 		fc.requestedWith = r.Header.Get(mosesproxy.RequestedWithHeader)
@@ -214,6 +217,42 @@ func TestIntegration_CookieForward_ReachesUpstream_AsBearer(t *testing.T) {
 	}
 	if fc.authHeader != "Bearer cookie.jwt.value" {
 		t.Fatalf("upstream Authorization = %q, want Bearer cookie.jwt.value (cookie lifted into Bearer)", fc.authHeader)
+	}
+}
+
+// TestIntegration_ViewerAssertionForward_ReachesUpstream
+// — pins the Envoy Gateway path (the local and desktop default): the
+// route removes Authorization and the access_token cookie and sets
+// X-Moses-Viewer-Assertion, so the proxy must forward the assertion and
+// the chartId it is bound to.
+func TestIntegration_ViewerAssertionForward_ReachesUpstream(t *testing.T) {
+	fc := newForwardCapture(t)
+	cfg := mosesproxy.Config{
+		InternalAPIBase:      fc.server.URL,
+		AppSlug:              "fullstack-chat",
+		ChartID:              "11111111-1111-1111-1111-111111111111",
+		RequireRequestedWith: true,
+	}
+	h := mountFullChain(cfg, "/apps/t/fullstack-chat")
+
+	req := newInvokeRequest(t, "http://app.local/apps/t/fullstack-chat", "generate-entry", "narwhal")
+	req.Header.Set(mosesproxy.ViewerAssertionHeader, "assertion.payload")
+	req.Header.Set(mosesproxy.RequestedWithHeader, mosesproxy.RequestedWithValue)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if fc.assertion != "assertion.payload" || fc.authHeader != "" {
+		t.Fatalf("upstream assertion=%q auth=%q, want the assertion only", fc.assertion, fc.authHeader)
+	}
+	var forwarded struct {
+		ChartID string `json:"chartId"`
+	}
+	if err := json.Unmarshal(fc.bodyBytes, &forwarded); err != nil || forwarded.ChartID != cfg.ChartID {
+		t.Fatalf("forwarded chartId = %q (err %v), want the configured ChartID", forwarded.ChartID, err)
 	}
 }
 

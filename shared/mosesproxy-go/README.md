@@ -4,7 +4,10 @@ Tiny, stdlib-only Go HTTP handler that ships in every Moses default
 app template's backend. It receives platform-action invokes from the
 in-iframe Moses SDK (`window.moses.actions.invoke`) on a well-known
 path (`/__moses/invoke`) and forwards them pod-to-pod to moses-backend
-with the user's JWT preserved. This is the receiving half of the
+as the viewing user: with the user's session JWT where the gateway lets it
+through (nginx, Traefik), else with the `X-Moses-Viewer-Assertion` the
+gateway sets (Envoy Gateway, the local and desktop default, removes the
+session before the request reaches the app). This is the receiving half of the
 iframe SDK contract; see CHAT-pswm (epic) for the full round-trip
 architecture.
 
@@ -112,18 +115,22 @@ The SDK surfaces the error envelope to the caller.
 iframe (window.moses.actions.invoke)
    │  POST /__moses/invoke    { actionId, variables }
    │  credentials: same-origin → access_token cookie OR Authorization Bearer
+   │  (Envoy Gateway removes both and sets X-Moses-Viewer-Assertion instead)
    ▼
 app's own nginx → app backend (this handler)
-   │  Extract user JWT (Bearer header, else access_token cookie)
+   │  Extract user JWT (Bearer header, else access_token cookie),
+   │  else the viewer assertion (absent or "none" = no credential)
    │  Read MOSES_INTERNAL_API_BASE / APP_SLUG / CHART_ID / TENANT_ID
    │  POST ${MOSES_INTERNAL_API_BASE}/api/v1/apps/${APP_SLUG}/actions/${actionId}/invoke
-   │    Authorization: Bearer <user_jwt>
+   │    Authorization: Bearer <user_jwt>   (OR X-Moses-Viewer-Assertion: <assertion>)
    │    X-Tenant-ID: ${MOSES_TENANT_ID}        (when set)
    │    Content-Type: application/json
    │    body: { variables, chartId: ${CHART_ID} }
    ▼
 moses-backend (cluster service DNS, no gateway hop)
-   AuthMW (Bearer-exempt from CSRF) → user-scoped handler → dispatcher
+   AuthMW (Bearer and assertion are CSRF-exempt) → user-scoped handler → dispatcher
+   (an assertion is accepted only on this invoke route, only without another
+    credential, and only when the body's chartId is the chart it is bound to)
    chat_conversations.user_id populated → sidebar visibility preserved
 ```
 
@@ -175,7 +182,7 @@ are available:
 | Method ≠ POST                              | `405 method_not_allowed`                                |
 | Missing required env                        | `503 moses_unconfigured`                                |
 | `RequireRequestedWith=true` and header missing | `403 missing_requested_with`                            |
-| No Authorization header & no `access_token` cookie | `401 no_user_jwt`                                       |
+| No Authorization header, no `access_token` cookie, no viewer assertion (or `none`) | `401 no_user_jwt`               |
 | Body > 64 KiB                              | `400 bad_request` (LimitReader cuts the parse)          |
 | Missing `actionId` in body                  | `400 missing_action_id`                                 |
 | Upstream connection refused / timeout       | `502 moses_unreachable`                                 |
@@ -184,8 +191,10 @@ are available:
 
 ## What is NOT sent / done
 
-- The handler does NOT validate JWT signatures (it has no key).
-- The handler does NOT log the JWT.
+- The handler does NOT validate JWT or assertion signatures (it has no key).
+- The handler does NOT log the JWT or the assertion.
+- The handler forwards ONE credential: a session JWT wins over the
+  assertion (moses-backend ignores an assertion next to another credential).
 - The handler does NOT reflect upstream `Set-Cookie` headers — those
   belong to moses-backend's origin, not the app's.
 - The handler does NOT rate-limit on the app side. The upstream

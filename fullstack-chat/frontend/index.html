@@ -28,7 +28,7 @@
       CHAT-pswm.2/.9 — Moses iframe SDK. Provides window.moses.actions.invoke(actionId, vars).
       The SDK POSTs to /__moses/invoke on THIS app's own backend (see
       backend/cmd/server/main.go for the proxy registration); the proxy
-      forwards pod-to-pod to moses-backend with the user's JWT preserved.
+      forwards pod-to-pod to moses-backend as the viewing user (session JWT or gateway viewer assertion).
       Cached by the platform for 5 min; safe to load on every page boot.
       Keep this <script> in lockstep with the proxy mount in main.go.
     -->

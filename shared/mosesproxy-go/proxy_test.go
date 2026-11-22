@@ -19,6 +19,7 @@ type upstreamCapture struct {
 	method    string
 	path      string
 	auth      string
+	assertion string
 	tenantHdr string
 	body      []byte
 }
@@ -34,6 +35,7 @@ func newUpstream(t *testing.T, cap *upstreamCapture, status int, respBody string
 		cap.method = r.Method
 		cap.path = r.URL.Path
 		cap.auth = r.Header.Get("Authorization")
+		cap.assertion = r.Header.Get(ViewerAssertionHeader)
 		cap.tenantHdr = r.Header.Get("X-Tenant-ID")
 		cap.body = body
 		w.Header().Set("Set-Cookie", "upstream_session=should_not_leak; Path=/")
@@ -66,7 +68,8 @@ func baseConfig(srv *httptest.Server) Config {
 	}
 }
 
-// 1. No JWT (no Authorization, no cookie) → 401 no_user_jwt.
+// 1. No credential (no Authorization, no cookie, no viewer assertion) →
+// 401 no_user_jwt.
 func TestNoJWT(t *testing.T) {
 	cap := &upstreamCapture{}
 	srv := newUpstream(t, cap, 200, `{"ok":true}`, "application/json")
@@ -146,6 +149,88 @@ func TestBearerWinsOverCookie(t *testing.T) {
 
 	if cap.auth != "Bearer bearer-jwt" {
 		t.Fatalf("Bearer should win: got %q want %q", cap.auth, "Bearer bearer-jwt")
+	}
+}
+
+// 4a. Viewer assertion only (Envoy Gateway: the route removes Authorization
+// and the access_token cookie, and sets X-Moses-Viewer-Assertion) → the
+// assertion is forwarded as-is and no Authorization header is invented.
+func TestViewerAssertionForwarded(t *testing.T) {
+	cap := &upstreamCapture{}
+	srv := newUpstream(t, cap, 200, `{"ok":true}`, "application/json")
+	defer srv.Close()
+
+	r := newReq(t, `{"actionId":"chat_prompt","variables":{}}`)
+	r.Header.Set(ViewerAssertionHeader, "payload.sig")
+
+	w := httptest.NewRecorder()
+	NewHandler(baseConfig(srv))(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: got %d want 200; body=%s", w.Code, w.Body.String())
+	}
+	if cap.assertion != "payload.sig" {
+		t.Fatalf("forwarded assertion: got %q want payload.sig", cap.assertion)
+	}
+	if cap.auth != "" {
+		t.Fatalf("Authorization must not be set on an assertion forward; got %q", cap.auth)
+	}
+	var fwd map[string]interface{}
+	if err := json.Unmarshal(cap.body, &fwd); err != nil || fwd["chartId"] != "chart-uuid-123" {
+		t.Fatalf("assertion invokes must name the chart; body=%s", cap.body)
+	}
+}
+
+// 4b. The gateway answers "none" when it has no assertion for the viewer
+// (and for public routes). That is no credential.
+func TestViewerAssertionNoneIsNoCredential(t *testing.T) {
+	for _, v := range []string{"none", "  ", ""} {
+		cap := &upstreamCapture{}
+		srv := newUpstream(t, cap, 200, `{"ok":true}`, "application/json")
+
+		r := newReq(t, `{"actionId":"a","variables":{}}`)
+		r.Header.Set(ViewerAssertionHeader, v)
+
+		w := httptest.NewRecorder()
+		NewHandler(baseConfig(srv))(w, r)
+		srv.Close()
+
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("%q: status got %d want 401", v, w.Code)
+		}
+		if cap.method != "" {
+			t.Fatalf("%q: upstream should not have been called", v)
+		}
+	}
+}
+
+// 4c. A session (Bearer or cookie) and an assertion → only the session is
+// forwarded. moses-backend ignores an assertion next to another credential,
+// so sending both would be noise; one credential per hop.
+func TestSessionWinsOverViewerAssertion(t *testing.T) {
+	for name, set := range map[string]func(*http.Request){
+		"bearer": func(r *http.Request) { r.Header.Set("Authorization", "Bearer session-jwt") },
+		"cookie": func(r *http.Request) { r.AddCookie(&http.Cookie{Name: "access_token", Value: "session-jwt"}) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			cap := &upstreamCapture{}
+			srv := newUpstream(t, cap, 200, `{"ok":true}`, "application/json")
+			defer srv.Close()
+
+			r := newReq(t, `{"actionId":"a","variables":{}}`)
+			set(r)
+			r.Header.Set(ViewerAssertionHeader, "payload.sig")
+
+			w := httptest.NewRecorder()
+			NewHandler(baseConfig(srv))(w, r)
+
+			if cap.auth != "Bearer session-jwt" {
+				t.Fatalf("forwarded auth: got %q want Bearer session-jwt", cap.auth)
+			}
+			if cap.assertion != "" {
+				t.Fatalf("assertion must not be forwarded next to a session; got %q", cap.assertion)
+			}
+		})
 	}
 }
 
