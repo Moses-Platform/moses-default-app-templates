@@ -52,7 +52,7 @@ To start building:
 | `MOSES_OIDC_CLIENT_ID` / `MOSES_OIDC_CLIENT_SECRET` | oidcauth | confidential client (platform-managed Secret via `secrets.secretNames[]` envFrom) |
 | `MOSES_OIDC_AUDIENCE` | oidcauth | expected `aud` (empty ⇒ client id) |
 | `MOSES_OIDC_PROTECTED_PATHS` / `MOSES_OIDC_PUBLIC_PATHS` | oidcauth | path policy (mirrors `access.oidc` in the app config) |
-| `MOSES_OIDC_COOKIE_SECRET` | oidcauth | session-cookie AES-256-GCM encryption key + state-cookie HMAC key (chart `-oidc` Secret, stable across upgrades) |
+| `MOSES_OIDC_COOKIE_SECRET` | oidcauth | session-cookie AES-256-GCM encryption key + state-cookie HMAC key (platform Secret; minted once per app, never rotated) |
 | `MOSES_OIDC_SESSION_MAX_AGE_SECONDS` | oidcauth | BFF session lifetime (default 8h; decoupled from the token TTL — roles refresh via the refresh-token grant) |
 | `MOSES_OIDC_INSECURE_COOKIE` | oidcauth | `1` drops cookie `Secure` — plain-HTTP local dev only |
 | `MOSES_GATEWAY_AUTH_SECRET` | `oidcauth/paths.go` | **arms X-Moses-\* header trust**; unset ⇒ pod-to-pod calls are NOT trusted and fall through to OIDC (401) |

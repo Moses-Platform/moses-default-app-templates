@@ -110,7 +110,7 @@ fullstack-oidc/
 │       ├── auth/                 useAuth provider + silentSSO helper
 │       ├── api/                  fetch client + TanStack Query hooks
 │       └── components/Layout.tsx app shell + sidebar nav + auth pill
-├── helm/                         multi-service chart (+ oidc cookie Secret)
+├── helm/                         multi-service chart
 ├── skills/                       agent skill docs (usage, middleware, secrets)
 └── moses-app.config.json         declares access.oidc + access.roles
 ```
@@ -132,13 +132,13 @@ marker, `MOSES_GATEWAY_AUTH_SECRET` and `MOSES_PUBLIC_URL(S)` — in a
 whose name it appends to the chart's `secrets.secretNames[]` list; the
 deployment template mounts every entry via `envFrom`, so the values
 arrive as plain env vars. They are **NOT chart values** — see the
-comment block in `helm/values.yaml` under `moses.oidc`.
+comment block in the `moses` section of `helm/values.yaml`.
 
-The chart's own `-oidc` Secret (`helm/templates/oidc-secret.yaml`)
-carries exactly ONE key: the session-cookie encryption key
-(`MOSES_OIDC_COOKIE_SECRET`, AES-256-GCM; also HMACs the state cookie),
-kept stable across `helm upgrade`. The confidential client secret is no
-longer stored there.
+The session-cookie encryption key (`MOSES_OIDC_COOKIE_SECRET`,
+AES-256-GCM; also HMACs the state cookie) arrives in the same platform
+Secret. The platform mints it once per app and never rotates it (a
+development deploy is a new app, so it gets a new key).
+The chart renders no Secret of its own and no explicit `MOSES_OIDC_*` env.
 
 | Var | Purpose |
 |-----|---------|
@@ -149,7 +149,7 @@ longer stored there.
 | `MOSES_OIDC_AUDIENCE` | expected `aud` (defaults to client id) |
 | `MOSES_OIDC_PROTECTED_PATHS` | gated path prefixes |
 | `MOSES_OIDC_PUBLIC_PATHS` | always-public path prefixes |
-| `MOSES_OIDC_COOKIE_SECRET` | session-cookie AES-256-GCM encryption key + state-cookie HMAC key (chart `-oidc` Secret) |
+| `MOSES_OIDC_COOKIE_SECRET` | session-cookie AES-256-GCM encryption key + state-cookie HMAC key (platform Secret) |
 | `MOSES_OIDC_SESSION_MAX_AGE_SECONDS` | BFF session lifetime (default 8h; roles refresh via the refresh-token grant) |
 | `MOSES_GATEWAY_AUTH_SECRET` | **arms the X-Moses-\* header-trust path.** Unset ⇒ pod-to-pod header trust is DISABLED entirely (workspace-tool calls fall through to OIDC and get 401). The platform proxy sends the matching `X-Moses-Gateway-Auth` header. |
 | `MOSES_INTERAPP_SECRET` | per-tenant HS256 key for inter-app trust tokens (unset ⇒ inter-app path disabled) |

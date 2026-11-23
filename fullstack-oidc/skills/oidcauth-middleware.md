@@ -42,8 +42,9 @@ owns the inject link, and your handlers do the read.
 
 At deploy time the platform registers a confidential Keycloak client and
 publishes the handshake `MOSES_OIDC_*` env vars in a namespace Secret
-listed in `secrets.secretNames`, mounted through `envFrom`. The chart's
-`oidc-secret.yaml` carries only the session-cookie key; see `helm/values.yaml`.
+listed in `secrets.secretNames`, mounted through `envFrom`. That Secret
+also carries the session-cookie key; the chart renders none of these values
+itself. See `helm/values.yaml`.
 
 ### 3. Enforce — wire the middleware in `main.go`
 
