@@ -363,6 +363,29 @@ for t in $TEMPLATES; do
   else
     pass "shipped demo action: $cfg declares no example-* action"
   fi
+
+  # The platform activates a declared action only after a tenant admin
+  # approves a moses-platform integration covering platform_actions:invoke.
+  # An action declared without that integration can never be active.
+  if command -v python3 >/dev/null 2>&1; then
+    if python3 - "$cfg" <<'PYTHON'
+import json, sys
+cfg = json.load(open(sys.argv[1]))
+if not cfg.get("platformActions"):
+    sys.exit(0)
+for req in (cfg.get("integrations") or {}).get("required") or []:
+    if req.get("type") == "moses-platform" and "platform_actions:invoke" in (req.get("scopes") or []):
+        sys.exit(0)
+sys.exit(1)
+PYTHON
+    then
+      pass "inert action: $cfg declares no action without the moses-platform platform_actions:invoke integration"
+    else
+      fail "inert action: $cfg declares a platformAction but no moses-platform integration with platform_actions:invoke (it can never be active)"
+    fi
+  else
+    echo "SKIP: inert-action check needs python3"
+  fi
 done
 
 # ---------------------------------------------------------------------------

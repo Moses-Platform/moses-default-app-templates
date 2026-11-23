@@ -153,42 +153,14 @@ spec:
                   key: {{ $.Values.postgresql.auth.passwordKey | default "password" | quote }}
             {{- end }}
             {{- end }}
-            {{- /* CHAT-t5d1u.28.21 (C1) / .28.22 (B1): OIDC relying-party env
-                   for the backend container. The vendored oidcauth middleware
-                   reads these. Only injected for non-frontend services (the Go
-                   backend); the frontend nginx never speaks OIDC.
-
-                   The SEVEN platform-delivered OIDC values (MOSES_OIDC_ISSUER,
-                   MOSES_OIDC_INTERNAL_ISSUER, MOSES_OIDC_CLIENT_ID,
-                   MOSES_OIDC_AUDIENCE, MOSES_OIDC_CLIENT_SECRET,
-                   MOSES_OIDC_PROTECTED_PATHS, MOSES_OIDC_PUBLIC_PATHS) are
-                   DELIBERATELY NOT rendered here. The Moses platform never
-                   sets .Values.moses.oidc.* — it delivers those vars
-                   exclusively through a Kubernetes Secret whose name it
-                   appends to secrets.secretNames[], mounted above via
-                   `envFrom` (the 28.20 B2 mechanism). A Kubernetes explicit
-                   `env` entry OVERRIDES an `envFrom` value, so emitting them
-                   here with empty .Values.moses.oidc.* placeholders would
-                   shadow the real Secret and silently disable OIDC, or — for
-                   protectedPaths / publicPaths (added to the platform Secret
-                   by ticket 28.5 / 28.21-S2) — silently ignore the per-app
-                   access.oidc path policy (the 28.22 B1 shadowing bug).
-
-                   Only the cookie HMAC key is rendered here, from this
-                   chart's own -oidc Secret. The platform Secret also carries
-                   MOSES_OIDC_COOKIE_SECRET, but this explicit entry wins over
-                   envFrom (ownership is an open platform/template question).
-                   Standalone `helm install` without the platform leaves
-                   MOSES_OIDC_PROTECTED_PATHS / PUBLIC_PATHS unset; oidcauth
-                   then runs in pass-through mode, the correct standalone
-                   behaviour. */}}
-            {{- if and (not (has .name (list "frontend" "web" "ui"))) $.Values.moses.oidc }}
-            - name: MOSES_OIDC_COOKIE_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "agent-deployed-app.fullname" $ }}-oidc
-                  key: cookie-secret
-            {{- end }}
+            {{- /* OIDC relying-party env for the backend: NONE is rendered here.
+                   The Moses platform delivers every MOSES_OIDC_* value,
+                   including the session-cookie key MOSES_OIDC_COOKIE_SECRET,
+                   in a Secret it appends to secrets.secretNames[] (mounted via
+                   envFrom above). An explicit `env` entry would override that
+                   envFrom value, so the chart must not emit any of them.
+                   Standalone `helm install` without the platform leaves them
+                   unset; oidcauth then runs in pass-through mode. */}}
           {{- if .healthCheck }}
           startupProbe:
             httpGet:

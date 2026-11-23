@@ -6,6 +6,8 @@ password_envs = %w[POSTGRES_PASSWORD DATABASE_PASSWORD DB_PASSWORD REDIS_PASSWOR
 docs.select { |d| d['kind'] == 'Secret' }.each do |d|
   fields = (d['data'] || {}).merge(d['stringData'] || {}).keys
   raise 'chart rendered a bundled/signing credential Secret' if fields.any? { |k| k.downcase.include?('password') || k == 'MOSES_INTERAPP_SECRET' } || d.dig('metadata', 'name') == 'bundled-credentials'
+  # The platform owns every app-OIDC value, including the session-cookie key.
+  raise 'chart rendered an OIDC/cookie Secret (the platform owns it)' if fields.any? { |k| k.start_with?('MOSES_OIDC_') || k.downcase.include?('cookie') }
 end
 containers = docs.select { |d| %w[Deployment StatefulSet].include?(d['kind']) }.flat_map { |d| d.fetch('spec').fetch('template').fetch('spec').fetch('containers') }
 raise 'no containers' if containers.empty?
@@ -14,6 +16,8 @@ raise 'wrong bundled server count' unless servers.size == (kind == 'none' ? 0 : 
 containers.each do |c|
   env = c.fetch('env', [])
   raise 'explicit signing-key override' if env.any? { |e| e['name'] == 'MOSES_INTERAPP_SECRET' }
+  # An explicit env entry would shadow the platform Secret's envFrom value.
+  raise 'explicit MOSES_OIDC_* env shadows the platform Secret' if env.any? { |e| e['name'].to_s.start_with?('MOSES_OIDC_') }
   expected = if ARGV[3] == 'fullstack-chat' && %w[frontend web ui].include?(c['name'])
     # Chat deliberately restricts secret delivery to the backend. Preserve it.
     raise 'chat frontend received secrets' unless (c['envFrom'] || []).empty?
