@@ -198,9 +198,8 @@ Extend both lists as you add routes — e.g. append `"/api/v1/things"` to
 Moses projects the mapping into `resource_access.<client>.roles` on the
 token. The path lists are **not** chart values — the platform delivers them
 to the pod as `MOSES_OIDC_PROTECTED_PATHS` / `MOSES_OIDC_PUBLIC_PATHS` env
-vars via the platform-managed Secret (the chart's `moses.oidc` block
-deliberately carries no placeholder path fields, so stale chart copies can
-never shadow the live config).
+vars via the platform-managed Secret (the chart carries no OIDC values, so
+stale chart copies can never shadow the live config).
 
 Declaring runtime secrets — see [skills/secrets-tutorial.md](skills/secrets-tutorial.md).
 
