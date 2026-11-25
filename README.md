@@ -272,6 +272,67 @@ succeed — on nginx-ingress installs the proxy ceiling would 413 first. Raising
 it is a platform change (nginx `proxy-body-size` in `moses-platform-prep`
 `buildIngressAnnotations`).
 
+## Running on the apps origin
+
+Moses can serve apps from their own **apps origin** instead of the Moses
+origin: another port on a local or desktop install (`http://localhost:8081`),
+`apps.<moses domain>` in production. The app is then cross-origin to the Moses
+window that frames it. Every template here works both before and after that
+switch, because each one follows four rules:
+
+- **Relative paths only.** `base: './'` (Vite) or `<base href="./">`, and API
+  calls like `fetch('api/v1/things')` — never a leading `/`, never a Moses
+  hostname. The page works under `/apps/<tenant>/<slug>/` on either origin.
+- **No Moses API from the browser.** Platform actions go through the iframe
+  SDK (`/api/v1/sdk/iframe-sdk.js`), which posts to the app's own
+  `/__moses/invoke`; the app's backend proxy talks to Moses. The browser
+  logger asks `/api/v1/browser-logs/*` relative to the page, which the apps
+  origin forwards to Moses. Nothing else in the browser calls Moses.
+- **Talk to the Moses window by its origin.** Never read `window.parent`
+  state, never post to `'*'` or to `window.location.origin`. Post to and
+  accept only from `window.MosesSDK.hostOrigin`
+  (`fullstack-chat/frontend/src/moses/hostMessages.ts` is the reference).
+- **Framing comes from the platform.** The `frame-ancestors` list is
+  `MOSES_EMBEDDING_ALLOWED_ANCESTORS`, which the platform fills with the Moses
+  origin. Do not hard-code `frame-ancestors 'self'` or
+  `X-Frame-Options: SAMEORIGIN`: on the apps origin `'self'` is the app, not
+  Moses, and the app stops rendering in its window.
+
+Data an app kept in the browser (localStorage, IndexedDB, caches, cookies) is
+per origin. After the switch the app no longer sees what it stored on the
+Moses origin; the data is not deleted, but users start fresh in that app.
+
+### Updating an app made from an older template
+
+Generated repositories are not updated by this repo. Check an existing app
+for these, by hand:
+
+1. **Browser logger** (`frontend/src/moses-browser-logger.ts`, or
+   `static/moses-browser-logger.js` for `fullstack-unified`). Copy the current
+   file from the same template here over yours. Old copies bootstrap without
+   credentials and by baked chart/deployment ids: on the current platform
+   logging stops for non-public apps and after one hour for public ones. You
+   may also delete the `VITE_MOSES_CHART_ID` / `VITE_MOSES_DEPLOYMENT_ID`
+   `ARG` and `RUN` lines from `frontend/Dockerfile`; they are no longer read.
+   `fullstack-unified` apps: also delete the `<meta name="moses-config">` tag
+   from `static/index.html` (it rendered `MOSES_API_BASE`, the Moses origin,
+   which is cross-origin on the apps origin) and serve `static/` as plain
+   files, as `newStaticHandler` in this template's `main.go` does.
+2. **Chat bridge** (apps from `fullstack-chat`). Copy
+   `frontend/src/moses/hostMessages.ts` (and its test). The old file posts to
+   and accepts from `window.location.origin`, so on the apps origin "Ask Moses"
+   no longer opens the chat and completion messages never arrive.
+3. **Framing headers.** Search your nginx config, entrypoint and server code
+   for `frame-ancestors`, `X-Frame-Options` and `frameguard`. Keep only the
+   template's rule (`MOSES_EMBEDDING_ALLOWED_ANCESTORS`, with `'self'` as the
+   standalone default); remove any hard-coded `'self'`-only or `SAMEORIGIN`
+   value.
+4. **Moses origin in code.** Search for your Moses hostname, `localhost`
+   URLs, `window.parent`, `window.top`, `postMessage(` and root-relative
+   `fetch('/` calls. Use relative paths and `MosesSDK.hostOrigin` instead.
+   `MOSES_API_BASE` stays fine for server-side calls from the app's backend;
+   do not hand it to the browser.
+
 ## UserID is not authentication
 
 The non-OIDC templates expose `X-Moses-User-ID` as **`UntrustedUserID`**
