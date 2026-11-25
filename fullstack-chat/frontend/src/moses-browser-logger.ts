@@ -123,6 +123,11 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
   let sampleRate = 1.0;
   let flushReady = false;
   let flushScheduled = false;
+  // Bumped on every applied bootstrap: a 401 for a batch sent with an older
+  // token says nothing about the current one.
+  let tokenGeneration = 0;
+  // The one re-bootstrap in flight; concurrent 401s wait for it.
+  let rebootstrapping: Promise<void> | null = null;
 
   function enqueue(
     level: Level,
@@ -163,6 +168,7 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
     if (!flushReady) return;
     if (queue.length === 0) return;
     const events = queue.splice(0, queue.length);
+    const sentWith = tokenGeneration;
     try {
       void fetch(ingestEndpoint, {
         method: "POST",
@@ -179,6 +185,11 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
           // and resend this batch, bounded like the pre-bootstrap buffer.
           if (res && res.status === 401) {
             queue = events.concat(queue).slice(-PREBOOTSTRAP_BUFFER_CAP);
+            if (sentWith !== tokenGeneration) {
+              // Sent with an older token; a fresh one is already here.
+              if (flushReady) flush();
+              return;
+            }
             void rebootstrap();
           }
         })
@@ -212,26 +223,33 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
   }
 
   function applyBootstrap(cfg: BootstrapConfig): void {
+    tokenGeneration++;
     ingestEndpoint = absolutize(cfg.endpoint ?? "", apiBase);
     sampleRate = clampSampleRate(opts.sampleRate ?? cfg.sampleRate ?? 1.0);
     token = cfg.token ?? "";
   }
 
-  async function rebootstrap(): Promise<void> {
+  function rebootstrap(): Promise<void> {
+    // Several batches refused at once share ONE re-bootstrap; each re-queued
+    // its events, so the flush after it resends them all.
+    if (rebootstrapping) return rebootstrapping;
     flushReady = false;
     if (Date.now() - lastBootstrapAt < REBOOTSTRAP_MIN_INTERVAL_MS) {
       // Refused by a token this fresh: it will not get better. Go silent.
       goSilent();
-      return;
+      return Promise.resolve();
     }
-    const cfg = await fetchBootstrap();
-    if (!cfg) {
-      goSilent();
-      return;
-    }
-    applyBootstrap(cfg);
-    flushReady = true;
-    if (queue.length > 0) flush();
+    rebootstrapping = fetchBootstrap().then((cfg) => {
+      rebootstrapping = null;
+      if (!cfg) {
+        goSilent();
+        return;
+      }
+      applyBootstrap(cfg);
+      flushReady = true;
+      if (queue.length > 0) flush();
+    });
+    return rebootstrapping;
   }
 
   // Window error surface ------------------------------------------------------

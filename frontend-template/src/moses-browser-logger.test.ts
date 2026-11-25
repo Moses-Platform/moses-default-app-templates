@@ -28,6 +28,8 @@ function makeFetchMock(bootstrap: {
   reject?: boolean
   // HTTP status of each successive ingest POST (default 200 once exhausted).
   ingestStatuses?: number[]
+  // When given, ingest responses arrive only after this resolves.
+  ingestGate?: Promise<void>
 }) {
   const ingestCalls: Array<{ url: string; events: unknown[]; opts?: RequestInit }> = []
   const bootstrapCalls: Array<{ url: string; opts?: RequestInit }> = []
@@ -60,11 +62,12 @@ function makeFetchMock(bootstrap: {
       ingestCalls.push({ url: String(url), events: [], opts: _opts })
     }
     const status = ingestStatuses.shift() ?? 200
-    return Promise.resolve({
+    const res = {
       ok: status >= 200 && status < 300,
       status,
       json: () => Promise.resolve({}),
-    } as unknown as Response)
+    } as unknown as Response
+    return (bootstrap.ingestGate ?? Promise.resolve()).then(() => res)
   })
 
   return { fetchMock, ingestCalls, bootstrapCalls, releaseBootstrap: () => bootstrapResolve!() }
@@ -310,6 +313,46 @@ describe('installBrowserLogger bootstrap contract', () => {
     expect(ingestCalls[1].events).toEqual(ingestCalls[0].events)
     // The ingest carries only the bearer token, never a cookie.
     expect(ingestCalls[1].opts?.credentials).toBe('omit')
+  })
+
+  it('two batches refused at once share one re-bootstrap and both are resent', async () => {
+    let now = 1_000_000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    let releaseIngest: () => void = () => {}
+    const ingestGate = new Promise<void>((r) => {
+      releaseIngest = r
+    })
+    const { fetchMock, ingestCalls, bootstrapCalls, releaseBootstrap } = makeFetchMock({
+      ok: true,
+      body: ENABLED,
+      ingestStatuses: [401, 401],
+      ingestGate,
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const installed = installBrowserLogger()
+    fireWindowError('first batch')
+    now += 61_000
+    releaseBootstrap()
+    await installed // batch A in flight with the expiring token
+    fireWindowError('second batch')
+    window.dispatchEvent(new Event('pagehide')) // batch B in flight too
+    expect(ingestCalls.length).toBe(2)
+
+    releaseIngest() // both come back 401
+    await settle()
+
+    expect(bootstrapCalls.length).toBe(2)
+    const resent = JSON.stringify(ingestCalls.slice(2).map((c) => c.events))
+    expect(resent).toContain('first batch')
+    expect(resent).toContain('second batch')
+
+    // Not silenced: a later crash is still sent.
+    const before = ingestCalls.length
+    fireWindowError('after recovery')
+    window.dispatchEvent(new Event('pagehide'))
+    await settle()
+    expect(ingestCalls.length).toBe(before + 1)
   })
 
   it('re-bootstraps at most once a minute: a 401 right after a bootstrap goes silent', async () => {

@@ -180,6 +180,11 @@
     var dropped = false;
     var flushReady = false;
     var flushScheduled = false;
+    // Bumped on every applied bootstrap: a 401 for a batch sent with an older
+    // token says nothing about the current one.
+    var tokenGeneration = 0;
+    // The one re-bootstrap in flight; concurrent 401s wait for it.
+    var rebootstrapping = null;
     var ingestEndpoint = "";
     var token = "";
     var sampleRate = 1.0;
@@ -217,6 +222,7 @@
       if (!flushReady) return;
       if (queue.length === 0) return;
       var events = queue.splice(0, queue.length);
+      var sentWith = tokenGeneration;
       try {
         var p = fetch(ingestEndpoint, {
           method: "POST",
@@ -234,6 +240,11 @@
             // and resend this batch, bounded like the pre-bootstrap buffer.
             if (res && res.status === 401) {
               queue = events.concat(queue).slice(-PREBOOTSTRAP_BUFFER_CAP);
+              if (sentWith !== tokenGeneration) {
+                // Sent with an older token; a fresh one is already here.
+                if (flushReady) flush();
+                return;
+              }
               rebootstrap();
             }
           }).catch(function () { /* drop — recursion-safe */ });
@@ -244,6 +255,9 @@
     }
 
     function rebootstrap() {
+      // Several batches refused at once share ONE re-bootstrap; each re-queued
+      // its events, so the flush after it resends them all.
+      if (rebootstrapping) return;
       flushReady = false;
       var now = Date.now();
       if (now - lastBootstrapAt < REBOOTSTRAP_MIN_INTERVAL_MS) {
@@ -251,7 +265,8 @@
         queue.length = 0;
         return;
       }
-      fetchBootstrap().then(function (boot) {
+      rebootstrapping = fetchBootstrap().then(function (boot) {
+        rebootstrapping = null;
         if (!boot) {
           dropped = true;
           queue.length = 0;
@@ -261,6 +276,7 @@
         flushReady = true;
         if (queue.length > 0) flush();
       }).catch(function () {
+        rebootstrapping = null;
         dropped = true;
         queue.length = 0;
       });
@@ -279,6 +295,7 @@
     }
 
     function applyBootstrap(boot) {
+      tokenGeneration++;
       ingestEndpoint = absolutize(boot.endpoint, apiBase);
       sampleRate = clampSampleRate(boot.sampleRate != null ? boot.sampleRate : 1.0);
       token = boot.token;

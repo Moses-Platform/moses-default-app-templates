@@ -108,14 +108,18 @@ func TestStaticHandler_ServesIndexWithLoggerAndNoServerConfig(t *testing.T) {
 
 // browserLoggerHarness runs static/moses-browser-logger.js in a node vm with a
 // fake window/fetch/clock and prints every fetch the snippet makes as JSON.
-// Scenario "expire": the token has expired by the time the first batch is
-// sent (ingest 401 more than a minute after bootstrap). Scenario "fresh401":
-// the first batch is refused straight after bootstrap.
+// Scenarios:
+//   - expire:   the token has expired by the time the first batch is sent
+//     (ingest 401 more than a minute after bootstrap);
+//   - fresh401: the first batch is refused straight after bootstrap;
+//   - race:     two batches in flight with the expiring token are both refused.
 const browserLoggerHarness = `
 const vm = require("vm"), fs = require("fs");
 const [src, scenario] = [fs.readFileSync(process.argv[2], "utf8"), process.argv[3]];
 let now = 1000000;
-const statuses = scenario === "expire" ? [401, 200] : [401];
+const statuses = { expire: [401, 200], fresh401: [401], race: [401, 401] }[scenario];
+let releaseIngest;
+const ingestGate = scenario === "race" ? new Promise((r) => (releaseIngest = r)) : Promise.resolve();
 const calls = [], listeners = {};
 const location = { origin: "http://apps.example", pathname: "/apps/t/s/", href: "http://apps.example/apps/t/s/" };
 const window = { location, addEventListener: (t, f) => (listeners[t] = listeners[t] || []).push(f) };
@@ -127,15 +131,23 @@ function fetch(url, opts) {
     return Promise.resolve({ ok: true, json: () => Promise.resolve({ enabled: true, token: "tok", endpoint: "/api/v1/browser-logs" }) });
   }
   const status = statuses.length ? statuses.shift() : 200;
-  return Promise.resolve({ ok: status < 300, status });
+  return ingestGate.then(() => ({ ok: status < 300, status }));
 }
+const fire = (type, ev) => (listeners[type] || []).forEach((f) => f(ev));
+const later = (ms, f) => setTimeout(f, ms);
 vm.runInNewContext(src, { window, document, location, fetch, Date: FakeDate, console: { error() {}, warn() {} }, setTimeout, JSON, Math, Object, Array, String, Number, Promise, RegExp, Error, encodeURIComponent });
-(listeners.error || []).forEach((f) => f({ message: "boom", filename: "app.js", lineno: 1, colno: 1 }));
-if (scenario === "expire") now += 61000;
-setTimeout(() => {
-  if (scenario === "fresh401") (listeners.error || []).forEach((f) => f({ message: "later" }));
-  setTimeout(() => process.stdout.write(JSON.stringify(calls)), 20);
-}, 20);
+fire("error", { message: "boom", filename: "app.js", lineno: 1, colno: 1 });
+if (scenario !== "fresh401") now += 61000;
+later(20, () => {
+  if (scenario === "fresh401") fire("error", { message: "later" });
+  if (scenario === "race") {
+    fire("error", { message: "second batch" });
+    fire("pagehide", {});
+    releaseIngest();
+    later(20, () => { fire("error", { message: "after recovery" }); fire("pagehide", {}); });
+  }
+  later(60, () => process.stdout.write(JSON.stringify(calls), () => process.exit(0)));
+});
 `
 
 type loggerFetch struct {
@@ -212,6 +224,24 @@ func TestBrowserLogger_ExpiredTokenRebootstrapsAndResends(t *testing.T) {
 	}
 	if ingests[1].Opts.Credentials != "omit" {
 		t.Errorf("ingest credentials = %q, want omit (bearer token only)", ingests[1].Opts.Credentials)
+	}
+}
+
+// Two batches refused at once share ONE re-bootstrap; both are resent and the
+// logger keeps running (before: the second 401 silenced it until reload).
+func TestBrowserLogger_ConcurrentRefusalsShareOneRebootstrap(t *testing.T) {
+	bootstraps, ingests := splitLoggerCalls(runBrowserLogger(t, "race"))
+	if len(bootstraps) != 2 {
+		t.Fatalf("want 2 bootstraps (install + one re-bootstrap), got %d", len(bootstraps))
+	}
+	var resent strings.Builder
+	for _, c := range ingests[min(2, len(ingests)):] {
+		resent.WriteString(c.Opts.Body)
+	}
+	for _, want := range []string{"boom", "second batch", "after recovery"} {
+		if !strings.Contains(resent.String(), want) {
+			t.Errorf("%q not sent after the re-bootstrap; sends after the two refused: %s", want, resent.String())
+		}
 	}
 }
 
