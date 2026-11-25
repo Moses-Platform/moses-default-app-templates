@@ -283,15 +283,26 @@ switch, because each one follows four rules:
 - **Relative paths only.** `base: './'` (Vite) or `<base href="./">`, and API
   calls like `fetch('api/v1/things')` — never a leading `/`, never a Moses
   hostname. The page works under `/apps/<tenant>/<slug>/` on either origin.
+  There are exactly two intended root paths, both Moses-owned: the
+  `<script src="/api/v1/sdk/iframe-sdk.js">` tag and the browser logger's
+  `/api/v1/browser-logs/*` requests.
 - **No Moses API from the browser.** Platform actions go through the iframe
-  SDK (`/api/v1/sdk/iframe-sdk.js`), which posts to the app's own
-  `/__moses/invoke`; the app's backend proxy talks to Moses. The browser
-  logger asks `/api/v1/browser-logs/*` relative to the page, which the apps
-  origin forwards to Moses. Nothing else in the browser calls Moses.
+  SDK, which posts to the app's own `/__moses/invoke`; the app's backend
+  proxy talks to Moses. The browser logger asks `/api/v1/browser-logs/*` at
+  the root of the page's own origin: the Moses origin and the apps origin
+  both forward it to Moses. On an app's own hostname it reaches the app's own
+  server until the platform routes those paths there too, and logging stays
+  off meanwhile (harmless). Nothing else in the browser calls Moses.
 - **Talk to the Moses window by its origin.** Never read `window.parent`
   state, never post to `'*'` or to `window.location.origin`. Post to and
-  accept only from `window.MosesSDK.hostOrigin`
+  accept only from `window.MosesSDK.hostOrigin`, which the platform's iframe
+  SDK sets from the release that moves apps to their own origin; before that
+  release a same-origin parent is used
   (`fullstack-chat/frontend/src/moses/hostMessages.ts` is the reference).
+- **Moses pages by the Moses origin.** A link or navigation to a Moses page
+  (`href="/…"`, `location.assign('/…')`) lands on the apps origin after the
+  switch. Build such URLs from `MosesSDK.hostOrigin`, or open them through
+  the Moses window.
 - **Framing comes from the platform.** The `frame-ancestors` list is
   `MOSES_EMBEDDING_ALLOWED_ANCESTORS`, which the platform fills with the Moses
   origin. Do not hard-code `frame-ancestors 'self'` or
@@ -301,6 +312,10 @@ switch, because each one follows four rules:
 Data an app kept in the browser (localStorage, IndexedDB, caches, cookies) is
 per origin. After the switch the app no longer sees what it stored on the
 Moses origin; the data is not deleted, but users start fresh in that app.
+
+Cookies: the edge drops any cookie an app sets with a `Domain=` covering the
+Moses or apps host, and any cookie with a reserved Moses or Keycloak name. Use
+host-only cookies (no `Domain=`) with names of your own.
 
 ### Updating an app made from an older template
 
@@ -321,17 +336,29 @@ for these, by hand:
 2. **Chat bridge** (apps from `fullstack-chat`). Copy
    `frontend/src/moses/hostMessages.ts` (and its test). The old file posts to
    and accepts from `window.location.origin`, so on the apps origin "Ask Moses"
-   no longer opens the chat and completion messages never arrive.
+   no longer opens the chat and completion messages never arrive. Apps forked
+   before 2026-11-22 (commit `0219996`) also need the current chat proxy:
+   copy `backend/internal/mosesproxy/` and its wiring in
+   `backend/cmd/server/main.go`. The old proxy forwards only the
+   `access_token` cookie, which never reaches the app, so `/__moses/invoke`
+   loses the viewer; the current one forwards the gateway's viewer
+   assertion.
 3. **Framing headers.** Search your nginx config, entrypoint and server code
    for `frame-ancestors`, `X-Frame-Options` and `frameguard`. Keep only the
    template's rule (`MOSES_EMBEDDING_ALLOWED_ANCESTORS`, with `'self'` as the
    standalone default); remove any hard-coded `'self'`-only or `SAMEORIGIN`
    value.
 4. **Moses origin in code.** Search for your Moses hostname, `localhost`
-   URLs, `window.parent`, `window.top`, `postMessage(` and root-relative
-   `fetch('/` calls. Use relative paths and `MosesSDK.hostOrigin` instead.
+   URLs, `window.parent`, `window.top`, `postMessage(`, root-relative
+   `fetch('/` calls and root-relative links or navigation (`href="/`,
+   `location.assign('/`, `location.href = '/`) that open Moses pages. Use
+   relative paths for the app and `MosesSDK.hostOrigin` for Moses. The two
+   intended root paths (iframe SDK, browser logger) stay as they are.
    `MOSES_API_BASE` stays fine for server-side calls from the app's backend;
    do not hand it to the browser.
+5. **Cookies.** Replace any cookie set with `Domain=` (covering the Moses or
+   apps host) or named like a Moses or Keycloak cookie by a host-only cookie
+   with your own name; the edge drops the others after the switch.
 
 ## UserID is not authentication
 

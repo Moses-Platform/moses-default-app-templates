@@ -2,7 +2,8 @@
  * Integration-reference tests for the host-shell postMessage bridge
  * (src/moses/hostMessages.ts). The Moses window may be another origin than
  * this app (apps origin): the bridge talks to `window.MosesSDK.hostOrigin`
- * (set by /api/v1/sdk/iframe-sdk.js), and to its own origin only when the
+ * (set by /api/v1/sdk/iframe-sdk.js once the platform serves apps on their own
+ * origin), and to its own origin only when the
  * parent is provably same-origin (an older platform serving apps on the
  * Moses origin).
  */

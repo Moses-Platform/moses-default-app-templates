@@ -15,7 +15,8 @@
  * SECURITY: the Moses window is addressed by its origin and only messages
  * from that origin are accepted. Apps may run on their own apps origin, so
  * that origin is NOT this page's: it comes from `window.MosesSDK.hostOrigin`
- * (set by /api/v1/sdk/iframe-sdk.js). On an older platform that serves apps
+ * (set by /api/v1/sdk/iframe-sdk.js from the platform release that moves apps
+ * to their own origin). On an older platform that serves apps
  * on the Moses origin, a parent we can read is same-origin and is used.
  * Otherwise (app opened in its own tab, SDK missing) the bridge is a no-op;
  * the query refetch backstop reconciles. Never '*'.
