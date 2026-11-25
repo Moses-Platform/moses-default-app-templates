@@ -4,20 +4,40 @@
  *
  * Two envelopes flow between the embedded iframe and the Moses host shell:
  *
- *   - `moses_embed_open_chat` (v1, iframe → host). The app posts it to
- *     window.parent after a successful chat_prompt invoke so the host can
+ *   - `moses_embed_open_chat` (v1, iframe → host). The app posts it to the
+ *     Moses window after a successful chat_prompt invoke so the host can
  *     (a) open the global chat sidebar pinned to the new conversation, and
  *     (b) register the conversationId so it can later forward
  *     `auto_response_ready` WS events back here.
  *   - `moses_embed_chat_complete` (v1, host → iframe). Fired when the AI
  *     turn finishes; consumed via the origin-checked hook below.
  *
- * SECURITY: always origin-check incoming messages and post with an explicit
- * targetOrigin. The host iframe shell deploys apps under a Moses subpath,
- * so iframe and host are same-origin; cross-origin custom-domain apps need
- * an origin allowlist (future work).
+ * SECURITY: the Moses window is addressed by its origin and only messages
+ * from that origin are accepted. Apps may run on their own apps origin, so
+ * that origin is NOT this page's: it comes from `window.MosesSDK.hostOrigin`
+ * (set by /api/v1/sdk/iframe-sdk.js). On an older platform that serves apps
+ * on the Moses origin, a parent we can read is same-origin and is used.
+ * Otherwise (app opened in its own tab, SDK missing) the bridge is a no-op;
+ * the query refetch backstop reconciles. Never '*'.
  */
 import { useEffect } from 'react';
+
+const BARE_ORIGIN = /^https?:\/\/[^/]+$/;
+
+/** The Moses window's origin, or null when it is unknown. */
+function hostOrigin(): string | null {
+  const o = (window as { MosesSDK?: { hostOrigin?: unknown } }).MosesSDK?.hostOrigin;
+  if (typeof o === 'string' && BARE_ORIGIN.test(o)) return o;
+  // Older platform (same origin): the parent IS this origin.
+  try {
+    if (window.parent !== window && window.parent.location.origin === window.location.origin) {
+      return window.location.origin;
+    }
+  } catch {
+    /* cross-origin parent */
+  }
+  return null;
+}
 
 export type CompletionMessage = {
   type: 'moses_embed_chat_complete';
@@ -36,7 +56,7 @@ export type CompletionMessage = {
 export function useMosesChatComplete(onComplete: (msg: CompletionMessage) => void): void {
   useEffect(() => {
     function onMessage(e: MessageEvent) {
-      if (e.origin !== window.location.origin) return;
+      if (e.origin !== hostOrigin()) return;
       const data = e.data;
       if (typeof data !== 'object' || data === null) return;
 
@@ -61,11 +81,13 @@ export function useMosesChatComplete(onComplete: (msg: CompletionMessage) => voi
  * `moses_embed_chat_complete` postMessage. Without this announce step the
  * host has no record of which conversations belong to this iframe.
  *
- * No-op outside an iframe. Never throws (cross-origin posts throw — the
- * caller's query refetch backstop still reconciles).
+ * No-op outside an iframe or when the Moses origin is unknown. Never throws
+ * (the caller's query refetch backstop still reconciles).
  */
 export function announceOpenChat(conversationId: string, appSlug: string): void {
   if (!conversationId || !window.parent || window.parent === window) return;
+  const target = hostOrigin();
+  if (!target) return;
   try {
     window.parent.postMessage(
       {
@@ -74,7 +96,7 @@ export function announceOpenChat(conversationId: string, appSlug: string): void 
         conversationId,
         app: appSlug,
       },
-      window.location.origin, // targeted origin, never '*'
+      target,
     );
   } catch (err) {
     console.warn('[moses] moses_embed_open_chat post failed', err);

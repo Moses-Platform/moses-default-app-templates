@@ -237,7 +237,7 @@ This app's backend mosesproxy
 
 1. **All browser calls are relative / same-origin.** Calls to THIS app's backend use relative paths (`fetch('api/v1/<resource>')` — never a leading `/`) through the app's nginx. Calls to MOSES platform actions go through the iframe SDK (`src/moses/invoke.ts`), which POSTs same-origin to `/__moses/invoke`; the app's backend proxy — not the browser — talks to moses-backend (CHAT-pswm.8/.9). The iframe never fetches moses-backend directly, and there is no `VITE_MOSES_API_BASE` involved in the roundtrip.
 
-2. **postMessage origin check.** Always compare `e.origin === window.location.origin`. The host iframe shell deploys apps under a Moses subpath, so iframe and host are same-origin. Cross-origin custom-domain apps need an origin allowlist (future work).
+2. **postMessage targets the Moses window by its origin.** Apps may run on their own apps origin, so the Moses window is NOT `window.location.origin`. Post to, and accept only from, `window.MosesSDK.hostOrigin` (set by `/api/v1/sdk/iframe-sdk.js`); `hostMessages.ts` does this. On an older platform (apps on the Moses origin) it uses a readable same-origin parent instead; when neither is known it does nothing and the query refetch backstop reconciles. Never post to `'*'`, never read `window.parent` beyond that check.
 
 3. **Variable trust.** The example's `question` variable is `userSupplied: true`. The template renders it inside fences via `variableEscapeMode: "fenced"` so MM treats it as content, not instructions. If you adapt this template for higher-trust contexts, you can drop the fencing — but never feed unaudited user input into a `raw`-mode template.
 

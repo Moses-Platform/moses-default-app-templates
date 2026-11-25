@@ -174,7 +174,7 @@ it wanted to (e.g. to look up tickets), it would have to call
 
 ## Stack
 
-- **Frontend**: React 19 + Vite, single-page (no router). 12 vitest tests, all integration-contract tests in `src/moses/moses.test.tsx` (SDK invoke guard + error shaping, postMessage origin checks, `moses_embed_open_chat` envelope) — the only test file in the frontend.
+- **Frontend**: React 19 + Vite, single-page (no router). Integration-contract tests in `src/moses/moses.test.tsx` (SDK invoke guard + error shaping) and `src/moses/hostMessages.test.ts` (the postMessage bridge: targets `MosesSDK.hostOrigin`, same-origin fallback, no `'*'`).
 - **Backend**: Go (stdlib `net/http`), Postgres via `pgx/v5` (stdlib `database/sql` driver). Handlers that ship: `webhook_chat`, `health`, `openapi`, plus the `respond` JSON helpers and the `tenant` 403 cross-check gate. Tests cover HMAC signature verification (including dual-slot rotation acceptance), verify-before-skew ordering, nonce replay rejection, appSlug claim checks, and fail-closed behavior when no secret is configured.
 - **Helm**: multi-service chart (frontend + backend), Postgres declared in `dependencies.services`.
 - **OpenAPI** at `/api/openapi.json` declares the webhook receiver; every path you add there is picked up by Moses' `WorkspaceToolService.discoverAndRegisterEndpoints` after deploy and becomes an MCP tool.
@@ -263,7 +263,7 @@ This template targets the implemented surface of:
 - **CHAT-p1nr** — `conversation_created` WebSocket event for live update.
 - **CHAT-9pz5 / CHAT-h8cm** — chat_prompt rate floor + concurrency cap (testable via repeated clicks).
 - **CHAT-rg5t** — completion webhook (HMAC-verified in this app's `webhook_chat.go`).
-- **CHAT-l7va** — `moses_embed_open_chat` postMessage to host (tested in `frontend/src/moses/moses.test.tsx`).
+- **CHAT-l7va** — `moses_embed_open_chat` postMessage to host (tested in `frontend/src/moses/hostMessages.test.ts`).
 - **CHAT-avoi** — automatic action registration via `PlatformRegistrationProvisioner.Reconcile`.
 - **CHAT-qrd6** — `appData` block to surface the per-app git repo to MM and agents.
 - **CHAT-uwlm** — `variableEscapeMode: "fenced"` + `userSupplied: true` flag for prompt-injection hardening.
