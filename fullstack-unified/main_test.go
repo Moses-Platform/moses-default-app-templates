@@ -169,7 +169,13 @@ func runBrowserLogger(t *testing.T, scenario string) []loggerFetch {
 	t.Helper()
 	node, err := exec.LookPath("node")
 	if err != nil {
-		t.Skip("node not installed; the browser-logger behaviour test needs it")
+		// go test hides a passing package's output, so a skip would go
+		// unnoticed: in CI (CI set, as on GitHub runners) a missing node fails.
+		msg := "node not on PATH; the browser-logger behaviour tests did not run"
+		if os.Getenv("CI") != "" {
+			t.Fatal(msg)
+		}
+		t.Skip(msg)
 	}
 	dir := t.TempDir()
 	harness := filepath.Join(dir, "harness.js")

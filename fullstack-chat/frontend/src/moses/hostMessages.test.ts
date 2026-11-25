@@ -97,7 +97,10 @@ describe('announceOpenChat', () => {
 
   it('is a no-op when not embedded (window.parent === window)', () => {
     setHostOrigin(MOSES);
+    const post = vi.spyOn(window, 'postMessage');
+
     expect(() => announceOpenChat('conv-1', 'fullstack-chat')).not.toThrow();
+    expect(post).not.toHaveBeenCalled();
   });
 
   it('swallows a throwing postMessage (non-fatal by contract)', () => {
