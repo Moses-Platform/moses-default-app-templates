@@ -26,7 +26,7 @@ fullstack-unified/
 ├── api/
 │   └── openapi.json          # OpenAPI 3.x spec ("paths": {}) → MCP tool autoreg
 ├── static/                   # embedded into the binary at build time
-│   ├── index.html            # contains <meta name="moses-config" data-chart-id="...">
+│   ├── index.html            # plain static page; loads moses-browser-logger.js
 │   ├── app.js                # MOSES ROUTING contract + fetch wiring example
 │   ├── style.css
 │   ├── favicon.svg
@@ -48,7 +48,7 @@ fullstack-unified/
 | You expect frontend changes more often than backend | `fullstack-simple` (separate cache layers) |
 | Asset bundle exceeds ~50 MB | `fullstack-simple` (smaller image churn) |
 
-## Embedded asset pipeline (BLF-J)
+## Embedded asset pipeline
 
 `main.go` declares two embed directives:
 
@@ -60,7 +60,7 @@ var staticFiles embed.FS
 var openapiSpec []byte
 ```
 
-At startup, `loadIndexTemplate()` parses `static/index.html` once into an `html/template`. Every `GET /` request renders the template with `MOSES_CHART_ID`, `MOSES_DEPLOYMENT_ID`, and `MOSES_API_BASE` env vars — these populate the `<meta name="moses-config">` tag the browser-logger reads (CHAT-ry35).
+`static/` is served as plain files (`newStaticHandler`). Nothing is rendered into `index.html` server-side: the browser logger (`static/moses-browser-logger.js`, the same code as the platform's injected client) finds its app from the page URL and asks Moses same-origin, so it works on the Moses origin and on the separate apps origin alike.
 
 To update the spec: edit `api/openapi.json`, then rebuild the binary. There is no live reload — embedded artifacts require a fresh build.
 
@@ -74,7 +74,6 @@ To update the spec: edit `api/openapi.json`, then rebuild the binary. There is n
 | `MOSES_EMBEDDING_FRAMING` | `moses-only` (default) / `public` / `denied`. Drives the `Content-Security-Policy: frame-ancestors` middleware. |
 | `MOSES_EMBEDDING_ALLOWED_ANCESTORS` | Explicit override for the moses-only ancestors list. |
 | `MOSES_EMBEDDING_REPORT_URI` | Optional CSP report-uri. |
-| `MOSES_CHART_ID`, `MOSES_DEPLOYMENT_ID`, `MOSES_API_BASE` | Rendered into `<meta name="moses-config">` for the embedded browser logger. |
 | `BASE_URL` | Deprecated alias for `MOSES_BASE_PATH`. Will be removed N-2 minor releases after `MOSES_BASE_PATH` shipped. |
 
 CSP framing is rendered by the `withEmbeddingHeaders()` middleware in `main.go` — same matrix as the frontend templates' `entrypoint.sh`. Cross-origin API access is off by default; opt in via `CORS_ALLOWED_ORIGINS` (comma-separated exact origins, see `cors.go`).

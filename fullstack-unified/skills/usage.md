@@ -59,13 +59,12 @@ Everything the code reads, and where:
 | `MOSES_EMBEDDING_FRAMING` | `main.go` | `moses-only` (default) / `public` / `denied` → `Content-Security-Policy: frame-ancestors` via `withEmbeddingHeaders`. |
 | `MOSES_EMBEDDING_ALLOWED_ANCESTORS` | `main.go` | Explicit ancestors list for `moses-only`. |
 | `MOSES_EMBEDDING_REPORT_URI` | `main.go` | Optional CSP `report-uri`. |
-| `MOSES_CHART_ID` / `MOSES_DEPLOYMENT_ID` / `MOSES_API_BASE` | `main.go` → `static/index.html` | Rendered into `<meta name="moses-config">` for the browser-logger (BLF-J). When empty the logger falls back to a location-derived `loc` param — it does NOT disable itself. |
 
 No `DB_*` variables are read — this template is DB-free until you declare `dependencies.services: ["postgresql"]` in `moses-app.config.json` (Moses then injects `DATABASE_URL` + `DB_*`).
 
-## The `{{ }}` trap in static/index.html
+## Platform plumbing in static/index.html
 
-`main.go` parses `static/index.html` as a Go **html/template** (`loadIndexTemplate`) to substitute the moses-config meta values. Consequence: **any literal `{{ ... }}` in index.html is executed as a template action against the `indexContext` struct** — a stray `{{title}}` (e.g. pasted from a JS templating example) doesn't render literally; it makes template execution error or emit nothing, silently. If you need literal braces in the served HTML, escape them (`{{"{{"}}`) or move that markup into a different static file (only `index.html` is templated). Never remove the `{{.ChartID}}` / `{{.DeploymentID}}` / `{{.APIBase}}` placeholders, the `<base href="./">` tag, the `moses-config` meta, or the `moses-browser-logger.js` script tag — all four are platform plumbing.
+`static/index.html` is served as a plain file (no server-side templating). Never remove the `<base href="./">` tag or the `<script src="moses-browser-logger.js">` tag — both are platform plumbing. The logger is vendored (the same code as the platform's injected client): do not edit it.
 
 ## Frontend fetch convention
 

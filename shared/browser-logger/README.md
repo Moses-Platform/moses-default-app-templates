@@ -100,17 +100,18 @@ Bootstrap (`/api/v1/browser-logs/bootstrap`) reads the toggles on every
 page load and on every re-bootstrap, so flipping the switch takes effect on
 the next visit (or within the hour for an open tab).
 
-## Vanilla-JS port (BLF-J)
+## Vanilla-JS port
 
 The `fullstack-unified` template is plain Go + ES5+ JavaScript with no
 bundler, so it cannot consume this TypeScript module. It ships an inline
 port at
 [`fullstack-unified/static/moses-browser-logger.js`](../../fullstack-unified/static/moses-browser-logger.js)
-that mirrors this snippet's behaviour and config surface 1:1, but reads
-its config from a server-rendered `<meta name="moses-config">` tag
-populated by `main.go` from the `MOSES_CHART_ID` / `MOSES_DEPLOYMENT_ID`
-/ `MOSES_API_BASE` env vars. The two snippets stay in sync — change one,
-review the other.
+that mirrors this snippet's behaviour 1:1. Its body is the same code as the
+platform's injected client (`moses-platform-prep`
+`backend/internal/api/browser_logger_client.js`); keep the three in sync by
+hand. It needs no server-rendered config. An optional
+`<meta name="moses-config" data-api-base="…">` sets the API origin, like
+`VITE_MOSES_API_BASE` above.
 
 ## Vendored copies (byte-identical contract)
 
