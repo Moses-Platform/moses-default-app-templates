@@ -85,6 +85,10 @@ or on `pagehide`. The fetch uses `keepalive: true` so it survives unload.
 
 - `Authorization`, `Cookie`, `Set-Cookie`, `X-CSRF-Token` keys are stripped
   from any `context` object before send.
+- No URL query string or fragment: `url` is the page's origin + path, and
+  every absolute URL inside `message`, `stack` and `context` loses its
+  `?…` / `#…` (OAuth `code`/`state`, tokens, emails). Stack `:line:column`
+  is kept.
 - `message` is clipped to 4 KB; `stack` to 16 KB; `context` JSON to 2 KB.
 - Sample rate (server-controlled, default 1.0) gates per-event emission
   client-side.

@@ -112,16 +112,18 @@ func TestStaticHandler_ServesIndexWithLoggerAndNoServerConfig(t *testing.T) {
 //   - expire:   the token has expired by the time the first batch is sent
 //     (ingest 401 more than a minute after bootstrap);
 //   - fresh401: the first batch is refused straight after bootstrap;
-//   - race:     two batches in flight with the expiring token are both refused.
+//   - race:     two batches in flight with the expiring token are both refused;
+//   - privacy:  page, stack, filename and message URLs carry a query and fragment.
 const browserLoggerHarness = `
 const vm = require("vm"), fs = require("fs");
 const [src, scenario] = [fs.readFileSync(process.argv[2], "utf8"), process.argv[3]];
 let now = 1000000;
-const statuses = { expire: [401, 200], fresh401: [401], race: [401, 401] }[scenario];
+const statuses = { expire: [401, 200], fresh401: [401], race: [401, 401], privacy: [] }[scenario];
+const SECRET = "?code=c0de&state=st4te#access_token=t0k", ASSET = "http://apps.example/apps/t/s/app.js";
 let releaseIngest;
 const ingestGate = scenario === "race" ? new Promise((r) => (releaseIngest = r)) : Promise.resolve();
 const calls = [], listeners = {};
-const location = { origin: "http://apps.example", pathname: "/apps/t/s/", href: "http://apps.example/apps/t/s/" };
+const location = { origin: "http://apps.example", pathname: "/apps/t/s/", href: "http://apps.example/apps/t/s/" + (scenario === "privacy" ? SECRET : "") };
 const window = { location, addEventListener: (t, f) => (listeners[t] = listeners[t] || []).push(f) };
 const document = { querySelector: () => null, getElementsByTagName: () => [], addEventListener() {}, visibilityState: "visible" };
 class FakeDate extends Date { static now() { return now; } }
@@ -136,7 +138,12 @@ function fetch(url, opts) {
 const fire = (type, ev) => (listeners[type] || []).forEach((f) => f(ev));
 const later = (ms, f) => setTimeout(f, ms);
 vm.runInNewContext(src, { window, document, location, fetch, Date: FakeDate, console: { error() {}, warn() {} }, setTimeout, JSON, Math, Object, Array, String, Number, Promise, RegExp, Error, encodeURIComponent });
-fire("error", { message: "boom", filename: "app.js", lineno: 1, colno: 1 });
+if (scenario === "privacy") {
+  fire("error", { message: "Failed to load " + ASSET + SECRET, filename: ASSET + SECRET, lineno: 10, colno: 5,
+    error: { stack: "TypeError: x\n    at run (" + ASSET + "?v=1&code=c0de:10:5)" } });
+} else {
+  fire("error", { message: "boom", filename: "app.js", lineno: 1, colno: 1 });
+}
 if (scenario !== "fresh401") now += 61000;
 later(20, () => {
   if (scenario === "fresh401") fire("error", { message: "later" });
@@ -241,6 +248,30 @@ func TestBrowserLogger_ConcurrentRefusalsShareOneRebootstrap(t *testing.T) {
 	for _, want := range []string{"boom", "second batch", "after recovery"} {
 		if !strings.Contains(resent.String(), want) {
 			t.Errorf("%q not sent after the re-bootstrap; sends after the two refused: %s", want, resent.String())
+		}
+	}
+}
+
+// No event field may carry a URL query or fragment (OAuth code/state, tokens):
+// origin + path only, stack line:column kept.
+func TestBrowserLogger_EventsCarryNoURLQueryOrFragment(t *testing.T) {
+	_, ingests := splitLoggerCalls(runBrowserLogger(t, "privacy"))
+	if len(ingests) != 1 {
+		t.Fatalf("want 1 ingest, got %d", len(ingests))
+	}
+	body := ingests[0].Opts.Body
+	for _, leaked := range []string{"c0de", "st4te", "t0k", "v=1"} {
+		if strings.Contains(body, leaked) {
+			t.Errorf("event body leaks %q: %s", leaked, body)
+		}
+	}
+	for _, want := range []string{
+		`"url":"http://apps.example/apps/t/s/"`,
+		`at run (http://apps.example/apps/t/s/app.js:10:5)`,
+		`"filename":"http://apps.example/apps/t/s/app.js"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("event body missing %s: %s", want, body)
 		}
 	}
 }

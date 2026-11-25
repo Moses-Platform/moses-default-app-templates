@@ -381,6 +381,50 @@ describe('installBrowserLogger bootstrap contract', () => {
   })
 })
 
+// Query strings and fragments carry OAuth code/state, tokens and emails: no
+// event field may send them. Origin + path only, line:column kept.
+describe('installBrowserLogger URL privacy', () => {
+  const SECRET = '?code=c0de&state=st4te&email=a%40b.c#access_token=t0k'
+
+  afterEach(() => {
+    window.history.replaceState({}, '', '/')
+  })
+
+  it('sends page, stack, filename and message URLs without query or fragment', async () => {
+    window.history.replaceState({}, '', '/apps/t/s/page' + SECRET)
+    const { fetchMock, ingestCalls, releaseBootstrap } = makeFetchMock({
+      ok: true,
+      body: { enabled: true, token: 'tok', endpoint: '/api/v1/browser-logs' },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const installed = installBrowserLogger()
+    const asset = window.location.origin + '/apps/t/s/assets/app.js'
+    const evt = new Event('error') as Event & Record<string, unknown>
+    evt.message = 'Failed to load ' + asset + SECRET
+    evt.error = { stack: 'TypeError: x\n    at run (' + asset + '?v=1&code=c0de:10:5)\n    at ' + asset + '#access_token=t0k:3:7' }
+    evt.filename = asset + SECRET
+    evt.lineno = 10
+    evt.colno = 5
+    window.dispatchEvent(evt)
+    releaseBootstrap()
+    await installed
+    await settle()
+
+    expect(ingestCalls.length).toBe(1)
+    const body = JSON.stringify(ingestCalls[0].events)
+    for (const leaked of ['c0de', 'st4te', 't0k', 'a%40b.c', 'v=1']) {
+      expect(body).not.toContain(leaked)
+    }
+    const ev = ingestCalls[0].events[0] as { url: string; stack: string; message: string; context: { filename: string } }
+    expect(ev.url).toBe(window.location.origin + '/apps/t/s/page')
+    expect(ev.stack).toContain('at run (' + asset + ':10:5)')
+    expect(ev.stack).toContain('at ' + asset + ':3:7')
+    expect(ev.message).toBe('Failed to load ' + asset)
+    expect(ev.context.filename).toBe(asset)
+  })
+})
+
 describe('installBrowserLogger idempotency guard', () => {
   it('attaches window listeners once and latches the flag across repeated installs', async () => {
     const { fetchMock, releaseBootstrap } = makeFetchMock({

@@ -46,6 +46,9 @@
   // Bound the pre-bootstrap buffer so a crash-loop before bootstrap resolves
   // can't grow memory without limit. Drop-oldest once the cap is hit.
   var PREBOOTSTRAP_BUFFER_CAP = 50;
+  // An absolute URL's query and fragment (OAuth code/state, tokens, emails),
+  // keeping a trailing `:line[:column]` as stack frames carry it.
+  var URL_QUERY_OR_FRAGMENT = /(https?:\/\/[^\s?#)'"]+)[?#][^\s)'"]*?((?::\d+){1,2})?(?=[\s)'"]|$)/g;
 
   // A <meta name="moses-config" data-api-base="…"> may point the logger at
   // another API base; its chart/deployment ids are no longer used (the
@@ -80,6 +83,11 @@
       /* ignore */
     }
     return true;
+  }
+
+  // Drops the query and fragment of every absolute URL in s.
+  function stripUrlQueries(s) {
+    return String(s).replace(URL_QUERY_OR_FRAGMENT, "$1$2");
   }
 
   function clip(s, max) {
@@ -195,12 +203,17 @@
       var event = {
         ts: new Date().toISOString(),
         level: level,
-        message: clip(String(message), MAX_MESSAGE_BYTES),
+        message: clip(stripUrlQueries(message), MAX_MESSAGE_BYTES),
         source_kind: "client_runtime",
       };
-      if (stack) event.stack = clip(stack, MAX_STACK_BYTES);
-      if (typeof location !== "undefined") event.url = location.href;
+      if (stack) event.stack = clip(stripUrlQueries(stack), MAX_STACK_BYTES);
+      if (typeof location !== "undefined") event.url = location.origin + location.pathname;
       var ctx = sanitize(extra);
+      if (ctx) {
+        for (var ck in ctx) {
+          if (typeof ctx[ck] === "string") ctx[ck] = stripUrlQueries(ctx[ck]);
+        }
+      }
       if (ctx) event.context = ctx;
       queue.push(event);
       if (!flushReady) {

@@ -83,6 +83,9 @@ const QUEUE_FLUSH_INTERVAL_MS = 5_000;
 const PREBOOTSTRAP_BUFFER_CAP = 50;
 // An ingest 401 bootstraps again only if the last bootstrap is this old.
 const REBOOTSTRAP_MIN_INTERVAL_MS = 60_000;
+// An absolute URL's query and fragment (OAuth code/state, tokens, emails),
+// keeping a trailing `:line[:column]` as stack frames carry it.
+const URL_QUERY_OR_FRAGMENT = /(https?:\/\/[^\s?#)'"]+)[?#][^\s)'"]*?((?::\d+){1,2})?(?=[\s)'"]|$)/g;
 
 export async function installBrowserLogger(opts: InstallOptions = {}): Promise<void> {
   // Idempotency latch: guarantee a single install even if this runs twice
@@ -142,11 +145,11 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
     queue.push({
       ts: new Date().toISOString(),
       level,
-      message: clip(String(message), MAX_MESSAGE_BYTES),
-      stack: stack ? clip(stack, MAX_STACK_BYTES) : undefined,
-      url: typeof location !== "undefined" ? location.href : undefined,
+      message: clip(stripUrlQueries(String(message)), MAX_MESSAGE_BYTES),
+      stack: stack ? clip(stripUrlQueries(stack), MAX_STACK_BYTES) : undefined,
+      url: typeof location !== "undefined" ? location.origin + location.pathname : undefined,
       source_kind: "client_runtime",
-      context: sanitize(extra),
+      context: stripContextUrls(sanitize(extra)),
     });
     if (!flushReady) {
       // (Re-)bootstrap pending: bound the buffer, drop-oldest. No timers/flush yet.
@@ -353,6 +356,22 @@ function readViteEnv(): ViteEnvShape {
   } catch {
     return {};
   }
+}
+
+/** Drops the query and fragment of every absolute URL in s. */
+export function stripUrlQueries(s: string): string {
+  return s.replace(URL_QUERY_OR_FRAGMENT, "$1$2");
+}
+
+function stripContextUrls(
+  ctx: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  if (!ctx) return ctx;
+  for (const k of Object.keys(ctx)) {
+    const v = ctx[k];
+    if (typeof v === "string") ctx[k] = stripUrlQueries(v);
+  }
+  return ctx;
 }
 
 function clip(s: string, max: number): string {
