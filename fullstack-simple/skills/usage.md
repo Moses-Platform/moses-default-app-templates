@@ -65,7 +65,7 @@ Everything the code reads, and where:
 | `MOSES_EMBEDDING_REPORT_URI` | `frontend/entrypoint.sh` | Optional CSP `report-uri`. |
 | `MOSES_DOMAIN` | `frontend/entrypoint.sh` | Drives the chart-parity frame-ancestors fallback when no explicit list is set. |
 | `BACKEND_SERVICE_HOST` / `BACKEND_SERVICE_PORT` | `frontend/entrypoint.sh` | Backend service DNS for the nginx `/api/` proxy — injected by the Helm chart; never hardcode the service name. |
-| `VITE_MOSES_CHART_ID` / `VITE_MOSES_DEPLOYMENT_ID` / `VITE_MOSES_API_BASE` | `frontend/Dockerfile` build args → `moses-browser-logger.ts` | Browser-log reporter identity (BLF-B). Absent → the logger falls back to location-derived identity. |
+| `VITE_MOSES_API_BASE` | `frontend/Dockerfile` build arg → `moses-browser-logger.ts` | Optional browser-log API origin; leave empty on Moses (same origin). The logger finds its app from the page URL (`loc`). |
 
 No `DB_*` variables are read — this template is DB-free until you declare the dependency.
 

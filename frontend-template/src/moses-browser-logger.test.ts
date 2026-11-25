@@ -14,9 +14,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { installBrowserLogger } from './moses-browser-logger'
 
-// import.meta.env values that make installBrowserLogger proceed past the
-// env-guard. vite.config.ts's define / import.meta.env is read via readViteEnv;
-// we stub it through vi.stubGlobal-style env injection below.
+// Ids the platform build still bakes into the bundle (VITE_MOSES_CHART_ID /
+// VITE_MOSES_DEPLOYMENT_ID). The logger must ignore them: the platform finds
+// the app from `loc`. Stubbed in beforeEach for every test.
 const CHART = 'chart-uuid-1'
 const DEPLOY = 'deploy-uuid-1'
 
@@ -26,8 +26,12 @@ function makeFetchMock(bootstrap: {
   ok?: boolean
   body?: unknown
   reject?: boolean
+  // HTTP status of each successive ingest POST (default 200 once exhausted).
+  ingestStatuses?: number[]
 }) {
-  const ingestCalls: Array<{ url: string; events: unknown[] }> = []
+  const ingestCalls: Array<{ url: string; events: unknown[]; opts?: RequestInit }> = []
+  const bootstrapCalls: Array<{ url: string; opts?: RequestInit }> = []
+  const ingestStatuses = [...(bootstrap.ingestStatuses ?? [])]
   let bootstrapResolve: (() => void) | null = null
   const bootstrapGate = new Promise<void>((r) => {
     bootstrapResolve = r
@@ -35,6 +39,7 @@ function makeFetchMock(bootstrap: {
 
   const fetchMock = vi.fn((url: string, _opts?: RequestInit) => {
     if (url.indexOf('/api/v1/browser-logs/bootstrap') !== -1) {
+      bootstrapCalls.push({ url: String(url), opts: _opts })
       // Bootstrap call — gate it so the test can fire a crash BEFORE it
       // resolves, proving the listeners are attached synchronously.
       return bootstrapGate.then(() => {
@@ -50,15 +55,23 @@ function makeFetchMock(bootstrap: {
     // Ingest POST — record it.
     try {
       const parsed = JSON.parse(String((_opts as RequestInit).body))
-      ingestCalls.push({ url: String(url), events: parsed.events })
+      ingestCalls.push({ url: String(url), events: parsed.events, opts: _opts })
     } catch {
-      ingestCalls.push({ url: String(url), events: [] })
+      ingestCalls.push({ url: String(url), events: [], opts: _opts })
     }
-    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as unknown as Response)
+    const status = ingestStatuses.shift() ?? 200
+    return Promise.resolve({
+      ok: status >= 200 && status < 300,
+      status,
+      json: () => Promise.resolve({}),
+    } as unknown as Response)
   })
 
-  return { fetchMock, ingestCalls, releaseBootstrap: () => bootstrapResolve!() }
+  return { fetchMock, ingestCalls, bootstrapCalls, releaseBootstrap: () => bootstrapResolve!() }
 }
+
+// Let every pending promise chain (fetch → then → re-bootstrap → flush) settle.
+const settle = () => new Promise<void>((r) => setTimeout(r, 0))
 
 // Fire a window 'error' event the way a render-time crash would. We build a
 // plain Event and decorate it with the ErrorEvent-shaped fields the logger
@@ -235,37 +248,93 @@ describe('installBrowserLogger pre-bootstrap crash capture', () => {
     expect(events[0].message).toContain('crash #' + (TOTAL - 50))
   })
 
-  it('falls back to a loc-based bootstrap (not a no-op) when chart/deployment env vars are absent', async () => {
-    // The snippet no longer self-disables on missing baked ids: it bootstraps
-    // with a `loc` param (origin+pathname) so the platform resolves identity
-    // server-side from the request URL.
-    vi.stubEnv('VITE_MOSES_CHART_ID', '')
-    vi.stubEnv('VITE_MOSES_DEPLOYMENT_ID', '')
-    const { fetchMock, ingestCalls, releaseBootstrap } = makeFetchMock({
+})
+
+// The platform's bootstrap (browser_log_handlers.go Bootstrap) finds the app
+// from where the page runs and applies the app's own access decision to the
+// caller; tokens are short-lived (1 h) and bound to app + track + viewer.
+describe('installBrowserLogger bootstrap contract', () => {
+  const ENABLED = { enabled: true, token: 'tok', endpoint: '/api/v1/browser-logs' }
+
+  it('bootstraps with same-origin credentials so the viewer session decides access', async () => {
+    const { fetchMock, bootstrapCalls, releaseBootstrap } = makeFetchMock({ ok: true, body: ENABLED })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const installed = installBrowserLogger()
+    releaseBootstrap()
+    await installed
+
+    expect(bootstrapCalls.length).toBe(1)
+    expect(bootstrapCalls[0].opts?.credentials).toBe('same-origin')
+  })
+
+  it('always sends loc and never chart_id/deployment_id, even when the build baked ids', async () => {
+    // beforeEach stubs VITE_MOSES_CHART_ID / VITE_MOSES_DEPLOYMENT_ID, as the
+    // platform build does; the platform ignores them, so the logger must too.
+    const { fetchMock, bootstrapCalls, releaseBootstrap } = makeFetchMock({ ok: true, body: ENABLED })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const installed = installBrowserLogger()
+    releaseBootstrap()
+    await installed
+
+    const url = bootstrapCalls[0].url
+    expect(url.startsWith('/api/v1/browser-logs/bootstrap?')).toBe(true)
+    expect(url).toContain(
+      'loc=' + encodeURIComponent(window.location.origin + window.location.pathname)
+    )
+    expect(url).not.toContain('chart_id')
+    expect(url).not.toContain('deployment_id')
+  })
+
+  it('on an ingest 401 bootstraps again and resends the batch', async () => {
+    let now = 1_000_000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const { fetchMock, ingestCalls, bootstrapCalls, releaseBootstrap } = makeFetchMock({
       ok: true,
-      body: { enabled: true, token: 'tok', endpoint: '/api/v1/browser-logs/ingest' },
+      body: ENABLED,
+      ingestStatuses: [401, 200],
     })
     vi.stubGlobal('fetch', fetchMock)
 
     const installed = installBrowserLogger()
-    // Listeners are attached synchronously even without baked ids.
-    fireWindowError('crash with no baked ids')
+    fireWindowError('crash while the token expires')
+    // The token handed out at install has expired by the time the batch is sent.
+    now += 61_000
     releaseBootstrap()
     await installed
-    await Promise.resolve()
+    await settle()
 
-    // Bootstrap was called with a loc param instead of chart_id/deployment_id.
-    const bootstrapUrl = String(fetchMock.mock.calls[0][0])
-    expect(bootstrapUrl).toContain('/api/v1/browser-logs/bootstrap')
-    expect(bootstrapUrl).toContain('loc=')
-    expect(bootstrapUrl).not.toContain('chart_id=')
-    expect(bootstrapUrl).toContain(
-      encodeURIComponent(window.location.origin + window.location.pathname)
-    )
+    expect(bootstrapCalls.length).toBe(2)
+    expect(ingestCalls.length).toBe(2)
+    expect(ingestCalls[1].events).toEqual(ingestCalls[0].events)
+    // The ingest carries only the bearer token, never a cookie.
+    expect(ingestCalls[1].opts?.credentials).toBe('omit')
+  })
 
-    // And the buffered crash still flushed via the resolved (loc) identity.
+  it('re-bootstraps at most once a minute: a 401 right after a bootstrap goes silent', async () => {
+    vi.spyOn(Date, 'now').mockImplementation(() => 1_000_000)
+    const { fetchMock, ingestCalls, bootstrapCalls, releaseBootstrap } = makeFetchMock({
+      ok: true,
+      body: ENABLED,
+      ingestStatuses: [401],
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const installed = installBrowserLogger()
+    fireWindowError('crash refused by a fresh token')
+    releaseBootstrap()
+    await installed
+    await settle()
+
+    // No bootstrap loop: the only bootstrap is the install's.
+    expect(bootstrapCalls.length).toBe(1)
     expect(ingestCalls.length).toBe(1)
-    expect(ingestCalls[0].events.length).toBe(1)
+
+    // And it stays silent afterwards.
+    fireWindowError('later crash')
+    await settle()
+    expect(ingestCalls.length).toBe(1)
   })
 })
 
