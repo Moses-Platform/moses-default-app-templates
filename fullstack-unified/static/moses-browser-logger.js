@@ -1,32 +1,38 @@
 // Copyright (c) 2025-2026 Siemer Industries.
 // SPDX-License-Identifier: BSL-1.1
 //
-// Moses browser-logger snippet for the fullstack-unified template (BLF-J).
+// Moses browser-logger snippet for the fullstack-unified template.
 //
-// Vanilla-JS port of `shared/browser-logger/index.ts`. Same trust model as a
-// Sentry DSN: the bootstrap endpoint hands the snippet a public, per-chart
-// ingest token whose blast radius is one chart's log stream.
+// Vanilla-JS port of `shared/browser-logger/index.ts`, and the same code as the
+// platform's injected client (moses-platform-prep
+// backend/internal/api/browser_logger_client.js, from `(function () {` on).
+// Keep the two in sync by hand; the five TS copies are byte-gated separately
+// (tools/check-vendored-browser-logger.sh).
 //
-// Wiring:
-//   1. main.go renders <meta name="moses-config" data-chart-id="…"
-//      data-deployment-id="…" data-api-base="…"> into index.html using the
-//      MOSES_CHART_ID / MOSES_DEPLOYMENT_ID / MOSES_API_BASE env vars.
-//   2. index.html includes this script. By default console.error / .warn are
-//      patched; opt-out by adding data-patch-console="false" to the <script>.
+// Bootstrap: the page reports where it runs (`loc` = origin + pathname); the
+// platform finds the app there and applies the app's own access decision. The
+// request is relative and carries the viewer's session same-origin
+// (credentials "same-origin": never cross-origin) — on the Moses origin and on
+// the apps origin alike. A public app's visitors get a token anonymously. The
+// token is short-lived: an ingest 401 bootstraps again (at most once a minute)
+// and resends the batch.
+//
+// Optional: a <meta name="moses-config" data-api-base="…"> in index.html
+// points the logger at another API origin. Leave it out on Moses (a
+// cross-origin bootstrap carries no viewer session). Opt out of console
+// patching with data-patch-console="false" on the <script> tag.
+//
+// The window.__mosesBrowserLoggerInstalled guard makes this coexist with the
+// gateway-injected client: whichever loads first wins.
+//
+// CRASH-CAPTURE ORDERING (CHAT-il3y6): the window 'error' and
+// 'unhandledrejection' listeners are attached SYNCHRONOUSLY before the
+// bootstrap .then() and buffer into a bounded queue; the console patch stays
+// inside the .then() because it depends on the fetched config. Do not move the
+// console patch up, and do not attach a second set of window listeners.
 //
 // All failures are silent — never throw out of this file or recurse into the
 // patched console.
-//
-// CRASH-CAPTURE ORDERING (CHAT-il3y6): bootstrap is async, but the most
-// valuable errors fire window.onerror BEFORE the bootstrap fetch resolves. So
-// the window 'error' and 'unhandledrejection' listeners are attached
-// SYNCHRONOUSLY at the top of install(), before the bootstrap .then(); their
-// handlers push into a bounded pre-bootstrap buffer. Once bootstrap resolves we
-// either drain that buffer through the single flush owner (enabled) or drop it
-// (disabled / bootstrap error). The console.error/.warn patching stays inside
-// the .then() because it depends on the fetched config. Do not move the console
-// patch up, and do not attach a second set of window listeners after bootstrap
-// (that would double-count every event).
 
 (function () {
   "use strict";
@@ -40,25 +46,20 @@
   // Bound the pre-bootstrap buffer so a crash-loop before bootstrap resolves
   // can't grow memory without limit. Drop-oldest once the cap is hit.
   var PREBOOTSTRAP_BUFFER_CAP = 50;
+  // An absolute URL's query and fragment (OAuth code/state, tokens, emails),
+  // keeping a trailing `:line[:column]` as stack frames carry it.
+  var URL_QUERY_OR_FRAGMENT = /(https?:\/\/[^\s?#)'"]+)[?#][^\s)'"]*?((?::\d+){1,2})?(?=[\s)'"]|$)/g;
 
+  // A <meta name="moses-config" data-api-base="…"> may point the logger at
+  // another API base; its chart/deployment ids are no longer used (the
+  // platform resolves the app from `loc`).
   function readConfig() {
     try {
       var meta = document.querySelector('meta[name="moses-config"]');
       if (!meta) return null;
-      var chartId = meta.getAttribute("data-chart-id") || "";
-      var deploymentId = meta.getAttribute("data-deployment-id") || "";
       var apiBase = meta.getAttribute("data-api-base") || "";
-      // Treat unsubstituted Go-template placeholders as "absent". main.go renders
-      // empty strings when env vars are missing, but defend against the literal.
-      // Missing ids no longer disable the logger: install() falls back to a
-      // `loc` param so the platform resolves identity server-side from the URL.
-      if (chartId.indexOf("{{") === 0) chartId = "";
-      if (deploymentId.indexOf("{{") === 0) deploymentId = "";
-      return {
-        chartId: chartId,
-        deploymentId: deploymentId,
-        apiBase: apiBase,
-      };
+      if (apiBase.indexOf("{{") === 0) apiBase = "";
+      return { apiBase: apiBase };
     } catch (_e) {
       return null;
     }
@@ -69,7 +70,10 @@
       var scripts = document.getElementsByTagName("script");
       for (var i = 0; i < scripts.length; i++) {
         var src = scripts[i].getAttribute("src") || "";
-        if (src.indexOf("moses-browser-logger.js") !== -1) {
+        if (
+          src.indexOf("moses-browser-logger.js") !== -1 ||
+          src.indexOf("browser-logs/client.js") !== -1
+        ) {
           var v = scripts[i].getAttribute("data-patch-console");
           if (v === "false" || v === "0") return false;
           return true;
@@ -79,6 +83,11 @@
       /* ignore */
     }
     return true;
+  }
+
+  // Drops the query and fragment of every absolute URL in s.
+  function stripUrlQueries(s) {
+    return String(s).replace(URL_QUERY_OR_FRAGMENT, "$1$2");
   }
 
   function clip(s, max) {
@@ -150,67 +159,64 @@
 
   function install(cfg) {
     // Idempotency latch: guarantee a single install even if this script and a
-    // gateway-injected client.js both load (or the file is included twice).
-    // Must precede the synchronous window-listener attach below so the second
-    // run attaches no duplicate listeners.
+    // template-bundled moses-browser-logger both load (or the file is included
+    // twice). Must precede the synchronous window-listener attach below so the
+    // second run attaches no duplicate listeners.
     if (typeof window !== "undefined") {
       if (window.__mosesBrowserLoggerInstalled) return;
       window.__mosesBrowserLoggerInstalled = true;
     }
 
     var apiBase = cfg.apiBase || "";
-    // Identity resolution: when both ids are present, pass them directly. When
-    // either is missing, fall back to a `loc` param (origin+pathname) so the
-    // platform can resolve chart/deployment identity server-side from the
-    // request URL. The per-chart enabled gate is enforced by bootstrap either
-    // way. (fullstack-unified has no build step, so this runtime path is the
-    // only way it can log — do not reintroduce an early no-op on missing ids.)
-    var bootstrapBase = apiBase + "/api/v1/browser-logs/bootstrap";
+    // The platform resolves the app from where the page runs and decides
+    // access as for opening the app; the per-chart enabled gate applies too.
     var bootstrapUrl =
-      cfg.chartId && cfg.deploymentId
-        ? bootstrapBase +
-          "?chart_id=" + encodeURIComponent(cfg.chartId) +
-          "&deployment_id=" + encodeURIComponent(cfg.deploymentId)
-        : bootstrapBase +
-          "?loc=" +
-          encodeURIComponent(
-            typeof window !== "undefined"
-              ? window.location.origin + window.location.pathname
-              : ""
-          );
+      apiBase +
+      "/api/v1/browser-logs/bootstrap?loc=" +
+      encodeURIComponent(
+        typeof window !== "undefined"
+          ? window.location.origin + window.location.pathname
+          : ""
+      );
+    // Same-origin only: the viewer's Moses cookie never goes cross-origin.
+    var bootstrapOpts = { credentials: "same-origin" };
+    var REBOOTSTRAP_MIN_INTERVAL_MS = 60000;
+    var lastBootstrapAt = 0;
 
     // --- Hoisted state (must outlive the bootstrap .then) -------------------
-    // `queue` collects events both before AND after bootstrap. Before bootstrap
-    // it is a bounded buffer fed only by the window listeners; after bootstrap
-    // the same array is drained and reused by the flush owner. `dropped` flips
-    // true when bootstrap reports disabled or errors — the buffer is cleared
-    // and enqueue() becomes a silent no-op.
     var queue = [];
     var dropped = false;
     var flushReady = false;
     var flushScheduled = false;
+    // Bumped on every applied bootstrap: a 401 for a batch sent with an older
+    // token says nothing about the current one.
+    var tokenGeneration = 0;
+    // The one re-bootstrap in flight; concurrent 401s wait for it.
+    var rebootstrapping = null;
     var ingestEndpoint = "";
     var token = "";
     var sampleRate = 1.0;
 
     function enqueue(level, message, stack, extra) {
       if (dropped) return;
-      // Sampling only applies once we have a config; before bootstrap we keep
-      // everything (bounded) so a pre-bootstrap crash is never sampled away.
       if (flushReady && sampleRate < 1.0 && Math.random() > sampleRate) return;
       var event = {
         ts: new Date().toISOString(),
         level: level,
-        message: clip(String(message), MAX_MESSAGE_BYTES),
+        message: clip(stripUrlQueries(message), MAX_MESSAGE_BYTES),
         source_kind: "client_runtime",
       };
-      if (stack) event.stack = clip(stack, MAX_STACK_BYTES);
-      if (typeof location !== "undefined") event.url = location.href;
+      if (stack) event.stack = clip(stripUrlQueries(stack), MAX_STACK_BYTES);
+      if (typeof location !== "undefined") event.url = location.origin + location.pathname;
       var ctx = sanitize(extra);
+      if (ctx) {
+        for (var ck in ctx) {
+          if (typeof ctx[ck] === "string") ctx[ck] = stripUrlQueries(ctx[ck]);
+        }
+      }
       if (ctx) event.context = ctx;
       queue.push(event);
       if (!flushReady) {
-        // Pre-bootstrap: bound the buffer, drop-oldest. No timers/flush yet.
         while (queue.length > PREBOOTSTRAP_BUFFER_CAP) {
           queue.shift();
         }
@@ -229,6 +235,7 @@
       if (!flushReady) return;
       if (queue.length === 0) return;
       var events = queue.splice(0, queue.length);
+      var sentWith = tokenGeneration;
       try {
         var p = fetch(ingestEndpoint, {
           method: "POST",
@@ -240,12 +247,71 @@
           keepalive: true,
           credentials: "omit",
         });
-        if (p && typeof p.catch === "function") {
-          p.catch(function () { /* drop — recursion-safe */ });
+        if (p && typeof p.then === "function") {
+          p.then(function (res) {
+            // The token expired (or its key was rotated out): bootstrap again
+            // and resend this batch, bounded like the pre-bootstrap buffer.
+            if (res && res.status === 401) {
+              queue = events.concat(queue).slice(-PREBOOTSTRAP_BUFFER_CAP);
+              if (sentWith !== tokenGeneration) {
+                // Sent with an older token; a fresh one is already here.
+                if (flushReady) flush();
+                return;
+              }
+              rebootstrap();
+            }
+          }).catch(function () { /* drop — recursion-safe */ });
         }
       } catch (_e) {
         /* ignore */
       }
+    }
+
+    function rebootstrap() {
+      // Several batches refused at once share ONE re-bootstrap; each re-queued
+      // its events, so the flush after it resends them all.
+      if (rebootstrapping) return;
+      flushReady = false;
+      var now = Date.now();
+      if (now - lastBootstrapAt < REBOOTSTRAP_MIN_INTERVAL_MS) {
+        dropped = true;
+        queue.length = 0;
+        return;
+      }
+      rebootstrapping = fetchBootstrap().then(function (boot) {
+        rebootstrapping = null;
+        if (!boot) {
+          dropped = true;
+          queue.length = 0;
+          return;
+        }
+        applyBootstrap(boot);
+        flushReady = true;
+        if (queue.length > 0) flush();
+      }).catch(function () {
+        rebootstrapping = null;
+        dropped = true;
+        queue.length = 0;
+      });
+    }
+
+    // fetchBootstrap resolves to an enabled bootstrap config, or null.
+    function fetchBootstrap() {
+      lastBootstrapAt = Date.now();
+      return fetch(bootstrapUrl, bootstrapOpts).then(function (res) {
+        if (!res || !res.ok) return null;
+        return res.json();
+      }).then(function (boot) {
+        if (!boot || !boot.enabled || !boot.token || !boot.endpoint) return null;
+        return boot;
+      });
+    }
+
+    function applyBootstrap(boot) {
+      tokenGeneration++;
+      ingestEndpoint = absolutize(boot.endpoint, apiBase);
+      sampleRate = clampSampleRate(boot.sampleRate != null ? boot.sampleRate : 1.0);
+      token = boot.token;
     }
 
     // Window error surface --------------------------------------------------
@@ -282,39 +348,25 @@
       });
     }
 
-    var fetchOpts = { credentials: "omit" };
     var bootstrapPromise;
     try {
-      bootstrapPromise = fetch(bootstrapUrl, fetchOpts);
+      bootstrapPromise = fetchBootstrap();
     } catch (_e) {
-      // fetch unavailable / sync throw — drop the buffer and go silent. The
-      // listeners stay attached but enqueue() is now a no-op.
       dropped = true;
       queue.length = 0;
       return;
     }
 
-    bootstrapPromise.then(function (res) {
-      if (!res || !res.ok) return;
-      return res.json();
-    }).then(function (boot) {
-      if (!boot || !boot.enabled || !boot.token || !boot.endpoint) {
-        // Logging disabled / bootstrap non-ok — drop the buffer, send nothing.
+    bootstrapPromise.then(function (boot) {
+      if (!boot) {
         dropped = true;
         queue.length = 0;
         return;
       }
 
-      // --- Bootstrap succeeded: wire up the flush owner --------------------
-      ingestEndpoint = absolutize(boot.endpoint, apiBase);
-      sampleRate = clampSampleRate(boot.sampleRate != null ? boot.sampleRate : 1.0);
-      token = boot.token;
+      applyBootstrap(boot);
       var patchConsole = readPatchConsoleFlag();
 
-      // Console patching ----------------------------------------------------
-      // Stays inside the .then(): it depends on the fetched config
-      // (patchConsole / sampleRate). The window listeners above are the only
-      // thing that had to move before the await.
       if (patchConsole && typeof console !== "undefined") {
         if (typeof console.error === "function") {
           var origErr = console.error.bind(console);
@@ -342,7 +394,6 @@
         }
       }
 
-      // Best-effort flush on hide/unload ------------------------------------
       if (typeof document !== "undefined") {
         document.addEventListener("visibilitychange", function () {
           if (document.visibilityState === "hidden") flush();
@@ -352,20 +403,17 @@
         window.addEventListener("pagehide", flush);
       }
 
-      // Open the flush gate and DRAIN the pre-bootstrap buffer in a single
-      // send. Done last so listeners/console-patch are fully wired first.
       flushReady = true;
       if (queue.length > 0) {
         flush();
       }
     }).catch(function () {
-      // Bootstrap failure — drop the buffered pre-bootstrap events, go silent.
       dropped = true;
       queue.length = 0;
     });
   }
 
-  var cfg = readConfig();
-  if (!cfg) return;
+  // No <meta name="moses-config"> → empty config (same-origin API base).
+  var cfg = readConfig() || { apiBase: "" };
   install(cfg);
 })();

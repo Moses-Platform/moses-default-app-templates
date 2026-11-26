@@ -19,57 +19,48 @@ installBrowserLogger();
 
 The call is fire-and-forget — it returns a `Promise<void>` you can ignore.
 
-## Build-time configuration
+## How it reaches Moses
 
-The snippet expects three Vite env vars, baked in at build time by Moses's
-in-cluster image build service:
+At boot the snippet calls `/api/v1/browser-logs/bootstrap?loc=<origin+pathname>`
+with `credentials: "same-origin"`. The platform finds the app from `loc` and
+applies the app's own access decision to the caller, exactly as for opening
+the app:
 
-| Var                          | Source                                     | Required |
-| ---------------------------- | ------------------------------------------ | -------- |
-| `VITE_MOSES_CHART_ID`        | The chart this build belongs to (UUID)    | recommended |
-| `VITE_MOSES_DEPLOYMENT_ID`   | `agent_pod_executions.id` for this build   | recommended |
-| `VITE_MOSES_API_BASE`        | Absolute URL to Moses API (empty = same origin) | no |
+- a signed-in viewer of a workspace or restricted app gets a token bound to
+  that app, its track and that viewer; an outsider gets nothing;
+- a public app's visitors get a token anonymously;
+- logging disabled, an unknown app, or any refusal: the snippet stays silent.
 
-When both of the first two are baked in, the snippet bootstraps with
-`chart_id` + `deployment_id`. When either is missing (build args not
-forwarded, chart-id stripped, or a non-Vite build), the snippet no longer
-self-disables: it bootstraps with a `loc=<origin+pathname>` param so the
-Moses platform resolves the chart/deployment identity server-side from the
-request URL. The per-chart "Browser error logging" toggle still gates the
-stream — a chart with logging disabled bootstraps to not-enabled and the
-snippet stays silent. Building outside Moses (e.g. a local `vite build` dry
-run) is still safe: the bootstrap request just fails/404s and the snippet
-goes quiet.
+The request is relative, so it works on the Moses origin
+(`/apps/<tenant>/<slug>/`) and on the separate apps origin alike: there the
+apps listener forwards `/api/v1/browser-logs/*` to Moses with the viewer's
+app pass. No credential is ever sent cross-origin.
 
-For local dev against a running Moses, set these in `.env.local`:
+Tokens are short-lived (about 1 h). An ingest `401` bootstraps again, at most
+once a minute, and resends the batch (bounded to 50 events). A `401` sooner
+than a minute after a bootstrap means the token is refused for good; the
+snippet then goes silent instead of looping.
 
-```
-VITE_MOSES_CHART_ID=<chart-uuid>
-VITE_MOSES_DEPLOYMENT_ID=<deployment-uuid>
-VITE_MOSES_API_BASE=http://localhost
-```
+The platform build still bakes `VITE_MOSES_CHART_ID` / `VITE_MOSES_DEPLOYMENT_ID`;
+the snippet ignores them. The only build-time setting is optional:
 
-## Cache-friendly Dockerfile pattern
+| Var                   | Meaning                                                     |
+| --------------------- | ----------------------------------------------------------- |
+| `VITE_MOSES_API_BASE` | Origin of the Moses API. Leave empty (same origin) on Moses. |
 
-In your template's `Dockerfile`, declare these as `ARG` only inside the
-final build stage — **not** above `npm ci` — so dependency layers stay
-cached across builds:
+Set it only for an app you host yourself against a Moses elsewhere: a
+cross-origin bootstrap carries no viewer session, so only a public app gets a
+token that way. Building outside Moses is safe: bootstrap fails and the
+snippet goes quiet.
 
-```dockerfile
-FROM node:26.13.1-alpine3.24 AS deps
-COPY package.json package-lock.json ./
-RUN npm ci
+## Why a vendored copy and not only the gateway's
 
-FROM deps AS build
-COPY . .
-ARG VITE_MOSES_CHART_ID
-ARG VITE_MOSES_DEPLOYMENT_ID
-ARG VITE_MOSES_API_BASE
-RUN VITE_MOSES_CHART_ID=$VITE_MOSES_CHART_ID \
-    VITE_MOSES_DEPLOYMENT_ID=$VITE_MOSES_DEPLOYMENT_ID \
-    VITE_MOSES_API_BASE=$VITE_MOSES_API_BASE \
-    npx vite build
-```
+The Envoy gateway injects the platform's copy of this logic
+(`<script src="/api/v1/browser-logs/client.js" defer>`) into app pages, but
+not into every page: not into public apps, preview tracks, apps on their own
+hostname, Traefik or ingress-nginx installs, or a gateway without the
+injector. The vendored copy covers those. When both load, the first install
+wins (`window.__mosesBrowserLoggerInstalled`), so nothing is reported twice.
 
 ## What gets sent
 
@@ -94,6 +85,10 @@ or on `pagehide`. The fetch uses `keepalive: true` so it survives unload.
 
 - `Authorization`, `Cookie`, `Set-Cookie`, `X-CSRF-Token` keys are stripped
   from any `context` object before send.
+- No URL query string or fragment: `url` is the page's origin + path, and
+  every absolute URL inside `message`, `stack` and `context` loses its
+  `?…` / `#…` (OAuth `code`/`state`, tokens, emails). Stack `:line:column`
+  is kept.
 - `message` is clipped to 4 KB; `stack` to 16 KB; `context` JSON to 2 KB.
 - Sample rate (server-controlled, default 1.0) gates per-event emission
   client-side.
@@ -106,19 +101,21 @@ Workspace admins control browser logging via chart settings:
   CC-shaped digit runs, and IPv4 addresses from `message` and `stack`.
 
 Bootstrap (`/api/v1/browser-logs/bootstrap`) reads the toggles on every
-page load, so flipping the switch takes effect on the next visit.
+page load and on every re-bootstrap, so flipping the switch takes effect on
+the next visit (or within the hour for an open tab).
 
-## Vanilla-JS port (BLF-J)
+## Vanilla-JS port
 
 The `fullstack-unified` template is plain Go + ES5+ JavaScript with no
 bundler, so it cannot consume this TypeScript module. It ships an inline
 port at
 [`fullstack-unified/static/moses-browser-logger.js`](../../fullstack-unified/static/moses-browser-logger.js)
-that mirrors this snippet's behaviour and config surface 1:1, but reads
-its config from a server-rendered `<meta name="moses-config">` tag
-populated by `main.go` from the `MOSES_CHART_ID` / `MOSES_DEPLOYMENT_ID`
-/ `MOSES_API_BASE` env vars. The two snippets stay in sync — change one,
-review the other.
+that mirrors this snippet's behaviour 1:1. Its body is the same code as the
+platform's injected client (`moses-platform-prep`
+`backend/internal/api/browser_logger_client.js`); keep the three in sync by
+hand. It needs no server-rendered config. An optional
+`<meta name="moses-config" data-api-base="…">` sets the API origin, like
+`VITE_MOSES_API_BASE` above.
 
 ## Vendored copies (byte-identical contract)
 

@@ -22,16 +22,12 @@ RUN if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi 
 # Source AFTER install: source-only changes reuse the cached deps layer.
 COPY . .
 
-# Moses BLF-B build args. Kept scoped to the build RUN below so they
+# Moses browser-logger build arg (optional; empty = same origin). Kept scoped to the build RUN below so they
 # don't influence npm ci via env-var leakage.
-ARG VITE_MOSES_CHART_ID=""
-ARG VITE_MOSES_DEPLOYMENT_ID=""
 ARG VITE_MOSES_API_BASE=""
 
-# Build with BLF-B vars in scope.
-RUN VITE_MOSES_CHART_ID="$VITE_MOSES_CHART_ID" \
-    VITE_MOSES_DEPLOYMENT_ID="$VITE_MOSES_DEPLOYMENT_ID" \
-    VITE_MOSES_API_BASE="$VITE_MOSES_API_BASE" \
+# Build with the browser-logger arg in scope.
+RUN VITE_MOSES_API_BASE="$VITE_MOSES_API_BASE" \
     sh -c 'npx tsc -p tsconfig.build.json && npx vite build'
 
 # --- Runtime ------------------------------------------------------------

@@ -57,7 +57,7 @@ Every variable the code reads, with its source file:
 | `MOSES_PLATFORM_API_KEY` / `MOSES_PLATFORM_API_URL` | nothing (no code in this template reads them) | Platform integration grant credentials — read them yourself if you call the Moses Platform API (see pattern below) |
 | `MOSES_EMBEDDING_FRAMING` / `MOSES_EMBEDDING_ALLOWED_ANCESTORS` / `MOSES_EMBEDDING_REPORT_URI` / `MOSES_DOMAIN` | `frontend/entrypoint.sh` | CSP frame-ancestors policy rendered at container start |
 | `BACKEND_SERVICE_HOST` / `BACKEND_SERVICE_PORT` | `frontend/entrypoint.sh` | Backend service DNS — **auto-injected by the chart** (`helm/templates/deployment.yaml`), never set manually |
-| `VITE_MOSES_CHART_ID` / `VITE_MOSES_DEPLOYMENT_ID` / `VITE_MOSES_API_BASE` | `frontend/src/moses-browser-logger.ts` (build args) | Browser-log reporter wiring (BLF-B); silent no-op when absent |
+| `VITE_MOSES_API_BASE` | `frontend/Dockerfile` build arg → `moses-browser-logger.ts` | Optional browser-log API origin; leave empty on Moses (same origin). The logger finds its app from the page URL (`loc`). |
 
 ## Preserved pattern: platform API consumption with graceful degradation
 

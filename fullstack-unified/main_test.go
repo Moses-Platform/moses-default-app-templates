@@ -5,15 +5,17 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 )
 
-// Contract tests for the Moses plumbing surface (health + openapi + index
-// templating + embedding CSP + tenant contract + the spec↔mux lock). They
+// Contract tests for the Moses plumbing surface (health + openapi + static
+// index + browser logger + embedding CSP + tenant contract + the spec↔mux lock). They
 // pass with ZERO application routes; as you add real endpoints, extend them
 // (see the deleted demo's tests in git history for route-probing examples).
 
@@ -83,60 +85,209 @@ func TestOpenAPISpec_ServersBasePathFree(t *testing.T) {
 	}
 }
 
-// TestRenderIndex_SubstitutesMosesConfig verifies the BLF-J server-side
-// substitution: chart/deployment/api-base values are interpolated into the
-// <meta name="moses-config"> tag the browser-logger snippet reads.
-func TestRenderIndex_SubstitutesMosesConfig(t *testing.T) {
-	loadIndexTemplate()
-	if indexTemplate == nil {
-		t.Fatal("indexTemplate is nil after loadIndexTemplate; embedded index.html missing or unparseable")
+// The index page is served as a plain static file: nothing server-renders
+// the browser-logger config any more (the logger finds its app from the page
+// URL), so no Moses origin or id is baked into the page.
+func TestStaticHandler_ServesIndexWithLoggerAndNoServerConfig(t *testing.T) {
+	h := newStaticHandler()
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /: expected 200, got %d", rec.Code)
 	}
-
-	w := httptest.NewRecorder()
-	if !renderIndex(w, indexContext{
-		ChartID:      "chart-123",
-		DeploymentID: "dep-abc",
-		APIBase:      "http://moses.local",
-	}) {
-		t.Fatal("renderIndex returned false despite indexTemplate being set")
+	body := rec.Body.String()
+	if !strings.Contains(body, `<script src="moses-browser-logger.js"></script>`) {
+		t.Errorf("index must load the browser logger by a relative path\n--- body ---\n%s", body)
 	}
-
-	body := w.Body.String()
-	for _, want := range []string{
-		`name="moses-config"`,
-		`data-chart-id="chart-123"`,
-		`data-deployment-id="dep-abc"`,
-		`data-api-base="http://moses.local"`,
-		`moses-browser-logger.js`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("rendered index missing %q\n--- body ---\n%s", want, body)
+	for _, banned := range []string{"moses-config", "{{"} {
+		if strings.Contains(body, banned) {
+			t.Errorf("index must not carry server-rendered logger config (%q)\n--- body ---\n%s", banned, body)
 		}
 	}
 }
 
-// TestRenderIndex_EmptyContextStillRendersTag verifies that when the env
-// vars are absent the meta tag is still emitted (with empty data-* values).
-// The snippet then falls back to a location-derived `loc` param (the
-// platform resolves identity server-side) — empty values must therefore
-// still render as a well-formed tag, not vanish.
-func TestRenderIndex_EmptyContextStillRendersTag(t *testing.T) {
-	loadIndexTemplate()
-	if indexTemplate == nil {
-		t.Fatal("indexTemplate is nil after loadIndexTemplate")
-	}
+// browserLoggerHarness runs static/moses-browser-logger.js in a node vm with a
+// fake window/fetch/clock and prints every fetch the snippet makes as JSON.
+// Scenarios:
+//   - expire:   the token has expired by the time the first batch is sent
+//     (ingest 401 more than a minute after bootstrap);
+//   - fresh401: the first batch is refused straight after bootstrap;
+//   - race:     two batches in flight with the expiring token are both refused;
+//   - privacy:  page, stack, filename and message URLs carry a query and fragment.
+const browserLoggerHarness = `
+const vm = require("vm"), fs = require("fs");
+const [src, scenario] = [fs.readFileSync(process.argv[2], "utf8"), process.argv[3]];
+let now = 1000000;
+const statuses = { expire: [401, 200], fresh401: [401], race: [401, 401], privacy: [] }[scenario];
+const SECRET = "?code=c0de&state=st4te#access_token=t0k", ASSET = "http://apps.example/apps/t/s/app.js";
+let releaseIngest;
+const ingestGate = scenario === "race" ? new Promise((r) => (releaseIngest = r)) : Promise.resolve();
+const calls = [], listeners = {};
+const location = { origin: "http://apps.example", pathname: "/apps/t/s/", href: "http://apps.example/apps/t/s/" + (scenario === "privacy" ? SECRET : "") };
+const window = { location, addEventListener: (t, f) => (listeners[t] = listeners[t] || []).push(f) };
+const document = { querySelector: () => null, getElementsByTagName: () => [], addEventListener() {}, visibilityState: "visible" };
+class FakeDate extends Date { static now() { return now; } }
+function fetch(url, opts) {
+  calls.push({ url, opts: { credentials: opts && opts.credentials, body: opts && opts.body } });
+  if (url.indexOf("/api/v1/browser-logs/bootstrap") !== -1) {
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ enabled: true, token: "tok", endpoint: "/api/v1/browser-logs" }) });
+  }
+  const status = statuses.length ? statuses.shift() : 200;
+  return ingestGate.then(() => ({ ok: status < 300, status }));
+}
+const fire = (type, ev) => (listeners[type] || []).forEach((f) => f(ev));
+const later = (ms, f) => setTimeout(f, ms);
+vm.runInNewContext(src, { window, document, location, fetch, Date: FakeDate, console: { error() {}, warn() {} }, setTimeout, JSON, Math, Object, Array, String, Number, Promise, RegExp, Error, encodeURIComponent });
+if (scenario === "privacy") {
+  fire("error", { message: "Failed to load " + ASSET + SECRET, filename: ASSET + SECRET, lineno: 10, colno: 5,
+    error: { stack: "TypeError: x\n    at run (" + ASSET + "?v=1&code=c0de:10:5)" } });
+} else {
+  fire("error", { message: "boom", filename: "app.js", lineno: 1, colno: 1 });
+}
+if (scenario !== "fresh401") now += 61000;
+later(20, () => {
+  if (scenario === "fresh401") fire("error", { message: "later" });
+  if (scenario === "race") {
+    fire("error", { message: "second batch" });
+    fire("pagehide", {});
+    releaseIngest();
+    later(20, () => { fire("error", { message: "after recovery" }); fire("pagehide", {}); });
+  }
+  later(60, () => process.stdout.write(JSON.stringify(calls), () => process.exit(0)));
+});
+`
 
-	w := httptest.NewRecorder()
-	if !renderIndex(w, indexContext{}) {
-		t.Fatal("renderIndex returned false despite indexTemplate being set")
-	}
+type loggerFetch struct {
+	URL  string `json:"url"`
+	Opts struct {
+		Credentials string `json:"credentials"`
+		Body        string `json:"body"`
+	} `json:"opts"`
+}
 
-	body := w.Body.String()
-	if !strings.Contains(body, `name="moses-config"`) {
-		t.Errorf("expected <meta name=\"moses-config\"> tag even with empty context\n--- body ---\n%s", body)
+func runBrowserLogger(t *testing.T, scenario string) []loggerFetch {
+	t.Helper()
+	node, err := exec.LookPath("node")
+	if err != nil {
+		// go test hides a passing package's output, so a skip would go
+		// unnoticed: in CI (CI set, as on GitHub runners) a missing node fails.
+		msg := "node not on PATH; the browser-logger behaviour tests did not run"
+		if os.Getenv("CI") != "" {
+			t.Fatal(msg)
+		}
+		t.Skip(msg)
 	}
-	if !strings.Contains(body, `data-chart-id=""`) {
-		t.Errorf("expected empty data-chart-id when env var missing\n--- body ---\n%s", body)
+	dir := t.TempDir()
+	harness := filepath.Join(dir, "harness.js")
+	if err := os.WriteFile(harness, []byte(browserLoggerHarness), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snippet, err := filepath.Abs(filepath.Join("static", "moses-browser-logger.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(node, harness, snippet, scenario).Output()
+	if err != nil {
+		t.Fatalf("node harness failed: %v", err)
+	}
+	var calls []loggerFetch
+	if err := json.Unmarshal(out, &calls); err != nil {
+		t.Fatalf("harness output %q: %v", out, err)
+	}
+	return calls
+}
+
+func splitLoggerCalls(calls []loggerFetch) (bootstraps, ingests []loggerFetch) {
+	for _, c := range calls {
+		if strings.Contains(c.URL, "/api/v1/browser-logs/bootstrap") {
+			bootstraps = append(bootstraps, c)
+		} else {
+			ingests = append(ingests, c)
+		}
+	}
+	return bootstraps, ingests
+}
+
+// The platform's bootstrap finds the app from the page location and applies
+// the app's access decision to the caller: the logger must ask same-origin
+// with the viewer's credentials, by loc only.
+func TestBrowserLogger_BootstrapsSameOriginByLocation(t *testing.T) {
+	bootstraps, _ := splitLoggerCalls(runBrowserLogger(t, "expire"))
+	if len(bootstraps) == 0 {
+		t.Fatal("logger made no bootstrap request")
+	}
+	b := bootstraps[0]
+	want := "/api/v1/browser-logs/bootstrap?loc=" + url.QueryEscape("http://apps.example/apps/t/s/")
+	if b.URL != strings.ReplaceAll(want, "+", "%20") {
+		t.Errorf("bootstrap URL = %q, want %q (relative, by loc, no ids)", b.URL, want)
+	}
+	if b.Opts.Credentials != "same-origin" {
+		t.Errorf("bootstrap credentials = %q, want same-origin", b.Opts.Credentials)
+	}
+}
+
+// Tokens are short-lived: an ingest 401 bootstraps again and resends the batch.
+func TestBrowserLogger_ExpiredTokenRebootstrapsAndResends(t *testing.T) {
+	bootstraps, ingests := splitLoggerCalls(runBrowserLogger(t, "expire"))
+	if len(bootstraps) != 2 || len(ingests) != 2 {
+		t.Fatalf("want 2 bootstraps and 2 ingests, got %d and %d", len(bootstraps), len(ingests))
+	}
+	if ingests[1].Opts.Body != ingests[0].Opts.Body {
+		t.Errorf("resent batch differs:\n first %s\n again %s", ingests[0].Opts.Body, ingests[1].Opts.Body)
+	}
+	if ingests[1].Opts.Credentials != "omit" {
+		t.Errorf("ingest credentials = %q, want omit (bearer token only)", ingests[1].Opts.Credentials)
+	}
+}
+
+// Two batches refused at once share ONE re-bootstrap; both are resent and the
+// logger keeps running (before: the second 401 silenced it until reload).
+func TestBrowserLogger_ConcurrentRefusalsShareOneRebootstrap(t *testing.T) {
+	bootstraps, ingests := splitLoggerCalls(runBrowserLogger(t, "race"))
+	if len(bootstraps) != 2 {
+		t.Fatalf("want 2 bootstraps (install + one re-bootstrap), got %d", len(bootstraps))
+	}
+	var resent strings.Builder
+	for _, c := range ingests[min(2, len(ingests)):] {
+		resent.WriteString(c.Opts.Body)
+	}
+	for _, want := range []string{"boom", "second batch", "after recovery"} {
+		if !strings.Contains(resent.String(), want) {
+			t.Errorf("%q not sent after the re-bootstrap; sends after the two refused: %s", want, resent.String())
+		}
+	}
+}
+
+// No event field may carry a URL query or fragment (OAuth code/state, tokens):
+// origin + path only, stack line:column kept.
+func TestBrowserLogger_EventsCarryNoURLQueryOrFragment(t *testing.T) {
+	_, ingests := splitLoggerCalls(runBrowserLogger(t, "privacy"))
+	if len(ingests) != 1 {
+		t.Fatalf("want 1 ingest, got %d", len(ingests))
+	}
+	body := ingests[0].Opts.Body
+	for _, leaked := range []string{"c0de", "st4te", "t0k", "v=1"} {
+		if strings.Contains(body, leaked) {
+			t.Errorf("event body leaks %q: %s", leaked, body)
+		}
+	}
+	for _, want := range []string{
+		`"url":"http://apps.example/apps/t/s/"`,
+		`at run (http://apps.example/apps/t/s/app.js:10:5)`,
+		`"filename":"http://apps.example/apps/t/s/app.js"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("event body missing %s: %s", want, body)
+		}
+	}
+}
+
+// At most one bootstrap a minute: a 401 straight after a bootstrap means the
+// token is refused for good, so the logger goes silent instead of looping.
+func TestBrowserLogger_FreshTokenRefusedGoesSilent(t *testing.T) {
+	bootstraps, ingests := splitLoggerCalls(runBrowserLogger(t, "fresh401"))
+	if len(bootstraps) != 1 || len(ingests) != 1 {
+		t.Errorf("want 1 bootstrap and 1 ingest (then silence), got %d and %d", len(bootstraps), len(ingests))
 	}
 }
 
@@ -313,7 +464,7 @@ func TestBrowserLoggerSyncCrashCapture(t *testing.T) {
 		"PREBOOTSTRAP_BUFFER_CAP",
 		"flushReady",
 		"dropped",
-		"queue.length = 0",  // buffer cleared on disabled/error
+		"queue.length = 0",                       // buffer cleared on disabled/error
 		"queue.length > PREBOOTSTRAP_BUFFER_CAP", // drop-oldest bound
 	} {
 		if !strings.Contains(src, want) {

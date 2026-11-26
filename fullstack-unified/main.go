@@ -4,7 +4,6 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
-	"html/template"
 	"io/fs"
 	"log"
 	"net/http"
@@ -78,60 +77,17 @@ var staticFiles embed.FS
 //go:embed api/openapi.json
 var openapiSpec []byte
 
-// indexTemplate is parsed once at startup from the embedded static/index.html.
-// It renders the Moses browser-logger meta tag using MOSES_CHART_ID,
-// MOSES_DEPLOYMENT_ID, and MOSES_API_BASE env vars (BLF-J / CHAT-ry35). When
-// the env vars are absent the tag still renders with empty values and the
-// snippet falls back to a location-derived `loc` param so the platform can
-// resolve identity server-side (it does NOT disable itself).
-//
-// NOTE: because index.html goes through html/template, any literal `{{ }}`
-// in it is executed as a template action against indexContext — a stray
-// `{{title}}` silently renders as an error/empty. Escape braces or keep
-// them out of static/index.html (see skills/usage.md).
-var indexTemplate *template.Template
-
-// indexContext is the data struct rendered into static/index.html. The
-// fields match the data-* attributes on the <meta name="moses-config"> tag.
-type indexContext struct {
-	ChartID      string
-	DeploymentID string
-	APIBase      string
-}
-
-// loadIndexTemplate parses the embedded static/index.html into indexTemplate.
-// Idempotent — safe to call from tests.
-func loadIndexTemplate() {
+// newStaticHandler serves the embedded static/ directory (index.html, the
+// browser logger, app.js, CSS). It is mounted AFTER http.StripPrefix(baseURL),
+// so request paths are relative to the static root. index.html is a plain
+// file: the browser logger finds its app from the page URL, so nothing is
+// rendered into the page server-side.
+func newStaticHandler() http.Handler {
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
-		log.Printf("NOTE: failed to create static sub-filesystem: %v", err)
-		return
+		log.Fatalf("Failed to create static sub-filesystem: %v", err)
 	}
-	data, err := fs.ReadFile(staticFS, "index.html")
-	if err != nil {
-		log.Printf("NOTE: failed to read embedded static/index.html: %v", err)
-		return
-	}
-	tmpl, err := template.New("index.html").Parse(string(data))
-	if err != nil {
-		log.Printf("NOTE: failed to parse static/index.html as template; serving raw: %v", err)
-		return
-	}
-	indexTemplate = tmpl
-}
-
-// renderIndex renders indexTemplate into w with the given context. Returns
-// whether the template was rendered (false → caller should fall back to the
-// file server). Extracted for test coverage of the BLF-J substitution.
-func renderIndex(w http.ResponseWriter, ctx indexContext) bool {
-	if indexTemplate == nil {
-		return false
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := indexTemplate.Execute(w, ctx); err != nil {
-		log.Printf("NOTE: failed to render index.html template: %v", err)
-	}
-	return true
+	return http.FileServer(http.FS(staticFS))
 }
 
 func main() {
@@ -163,43 +119,11 @@ func main() {
 	// Register health / OpenAPI / API routes (see registerAPIRoutes).
 	registerAPIRoutes(mux, baseURL)
 
-	// Static files — served at BASE_URL prefix via Go embed
-	staticFS, err := fs.Sub(staticFiles, "static")
-	if err != nil {
-		log.Fatalf("Failed to create static sub-filesystem: %v", err)
-	}
-
-	// Parse index.html as a Go template once at startup so the BLF-J browser
-	// logger meta tag can be filled with chart/deployment IDs from the env
-	// without re-reading the file per request. If parsing fails the index
-	// handler falls back to serving the raw file — the snippet's readConfig()
-	// treats the literal {{.…}} placeholders as absent and the logger then
-	// uses its location-derived `loc` fallback.
-	loadIndexTemplate()
-
-	fileServer := http.FileServer(http.FS(staticFS))
-
-	// indexHandler renders index.html through the parsed template (BLF-J),
-	// falling back to the file server for every other asset (CSS, JS, fav-
-	// icon, etc.). It is mounted AFTER http.StripPrefix(baseURL) so the path
-	// here is always relative to the embedded static FS root.
-	indexHandler := func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "" || r.URL.Path == "/" || r.URL.Path == "/index.html" {
-			if renderIndex(w, indexContext{
-				ChartID:      os.Getenv("MOSES_CHART_ID"),
-				DeploymentID: os.Getenv("MOSES_DEPLOYMENT_ID"),
-				APIBase:      os.Getenv("MOSES_API_BASE"),
-			}) {
-				return
-			}
-		}
-		fileServer.ServeHTTP(w, r)
-	}
-
+	// Static files — served at BASE_URL prefix via Go embed.
 	if baseURL != "" {
-		mux.Handle(baseURL+"/", http.StripPrefix(baseURL, http.HandlerFunc(indexHandler)))
+		mux.Handle(baseURL+"/", http.StripPrefix(baseURL, newStaticHandler()))
 	} else {
-		mux.HandleFunc("/", indexHandler)
+		mux.Handle("/", newStaticHandler())
 	}
 
 	srv := &http.Server{

@@ -8,26 +8,29 @@
 //     import { installBrowserLogger } from "@moses/browser-logger";
 //     installBrowserLogger();
 //
-// At build time, the Moses platform's in-cluster image builder bakes three Vite
-// env vars into the bundle:
+// Bootstrap: at boot the snippet asks the platform for its config (enabled
+// flag, ingest token, sample rate) at `/api/v1/browser-logs/bootstrap?loc=…`,
+// where `loc` is the page's origin + pathname. The platform finds the app from
+// `loc` and applies the app's own access decision to the caller, exactly as
+// for opening the app. The request is RELATIVE and uses credentials
+// "same-origin": on the Moses origin (`/apps/<tenant>/<slug>/`) and on the
+// apps origin alike it reaches the platform with the viewer's session (the
+// Moses cookie or the apps-origin app pass), and it never sends a credential
+// cross-origin. A public app's visitors get a token anonymously. Disabled,
+// refused or unknown → the snippet silently no-ops.
 //
-//   - VITE_MOSES_CHART_ID       — the chart this build belongs to (UUID)
-//   - VITE_MOSES_DEPLOYMENT_ID  — the per-build deployment id (UUID, the
-//                                 agent_pod_executions row that produced this
-//                                 image)
-//   - VITE_MOSES_API_BASE       — empty string for same-origin / desktop;
-//                                 absolute URL when the platform sits on a
-//                                 different host (e.g. production with
-//                                 multi-domain ingress)
+// The token is short-lived (about 1 h) and bound to app + track + viewer. An
+// ingest 401 bootstraps again — at most once a minute — and resends the
+// batch; a 401 sooner than that means the token is refused for good, so the
+// snippet goes silent instead of looping.
 //
-// At boot the snippet hits BLF-A's bootstrap endpoint to fetch its config
-// (per-chart enabled flag + ingest token + sample rate). When both env vars
-// are present it passes chart_id+deployment_id; when either is missing (built
-// outside Moses, or chart-id stripped) it instead passes a `loc` param
-// (origin+pathname) so the platform can resolve chart/deployment identity
-// server-side from the request URL — the snippet no longer self-disables on
-// missing ids. If the resolved chart has browser logging disabled, bootstrap
-// returns not-enabled and the snippet silently no-ops.
+// VITE_MOSES_API_BASE (optional, build time) points bootstrap and ingest at
+// another origin. Leave it empty on Moses: a cross-origin bootstrap carries no
+// viewer session, so only public apps would get a token.
+//
+// The gateway may also inject the platform's copy of this logic
+// (`/api/v1/browser-logs/client.js`); the install latch below makes whichever
+// runs first the only one.
 //
 // CRASH-CAPTURE ORDERING (CHAT-il3y6): bootstrap is async (`await fetch`), but
 // the most valuable errors — a render-time crash in the synchronous code that
@@ -78,33 +81,44 @@ const QUEUE_FLUSH_INTERVAL_MS = 5_000;
 // Bound the pre-bootstrap buffer so a crash-loop that fires before bootstrap
 // resolves can't grow memory without limit. Drop-oldest once the cap is hit.
 const PREBOOTSTRAP_BUFFER_CAP = 50;
+// An ingest 401 bootstraps again only if the last bootstrap is this old.
+const REBOOTSTRAP_MIN_INTERVAL_MS = 60_000;
+// An absolute URL's query and fragment (OAuth code/state, tokens, emails),
+// keeping a trailing `:line[:column]` as stack frames carry it.
+const URL_QUERY_OR_FRAGMENT = /(https?:\/\/[^\s?#)'"]+)[?#][^\s)'"]*?((?::\d+){1,2})?(?=[\s)'"]|$)/g;
 
 export async function installBrowserLogger(opts: InstallOptions = {}): Promise<void> {
   // Idempotency latch: guarantee a single install even if this runs twice
   // (bundled snippet + gateway-injected client.js coexisting, or a double
   // import). Must precede the synchronous window-listener attach below so the
   // second call attaches no duplicate listeners. Guarded on `window` so the
-  // no-window path (SSR / tests without a DOM) still falls through to the
-  // existing loc-fallback behavior.
+  // no-window path (SSR / tests without a DOM) still runs.
   if (typeof window !== "undefined") {
     if ((window as any).__mosesBrowserLoggerInstalled) return;
     (window as any).__mosesBrowserLoggerInstalled = true;
   }
 
   // import.meta.env is the Vite-injected env object. Use a guarded read so
-  // this file also compiles under bundlers that don't define it (the call
-  // becomes a no-op and the snippet stays silent).
-  const env = readViteEnv();
-  const chartId = env.VITE_MOSES_CHART_ID;
-  const deploymentId = env.VITE_MOSES_DEPLOYMENT_ID;
+  // this file also compiles under bundlers that don't define it (the base is
+  // then empty: same origin).
+  const apiBase = readViteEnv().VITE_MOSES_API_BASE || "";
+  const bootstrapUrl =
+    apiBase +
+    "/api/v1/browser-logs/bootstrap?loc=" +
+    encodeURIComponent(
+      typeof window !== "undefined"
+        ? window.location.origin + window.location.pathname
+        : ""
+    );
+  let lastBootstrapAt = 0;
 
   // --- Hoisted state (must outlive the await) -------------------------------
   // `queue` collects events both before AND after bootstrap. Before bootstrap
-  // it is a bounded buffer fed only by the window listeners; after bootstrap
-  // the same array is drained and reused by the flush owner. `dropped` flips
-  // true when bootstrap reports disabled or errors — at that point the buffer
-  // is cleared and enqueue() becomes a silent no-op.
-  const queue: QueuedEvent[] = [];
+  // (and while a re-bootstrap runs) it is a bounded buffer; after bootstrap it
+  // is drained by the flush owner. `dropped` flips true when bootstrap reports
+  // disabled or errors — at that point the buffer is cleared and enqueue()
+  // becomes a silent no-op.
+  let queue: QueuedEvent[] = [];
   let dropped = false;
   // Post-bootstrap config. Null until (and unless) bootstrap enables logging.
   let ingestEndpoint = "";
@@ -112,6 +126,11 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
   let sampleRate = 1.0;
   let flushReady = false;
   let flushScheduled = false;
+  // Bumped on every applied bootstrap: a 401 for a batch sent with an older
+  // token says nothing about the current one.
+  let tokenGeneration = 0;
+  // The one re-bootstrap in flight; concurrent 401s wait for it.
+  let rebootstrapping: Promise<void> | null = null;
 
   function enqueue(
     level: Level,
@@ -126,14 +145,14 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
     queue.push({
       ts: new Date().toISOString(),
       level,
-      message: clip(String(message), MAX_MESSAGE_BYTES),
-      stack: stack ? clip(stack, MAX_STACK_BYTES) : undefined,
-      url: typeof location !== "undefined" ? location.href : undefined,
+      message: clip(stripUrlQueries(String(message)), MAX_MESSAGE_BYTES),
+      stack: stack ? clip(stripUrlQueries(stack), MAX_STACK_BYTES) : undefined,
+      url: typeof location !== "undefined" ? location.origin + location.pathname : undefined,
       source_kind: "client_runtime",
-      context: sanitize(extra),
+      context: stripContextUrls(sanitize(extra)),
     });
     if (!flushReady) {
-      // Pre-bootstrap: bound the buffer, drop-oldest. No timers/flush yet.
+      // (Re-)bootstrap pending: bound the buffer, drop-oldest. No timers/flush yet.
       while (queue.length > PREBOOTSTRAP_BUFFER_CAP) {
         queue.shift();
       }
@@ -152,6 +171,7 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
     if (!flushReady) return;
     if (queue.length === 0) return;
     const events = queue.splice(0, queue.length);
+    const sentWith = tokenGeneration;
     try {
       void fetch(ingestEndpoint, {
         method: "POST",
@@ -162,13 +182,77 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
         body: JSON.stringify({ events }),
         keepalive: true,
         credentials: "omit",
-      }).catch(() => {
-        // Network or CORS failure — drop events. Logging here would
-        // recurse via the patched console, so we swallow silently.
-      });
+      })
+        .then((res) => {
+          // The token expired (or its key was rotated out): bootstrap again
+          // and resend this batch, bounded like the pre-bootstrap buffer.
+          if (res && res.status === 401) {
+            queue = events.concat(queue).slice(-PREBOOTSTRAP_BUFFER_CAP);
+            if (sentWith !== tokenGeneration) {
+              // Sent with an older token; a fresh one is already here.
+              if (flushReady) flush();
+              return;
+            }
+            void rebootstrap();
+          }
+        })
+        .catch(() => {
+          // Network or CORS failure — drop events. Logging here would
+          // recurse via the patched console, so we swallow silently.
+        });
     } catch {
       // fetch may throw synchronously in degenerate environments; ignore.
     }
+  }
+
+  function goSilent(): void {
+    dropped = true;
+    queue.length = 0;
+  }
+
+  // fetchBootstrap resolves to an enabled config, or null (disabled, refused,
+  // unknown app, network error).
+  async function fetchBootstrap(): Promise<BootstrapConfig | null> {
+    lastBootstrapAt = Date.now();
+    try {
+      const res = await fetch(bootstrapUrl, { credentials: "same-origin" });
+      if (!res.ok) return null;
+      const cfg = (await res.json()) as BootstrapConfig;
+      if (!cfg || !cfg.enabled || !cfg.token || !cfg.endpoint) return null;
+      return cfg;
+    } catch {
+      return null;
+    }
+  }
+
+  function applyBootstrap(cfg: BootstrapConfig): void {
+    tokenGeneration++;
+    ingestEndpoint = absolutize(cfg.endpoint ?? "", apiBase);
+    sampleRate = clampSampleRate(opts.sampleRate ?? cfg.sampleRate ?? 1.0);
+    token = cfg.token ?? "";
+  }
+
+  function rebootstrap(): Promise<void> {
+    // Several batches refused at once share ONE re-bootstrap; each re-queued
+    // its events, so the flush after it resends them all.
+    if (rebootstrapping) return rebootstrapping;
+    flushReady = false;
+    if (Date.now() - lastBootstrapAt < REBOOTSTRAP_MIN_INTERVAL_MS) {
+      // Refused by a token this fresh: it will not get better. Go silent.
+      goSilent();
+      return Promise.resolve();
+    }
+    rebootstrapping = fetchBootstrap().then((cfg) => {
+      rebootstrapping = null;
+      if (!cfg) {
+        goSilent();
+        return;
+      }
+      applyBootstrap(cfg);
+      flushReady = true;
+      if (queue.length > 0) flush();
+    });
+    return rebootstrapping;
   }
 
   // Window error surface ------------------------------------------------------
@@ -202,52 +286,15 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
     });
   }
 
-  const apiBase = env.VITE_MOSES_API_BASE || "";
-  // Identity resolution: when the build baked in both ids, pass them directly.
-  // When either is missing, fall back to a `loc` param (origin+pathname) so the
-  // platform can resolve chart/deployment identity server-side from the request
-  // URL — apps built without the Vite ids still log. The per-chart enabled gate
-  // is enforced by bootstrap either way.
-  const bootstrapBase = apiBase + "/api/v1/browser-logs/bootstrap";
-  const bootstrapUrl =
-    chartId && deploymentId
-      ? bootstrapBase +
-        "?chart_id=" + encodeURIComponent(chartId) +
-        "&deployment_id=" + encodeURIComponent(deploymentId)
-      : bootstrapBase +
-        "?loc=" +
-        encodeURIComponent(
-          typeof window !== "undefined"
-            ? window.location.origin + window.location.pathname
-            : ""
-        );
-
-  let cfg: BootstrapConfig | null = null;
-  try {
-    const res = await fetch(bootstrapUrl, { credentials: "omit" });
-    if (!res.ok) {
-      dropped = true;
-      queue.length = 0;
-      return;
-    }
-    cfg = (await res.json()) as BootstrapConfig;
-  } catch {
-    // Bootstrap failed — drop the buffered pre-bootstrap events and go silent.
-    dropped = true;
-    queue.length = 0;
-    return;
-  }
-  if (!cfg || !cfg.enabled || !cfg.token || !cfg.endpoint) {
-    // Logging disabled for this chart — drop the buffer, send nothing.
-    dropped = true;
-    queue.length = 0;
+  const cfg = await fetchBootstrap();
+  if (!cfg) {
+    // Disabled, refused or failed — drop the buffered events and go silent.
+    goSilent();
     return;
   }
 
   // --- Bootstrap succeeded: wire up the flush owner -------------------------
-  ingestEndpoint = absolutize(cfg.endpoint, apiBase);
-  sampleRate = clampSampleRate(opts.sampleRate ?? cfg.sampleRate ?? 1.0);
-  token = cfg.token;
+  applyBootstrap(cfg);
   const patchConsole = opts.patchConsole ?? true;
 
   // Console patching ---------------------------------------------------------
@@ -298,8 +345,6 @@ export async function installBrowserLogger(opts: InstallOptions = {}): Promise<v
 // --- Internal helpers ------------------------------------------------------
 
 interface ViteEnvShape {
-  VITE_MOSES_CHART_ID?: string;
-  VITE_MOSES_DEPLOYMENT_ID?: string;
   VITE_MOSES_API_BASE?: string;
 }
 
@@ -311,6 +356,22 @@ function readViteEnv(): ViteEnvShape {
   } catch {
     return {};
   }
+}
+
+/** Drops the query and fragment of every absolute URL in s. */
+export function stripUrlQueries(s: string): string {
+  return s.replace(URL_QUERY_OR_FRAGMENT, "$1$2");
+}
+
+function stripContextUrls(
+  ctx: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  if (!ctx) return ctx;
+  for (const k of Object.keys(ctx)) {
+    const v = ctx[k];
+    if (typeof v === "string") ctx[k] = stripUrlQueries(v);
+  }
+  return ctx;
 }
 
 function clip(s: string, max: number): string {

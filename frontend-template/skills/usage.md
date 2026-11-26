@@ -32,9 +32,7 @@ Everything the template reads, and where:
 | `MOSES_EMBEDDING_ALLOWED_ANCESTORS` | `entrypoint.sh` (runtime) | Explicit CSP source list for `moses-only` (overrides the parity default) |
 | `MOSES_EMBEDDING_REPORT_URI` | `entrypoint.sh` (runtime) | Optional CSP report-uri |
 | `MOSES_DOMAIN` | `entrypoint.sh` (runtime) | Platform domain used to extend the default `moses-only` ancestors list |
-| `VITE_MOSES_CHART_ID` | `moses-browser-logger.ts` (build-time, Dockerfile ARG) | Browser-log reporter target chart; when absent the logger bootstraps with a `loc` param and the platform resolves the chart server-side |
-| `VITE_MOSES_DEPLOYMENT_ID` | `moses-browser-logger.ts` (build-time, Dockerfile ARG) | Browser-log reporter deployment identity |
-| `VITE_MOSES_API_BASE` | `moses-browser-logger.ts` (build-time, Dockerfile ARG) | Log-ingest endpoint base |
+| `VITE_MOSES_API_BASE` | `Dockerfile` build arg → `moses-browser-logger.ts` | Optional browser-log API origin; leave empty on Moses (same origin). The logger finds its app from the page URL (`loc`). |
 | `VITE_BASE_URL` | `src/utils/baseUrl.ts` (build-time, rare) | Legacy build-time base-path fallback; runtime meta tag is preferred |
 | `NPM_REGISTRY` | `Dockerfile` (build ARG) | Optional in-cluster npm mirror (CHAT-s6qf3) |
 
